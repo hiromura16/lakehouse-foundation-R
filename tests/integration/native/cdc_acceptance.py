@@ -85,7 +85,13 @@ def event(table, operation, sequence, row):
 
 def publish(groups):
     """テスト用DockerのDNS名へイベントを発行し、配信確認を検査する。"""
-    producer = Producer({"bootstrap.servers": "test-broker:9092"})
+    producer = Producer(
+        {
+            "bootstrap.servers": "test-broker:9092",
+            # ブローカーの事前準備漏れを空のトピックの自動生成で隠さない。
+            "allow.auto.create.topics": False,
+        }
+    )
     errors = []
 
     def delivered(error, _):

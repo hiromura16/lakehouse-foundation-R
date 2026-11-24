@@ -47,9 +47,12 @@ jobs:
             -f compose.yaml -f compose.cdc.yaml -f tests/integration/native/compose.broker.yaml)
           "${suite[@]}" config --quiet
           "${suite[@]}" up -d --wait --wait-timeout 120 test-broker
-          while IFS= read -r topic; do
-            "${suite[@]}" exec -T test-broker rpk topic create "$topic" --partitions 1 --replicas 1
-          done < "$stage/topics.txt"
+          # Compose execの標準入力から分離し、購読を始める前に全6トピックを作る。
+          mapfile -t topics < "$stage/topics.txt"
+          test "${#topics[@]}" -eq 6
+          for topic in "${topics[@]}"; do
+            "${suite[@]}" exec -T test-broker rpk topic create "$topic" --partitions 1 --replicas 1 </dev/null
+          done
           "${suite[@]}" up -d --build --wait --wait-timeout 180 lakehouse native-cdc
           for phase in first delete; do
             "${suite[@]}" exec -T lakehouse python - "$phase" < tests/integration/native/cdc_acceptance.py
