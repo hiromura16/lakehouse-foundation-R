@@ -68,6 +68,42 @@ APIが409を返し、CLIは終了1になります。入力修正後に再実行�
 3. 別VM・別projectに同時点の両方とprivate設定を復元します。会社側の実接続を作る前に、隔離状態で同じ公開世代とGold件数、S3原本hash、Grafana設定を照合します。
 4. 更新の試験で問題が起きた場合は、採用版のGit commitとバックアップを揃えて隔離環境で復旧を検証します。DBのschema移行を行った後にコンテナタグだけ戻すと、DBが旧版に対応しない場合があります。
 
+### 停止済みのDockerボリュームを採取する
+
+[保全コマンド](../../scripts/backup-native.py) は停止済みのFoundation Rと
+追加サービスをDockerのプロジェクトラベルから見つけ、アタッチされていた
+名前付き・匿名ボリュームを読み取り専用で採取します。PostgreSQL 18の
+`pg_controldata` が正常停止を示すこと、稼働中のコンテナが同じvolumeを
+使っていないことを先に確認します。収集中は他の管理者やAutoDeployに
+起動されないよう運用を調整します。
+
+例では標準構成の起動時と同じ `site` と `project` を使い、新規のバックアップ
+出力をGit管理外に指定します。GUIなどを追加した配置では、停止時と再起動時に
+配備時と同じComposeファイル・プロファイルをすべて指定してください。
+出力先の親ディレクトリは所有者限定にし、保全に必要な空き容量を確認します。
+
+**Bash / Zsh共通**
+
+```bash
+backup="$HOME/.config/lakehouse-foundation-r/backup-20261125"
+docker compose --env-file "$site" -p "$project" stop --timeout 30
+python3 scripts/backup-native.py capture --project "$project" "$backup"
+python3 scripts/backup-native.py verify "$backup"
+docker compose --env-file "$site" -p "$project" up -d --wait --wait-timeout 180
+```
+
+Dockerをsudoで利用する場合は採取コマンドに `--sudo` を付けます。
+`capture` はサービスを停止・起動する操作を実行しません。エラーになった
+採取先は `manifest.json` の有無を確認し、新しいディレクトリでやり直します。
+`verify` は別のVMでも実行でき、配備元への接続が不要です。保全時の
+`manifest_sha256` を別経路で保管しておくと、`--expected-manifest-sha256`
+で台帳も照合できます。landing、CDCの `state`、非公開設定とCAは
+配備先の管理領域から別に保全します。保全物は暗号化保管し、会社の
+バックアップ権限と保持期間を適用してください。
+
+[Docker公式のボリューム保全](https://docs.docker.com/engine/storage/volumes/#back-up-restore-or-migrate-data-volumes)
+· [PostgreSQL 18のpg_controldata](https://www.postgresql.org/docs/18/app-pgcontroldata.html)
+
 ### 停止時点をそろえる復旧リハーサル
 
 採用したGitコミット、Composeの追加ファイル、プロファイル、Dokployの

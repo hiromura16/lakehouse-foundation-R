@@ -98,6 +98,28 @@ jobs:
           python3 tests/integration/native/tools_acceptance.py "$tools"
           python3 tests/integration/native/network_acceptance.py \
             --project native-ci --site "$site" --tools "$tools/tools.env"
+      - name: 停止ボリュームを採取し、保全後の破損を検出
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          site="$RUNNER_TEMP/native-site.env"
+          tools="$RUNNER_TEMP/native-tools"
+          proof="$RUNNER_TEMP/native-volume-proof"
+          dc=(docker compose --env-file "$site" --env-file "$tools/tools.env"
+            -p native-ci -f compose.yaml -f compose.gui.yaml -f compose.tools.yaml
+            --profile tools-metrics)
+          if python3 scripts/backup-native.py capture --project native-ci "$proof"; then
+            exit 1
+          fi
+          test ! -e "$proof"
+          "${dc[@]}" stop --timeout 30
+          python3 scripts/backup-native.py capture --project native-ci "$proof" > "$RUNNER_TEMP/native-capture.json"
+          python3 scripts/backup-native.py verify "$proof" > "$RUNNER_TEMP/native-verify.json"
+          cmp "$RUNNER_TEMP/native-capture.json" "$RUNNER_TEMP/native-verify.json"
+          printf '%s' 'fixture-tamper' >> "$proof/volume-001.tar"
+          if python3 scripts/backup-native.py verify "$proof"; then
+            exit 1
+          fi
       - name: 試験プロジェクトと合成データを破棄
         if: always()
         run: |
