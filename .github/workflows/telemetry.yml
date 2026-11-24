@@ -8,6 +8,7 @@ on:  # yamllint disable-line rule:truthy
       - compose.telemetry.nisshi.yaml
       - native/telemetry/**
       - tests/integration/telemetry/**
+      - tests/integration/compose_images.py
       - tests/integration/modbus/**
       - .github/workflows/telemetry.yml
   pull_request:
@@ -17,6 +18,7 @@ on:  # yamllint disable-line rule:truthy
       - compose.telemetry.nisshi.yaml
       - native/telemetry/**
       - tests/integration/telemetry/**
+      - tests/integration/compose_images.py
       - tests/integration/modbus/**
       - .github/workflows/telemetry.yml
   workflow_dispatch:
@@ -28,7 +30,8 @@ jobs:
   equipment:
     name: ${{ matrix.scenario }}
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    # 固定イメージの取得を最長2回とし、受入と後片付けの時間を確保する。
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:

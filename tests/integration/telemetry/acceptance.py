@@ -6,13 +6,18 @@ import secrets
 import shutil
 import sqlite3
 import subprocess
+import sys
 import tempfile
 import time
-from contextlib import closing
+from contextlib import closing, suppress
 from pathlib import Path
 from urllib.error import URLError
 from urllib.parse import urlencode
 from urllib.request import ProxyHandler, build_opener
+
+# ファイルを直接起動する受入CLIから共通の取得手順を使う。
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from compose_images import command_tail, pull_images  # noqa: E402
 
 TOPIC = "factory/measurements/evaluation"
 METRIC = "factory_temperature_celsius"
@@ -155,6 +160,7 @@ def opcua_acceptance(
             *docker,
             "run",
             "--rm",
+            "--pull=never",
             "--network",
             "none",
             "--user",
@@ -170,7 +176,15 @@ def opcua_acceptance(
     )
     remote = keys / "remote-cert.pem"
     shutil.copyfile(keys / "other-cert.pem", remote)
-    run("up", "-d", "opcua-simulator", "telegraf-opcua")
+    run(
+        "up",
+        "-d",
+        "--pull",
+        "never",
+        "--no-build",
+        "opcua-simulator",
+        "telegraf-opcua",
+    )
     until(
         lambda: "試験用OPC UAを開始" in run("logs", "opcua-simulator").stdout,
         "模擬設備の起動",
@@ -187,7 +201,16 @@ def opcua_acceptance(
     assert ["opc_temperature_celsius"] not in tables
 
     shutil.copyfile(keys / "server-cert.pem", remote)
-    run("up", "-d", "--no-deps", "--force-recreate", "telegraf-opcua")
+    run(
+        "up",
+        "-d",
+        "--pull",
+        "never",
+        "--no-build",
+        "--no-deps",
+        "--force-recreate",
+        "telegraf-opcua",
+    )
     semantic_first_ms = FIRST_MS + 3_600_000
 
     def rows():
@@ -337,30 +360,6 @@ def verify(docker, root, *, opcua=False, nisshi=False, capacity_rows=None):
     passwords = root / "passwords"
     passwords.touch(mode=0o600)
     simulator, collector = secrets.token_hex(24), secrets.token_hex(24)
-    subprocess.run(
-        [
-            *docker,
-            "run",
-            "--rm",
-            "-i",
-            "--network",
-            "none",
-            "--mount",
-            f"type=bind,source={root},target=/work",
-            "--entrypoint",
-            "/bin/sh",
-            MOSQUITTO,
-            "-ec",
-            "read -r s && read -r c && chown 0:0 /work/passwords && "
-            'mosquitto_passwd -b -c /work/passwords simulator "$s" && '
-            'mosquitto_passwd -b /work/passwords collector "$c" && '
-            "chown 1883:1883 /work/passwords && chmod 400 /work/passwords",
-        ],
-        input=f"{simulator}\n{collector}\n",
-        text=True,
-        check=True,
-        timeout=180,
-    )
     env = root / "trial.env"
     env.touch(mode=0o600)
     env.write_text(
@@ -428,6 +427,34 @@ def verify(docker, root, *, opcua=False, nisshi=False, capacity_rows=None):
             text=True,
             check=check,
             timeout=timeout,
+        )
+
+    def prepare_passwords():
+        """取得済みのMosquittoをネットワークなしで使い、合成パスワードを作る。"""
+        subprocess.run(
+            [
+                *docker,
+                "run",
+                "--rm",
+                "--pull=never",
+                "-i",
+                "--network",
+                "none",
+                "--mount",
+                f"type=bind,source={root},target=/work",
+                "--entrypoint",
+                "/bin/sh",
+                MOSQUITTO,
+                "-ec",
+                "read -r s && read -r c && chown 0:0 /work/passwords && "
+                'mosquitto_passwd -b -c /work/passwords simulator "$s" && '
+                'mosquitto_passwd -b /work/passwords collector "$c" && '
+                "chown 1883:1883 /work/passwords && chmod 400 /work/passwords",
+            ],
+            input=f"{simulator}\n{collector}\n",
+            text=True,
+            check=True,
+            timeout=180,
         )
 
     def publish(payload, *, user="simulator", check=True, multiline=False):
@@ -499,21 +526,33 @@ def verify(docker, root, *, opcua=False, nisshi=False, capacity_rows=None):
 
     try:
         run("config", "--quiet")
+        collector_service = "telegraf-opcua" if opcua else "telegraf"
+        pull_images(
+            run,
+            "broker",
+            "greptime",
+            "mosquitto",
+            "vector",
+            collector_service,
+            timeout=420,
+            redactions=(simulator, collector),
+        )
+        prepare_passwords()
         services = ["broker", "greptime"]
         if not opcua:
             services.append("mosquitto")
-        run("up", "-d", *services, timeout=300)
+        run("up", "-d", "--pull", "never", "--no-build", *services)
         until(broker_ready, "Kafka応答")
         run("exec", "-T", "broker", *broker_create)
         endpoint = "http://" + run("port", "greptime", "4000").stdout.strip()
         http = build_opener(ProxyHandler({}))
-        run("up", "-d", "vector", timeout=300)
+        run("up", "-d", "--pull", "never", "--no-build", "vector")
         if opcua:
             opcua_acceptance(
                 docker, project, run, root, http, endpoint, nisshi=nisshi
             )
             return
-        run("up", "-d", "telegraf", timeout=300)
+        run("up", "-d", "--pull", "never", "--no-build", "telegraf")
 
         def mqtt_connected():
             """収集器が認証済みのMQTTセッションを確認してから送信する。"""
@@ -557,25 +596,51 @@ def verify(docker, root, *, opcua=False, nisshi=False, capacity_rows=None):
             if opcua
             else ["vector", "mosquitto", "telegraf"]
         )
-        states = run("ps", "--all", "--format", "json", check=False)
-        for line in states.stdout.splitlines():
-            try:
-                row = json.loads(line)
-            except ValueError:
-                continue
-            print(row.get("Service"), row.get("State"), row.get("ExitCode"))
-        logs = run("logs", "--tail", "20", *services, check=False)
         error_log = (
-            error.stderr or ""
-            if isinstance(error, subprocess.CalledProcessError)
+            command_tail(error, (simulator, collector))
+            if isinstance(
+                error,
+                (subprocess.CalledProcessError, subprocess.TimeoutExpired),
+            )
             else ""
         )
-        details = (
-            (error_log + logs.stdout + logs.stderr)
-            .replace(simulator, "[非表示]")
-            .replace(collector, "[非表示]")
-        )
-        print(details)
+        if error_log:
+            print(error_log)
+        # 状態確認が失敗しても、先に起きた取得・起動の例外を残す。
+        with suppress(OSError, subprocess.TimeoutExpired):
+            states = run(
+                "ps", "--all", "--format", "json", check=False, timeout=20
+            )
+            for line in states.stdout.splitlines():
+                try:
+                    result = json.loads(line)
+                except ValueError:
+                    continue
+                rows = result if isinstance(result, list) else [result]
+                for row in rows:
+                    if isinstance(row, dict):
+                        print(
+                            row.get("Service"),
+                            row.get("State"),
+                            row.get("ExitCode"),
+                        )
+            logs = run(
+                "logs",
+                "--tail",
+                "20",
+                "broker",
+                "greptime",
+                *services,
+                check=False,
+                timeout=30,
+            )
+            details = (
+                (logs.stdout + logs.stderr)
+                .replace(simulator, "[非表示]")
+                .replace(collector, "[非表示]")
+            )
+            if details:
+                print(details)
         raise
     finally:
         # 試験のたびに一意なプロジェクト名を取り、合成状態だけを取り除く。

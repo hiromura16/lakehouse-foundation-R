@@ -7,6 +7,7 @@ on:  # yamllint disable-line rule:truthy
       - native/evaluation/risingwave.toml
       - native/evaluation/telemetry-wire.sql
       - tests/integration/iceberg/**
+      - tests/integration/compose_images.py
       - .github/workflows/iceberg-interoperability.yml
   pull_request:
     paths:
@@ -14,6 +15,7 @@ on:  # yamllint disable-line rule:truthy
       - native/evaluation/risingwave.toml
       - native/evaluation/telemetry-wire.sql
       - tests/integration/iceberg/**
+      - tests/integration/compose_images.py
       - .github/workflows/iceberg-interoperability.yml
   workflow_dispatch:
 
@@ -23,7 +25,8 @@ permissions:
 jobs:
   append:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # 固定イメージの取得を最長2回とし、受入と後片付けの時間を確保する。
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -45,7 +48,8 @@ jobs:
 
   upsert:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # 固定イメージの取得を最長2回とし、受入と後片付けの時間を確保する。
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:

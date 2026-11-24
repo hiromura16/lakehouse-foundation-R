@@ -10,11 +10,16 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from functools import partial
 from pathlib import Path
 from urllib.request import Request, urlopen
 
 SOURCE = Path(__file__).resolve().parent
 REPO = SOURCE.parents[2]
+# ファイルを直接起動する受入CLIから共通の取得手順を使う。
+sys.path.insert(0, str(SOURCE.parent))
+from compose_images import pull_images  # noqa: E402
+
 FIXTURES = (
     ".dockerignore",
     "compose.yaml",
@@ -95,10 +100,15 @@ def run(work, use_sudo, *, upsert=False):
     for key in SECRETS:
         environment.pop(key, None)
 
-    def execute(*command, timeout=360):
+    def execute(*command, timeout=360, capture_output=False):
         """Composeを実行する場合も、暗黙のカレントディレクトリに依存しない。"""
-        subprocess.run(
-            command, check=True, cwd=work, env=environment, timeout=timeout
+        return subprocess.run(
+            command,
+            check=True,
+            cwd=work,
+            env=environment,
+            timeout=timeout,
+            capture_output=capture_output,
         )
 
     docker = ["sudo", "-n", "docker"] if use_sudo else ["docker"]
@@ -121,10 +131,37 @@ def run(work, use_sudo, *, upsert=False):
     execute(sys.executable, "create_env.py")
     try:
         execute(*compose, "config", "--quiet")
-        execute(
-            *compose, "up", "-d", "catalog", "storage", "broker", "risingwave"
+        services = ("catalog", "storage", "broker", "risingwave")
+        settings = (work / ".env").read_text(encoding="utf-8")
+        redactions = [
+            value
+            for key, _, value in (
+                line.partition("=") for line in settings.splitlines()
+            )
+            if key in SECRETS
+        ]
+        pull_images(
+            partial(execute, *compose, capture_output=True),
+            "catalog-db",
+            "catalog-migrate",
+            *services,
+            timeout=720,
+            redactions=redactions,
         )
         execute(*compose, "build", "reader")
+        print(
+            "固定イメージ取得済み。Iceberg隔離環境を起動します。", flush=True
+        )
+        execute(
+            *compose,
+            "up",
+            "-d",
+            "--pull",
+            "never",
+            "--no-build",
+            *services,
+            timeout=180,
+        )
         if upsert:
             execute(sys.executable, "upsert.py", timeout=720)
         else:
