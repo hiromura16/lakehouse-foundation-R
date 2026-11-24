@@ -36,12 +36,23 @@ class Artifact:
     content: bytes
 
 
+def unique_fields(pairs):
+    """承認された項目を一意に読み、同名の指定による曖昧な承認を拒む。"""
+    result = {}
+    for name, value in pairs:
+        if name in result:
+            raise ValueError("R2_MANIFEST_DUPLICATE_FIELD")
+        result[name] = value
+    return result
+
+
 def load_bundle(manifest):
     """承認対象のパス、分類、サイズとハッシュをすべて送信前に検査する。"""
     metadata = read_stable(manifest, 32768, "Approved manifest")
-    document = json.loads(metadata)
+    document = json.loads(metadata, object_pairs_hook=unique_fields)
     if (
-        document["format_version"] != 1
+        type(document["format_version"]) is not int
+        or document["format_version"] != 1
         or document["classification"] != "approved_external"
         or document["dataset"] not in DATASETS
         or not re.fullmatch(r"[1-9][0-9]{0,18}", document["release"])
@@ -105,7 +116,13 @@ def create_only(client, bucket, key, artifact):
             Metadata={"sha256": artifact.digest},
         )
     except ClientError as error:
-        if error.response["ResponseMetadata"]["HTTPStatusCode"] != 412:
+        status = error.response["ResponseMetadata"]["HTTPStatusCode"]
+        code = error.response.get("Error", {}).get("Code")
+        # R2のバケットロックは、既存キーの作成条件より先に判定される。
+        if status != 412 and (status, code) != (
+            409,
+            "ObjectLockedByBucketPolicy",
+        ):
             raise
         response = client.get_object(Bucket=bucket, Key=key)
         with response["Body"] as body:

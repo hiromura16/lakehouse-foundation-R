@@ -57,4 +57,4 @@ jobs:
           uv pip sync --python "$RUNNER_TEMP/r2-check/bin/python" \
             --require-hashes native/edge/requirements-r2.lock
           "$RUNNER_TEMP/r2-check/bin/python" -m unittest discover \
-            -s tests/integration/edge -p r2_acceptance.py
+            -s tests/integration/edge -p 'r2*_acceptance.py'

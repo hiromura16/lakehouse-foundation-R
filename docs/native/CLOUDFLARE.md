@@ -76,9 +76,11 @@ CF_TUNNEL_PROTOCOL=http2
 
 ## 承認した成果物を非公開R2へ持ち出す
 
-閲覧トンネルと成果物の送信は別の経路です。転送したい場合は、R2で公開アクセスを無効にした専用バケットを作り、そのバケットのObject Read & Writeに権限を絞った資格情報を発行します。転送CLIはR2を使わない場合のオンプレ配備に含める必要がありません。
+閲覧トンネルと成果物の送信は別の経路です。転送したい場合は、R2で公開アクセスを無効にした専用バケットを作り、そのバケットのObject Read & Writeに権限を絞った資格情報を発行します。再送時は既存物のバイト列を読み直すため、読取権限も使用します。このCLIは標準の `https://<ACCOUNT_ID>.r2.cloudflarestorage.com` に `auto` リージョンで接続します。EU、FedRAMP、USのjurisdiction付きバケットは、該当する専用エンドポイントが必要です。転送CLIはR2を使わない場合のオンプレ配備に含める必要がありません。[R2認証とエンドポイント](https://developers.cloudflare.com/r2/api/tokens/) · [boto3の設定](https://developers.cloudflare.com/r2/examples/aws/boto3/)
 
 承認済みのCSV、JSON、Parquetと、その分類・公開世代・SHA-256を記したmanifestを同じ非公開フォルダに置きます。1ファイル16 MiB、全体64 MiB以下です。行数が途中で切られた応答や未承認の原本・隔離データを、成果物として承認しないでください。
+
+承認担当者は、搬出内容・アカウント・バケットを照合したうえでmanifestを確定します。CLIは分類とファイルのサイズ・ハッシュを検査し、同名のJSONフィールドや整数以外の形式バージョンを拒否します。manifestの発行と保存は、担当者だけが変更できる権限で管理します。
 
 ```json
 {
@@ -116,4 +118,6 @@ uv pip sync --python .venv-r2/bin/python \
   --publish --account "$r2_account_id" --bucket "$r2_bucket"
 ```
 
-成果物はハッシュで分けたキーに作成し、最後にmanifestを確定します。通信が切れた場合はローカルの承認済みファイルを維持し、同じmanifestで再試行します。既存オブジェクトを読み、内容が異なる場合は停止します。CIでは条件付き書き込みを模擬して順序と再送を検査します。配備先では対象バケットへの権限、ネットワーク断からの回復、他アカウントからのアクセス拒否を合成ファイルで確認してください。[R2認証](https://developers.cloudflare.com/r2/api/tokens/) · [条件付き書き込み](https://developers.cloudflare.com/r2/api/s3/conditional-operations/) · [データ所在地](https://developers.cloudflare.com/r2/reference/data-location/)
+成果物は `If-None-Match: *` で、キーが存在しない場合に作成します。最後にmanifestを確定するため、通信が切れると先に作成した成果物だけが残る場合があります。利用側はmanifestのある世代を開き、各オブジェクトのハッシュを照合します。復旧時は手元の同じ承認済みmanifestで再試行してください。既存キーのHTTP 412、またはバケットロックのHTTP 409 `ObjectLockedByBucketPolicy` を受けた場合は、既存物を読み、内容が一致すれば次へ進みます。[条件付き書き込み](https://developers.cloudflare.com/r2/api/s3/conditional-operations/) · [R2の整合性](https://developers.cloudflare.com/r2/reference/consistency/)
+
+CIでは合成HTTPSに対し、固定版boto3の署名を検証しながら、承認不成立時の通信0件、条件付き作成、503からの再送、既存物の照合、誤ったCAの拒否を確認します。導入先では対象テナントの権限、企業CA、ネットワーク断からの回復、他アカウントからのアクセス拒否を合成ファイルで確認してください。S3互換APIと設置するテナントの条件は、公式仕様を参照してください。[S3 APIの対応範囲](https://developers.cloudflare.com/r2/api/s3/api/) · [データ所在地](https://developers.cloudflare.com/r2/reference/data-location/)
