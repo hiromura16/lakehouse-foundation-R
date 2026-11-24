@@ -30,7 +30,6 @@ jobs:
           site="$RUNNER_TEMP/native-site.env"
           landing="$RUNNER_TEMP/native-landing"
           auth="$RUNNER_TEMP/native-htpasswd"
-          chmod -R a+rX native/gui native/monitoring
           python3 native/setup.py --output "$site" --landing "$landing"
           umask 077
           password=$(openssl rand -hex 24)

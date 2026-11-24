@@ -1,0 +1,53 @@
+# 公開設定を固定した上流イメージへ組み込む。Git取得時のumaskに依存しない。
+# 非公開設定と永続データは、Composeが実行時に別途渡す。
+
+FROM prom/prometheus:v3.16.0@sha256:89c1a644817e9ad70fa2af76c84898e327c1de7063735f962e8313b1e28672c3 AS prometheus-inputs
+USER 0
+ARG GUI_TARGETS=0
+ARG TOOL_TARGETS=0
+COPY --chmod=644 native/monitoring/targets/*.yml /tmp/core/
+COPY --chmod=644 native/monitoring/gui-targets/*.yml /tmp/gui/
+COPY --chmod=644 native/tools/targets.yml /tmp/tools/
+# 追加構成の選択はCompose側のビルド引数で行い、存在しないサービスを監視しない。
+RUN umask 022 && mkdir -p /tmp/active/targets /tmp/active/optional-targets /tmp/active/tool-targets \
+    && cp /tmp/core/*.yml /tmp/active/targets/ \
+    && if [ "$GUI_TARGETS" = "1" ]; then \
+         cp /tmp/gui/*.yml /tmp/active/optional-targets/; \
+       else \
+         printf '[]\n' > /tmp/active/optional-targets/disabled.yml; \
+       fi \
+    && if [ "$TOOL_TARGETS" = "1" ]; then \
+         cp /tmp/tools/*.yml /tmp/active/tool-targets/; \
+       else \
+         printf '[]\n' > /tmp/active/tool-targets/disabled.yml; \
+       fi
+
+FROM prom/prometheus:v3.16.0@sha256:89c1a644817e9ad70fa2af76c84898e327c1de7063735f962e8313b1e28672c3 AS prometheus
+COPY --from=prometheus-inputs /tmp/active/ /etc/prometheus/
+COPY --chmod=644 native/monitoring/prometheus.yml native/monitoring/alerts.yml /etc/prometheus/
+
+FROM prom/blackbox-exporter:v0.29.1@sha256:ea1c7aa3ef3f307cd03e85f34abb604478ccb90b567fc690da0cd9776da76b13 AS blackbox
+COPY --chmod=644 native/monitoring/blackbox.yml /etc/blackbox/blackbox.yml
+
+FROM grafana/grafana:13.3.0@sha256:6e5d306338670f381a942f1c50d3c266bf71531e5ddd9ee4fc1a133dac5ce63d AS grafana
+USER 0
+COPY --chmod=644 native/monitoring/provisioning/datasources/*.yml /etc/grafana/provisioning/datasources/
+COPY --chmod=644 native/monitoring/provisioning/dashboards/*.yml /etc/grafana/provisioning/dashboards/
+COPY --chmod=644 native/monitoring/dashboards/*.json /etc/lakehouse/dashboards/
+RUN chmod 755 /etc/lakehouse /etc/lakehouse/dashboards
+USER 472
+
+FROM docker.io/library/nginx:stable-alpine@sha256:8eb2b5540eae779603cc3db84b3986a15ecb5308b54303146eee9837c137b51a AS ops-proxy
+COPY --chmod=644 native/gui/nginx.conf native/gui/lakehouse-proxy.conf /etc/nginx/
+
+FROM docker.io/library/nginx:stable-alpine@sha256:8eb2b5540eae779603cc3db84b3986a15ecb5308b54303146eee9837c137b51a AS tools-portal
+COPY --chmod=644 native/tools/nginx.conf /etc/nginx/nginx.conf
+COPY --chmod=644 native/tools/portal/index.html native/tools/portal/portal.css native/tools/portal/portal.js /usr/share/nginx/html/
+COPY --chmod=644 docs/presentation/index.html docs/presentation/slides.css docs/presentation/slides.js /usr/share/nginx/html/slides/
+RUN chmod 755 /usr/share/nginx/html/slides
+
+FROM docker.n8n.io/n8nio/n8n:2.46.7@sha256:6102ca27d9392c7f4778c0a35a80834d6620a365ab4d546a9fdf855a2b52fe4e AS n8n
+USER 0
+COPY --chmod=644 native/tools/health-workflow.json /opt/foundation/health-workflow.json
+RUN chmod 755 /opt/foundation
+USER node

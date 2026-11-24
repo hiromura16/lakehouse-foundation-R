@@ -5,7 +5,7 @@ providers:
     type: file
     disableDeletion: false
     allowUiUpdates: false
-    # マウント先でファイル変更通知が失われても、定期読み込みで反映する。
+    # Gitで定義したダッシュボードを、起動後も定期的に読み直す。
     updateIntervalSeconds: 30
     options:
       path: /etc/lakehouse/dashboards

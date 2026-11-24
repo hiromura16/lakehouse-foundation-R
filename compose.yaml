@@ -16,6 +16,10 @@ x-catalog: &catalog-env
   LAKEKEEPER__BASE_URI: http://catalog:8181
   LAKEKEEPER__AUTHZ_BACKEND: allowall
 
+x-configured-image: &configured-image
+  context: .
+  dockerfile: native/Dockerfile.configured
+
 x-no-proxy: &no-proxy "localhost,127.0.0.1,::1,catalog,catalog-db,storage,lakehouse,prometheus,grafana,blackbox,${NO_PROXY:-${no_proxy:-}}"
 
 services:
@@ -139,17 +143,27 @@ services:
       retries: 45
 
   blackbox:
-    image: prom/blackbox-exporter:v0.29.1@sha256:ea1c7aa3ef3f307cd03e85f34abb604478ccb90b567fc690da0cd9776da76b13
+    image: ${COMPOSE_PROJECT_NAME:-lakehouse-r}-blackbox
+    pull_policy: build
+    build:
+      <<: *configured-image
+      target: blackbox
     command: [--config.file=/etc/blackbox/blackbox.yml]
     restart: unless-stopped
     logging: *logging
     mem_limit: 96m
-    configs:
-      - source: blackbox
-        target: /etc/blackbox/blackbox.yml
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:9115/-/healthy]
+      interval: 5s
+      timeout: 3s
+      retries: 12
 
   prometheus:
-    image: prom/prometheus:v3.16.0@sha256:89c1a644817e9ad70fa2af76c84898e327c1de7063735f962e8313b1e28672c3
+    image: ${COMPOSE_PROJECT_NAME:-lakehouse-r}-prometheus
+    pull_policy: build
+    build:
+      <<: *configured-image
+      target: prometheus
     restart: unless-stopped
     logging: *logging
     mem_limit: 512m
@@ -158,17 +172,20 @@ services:
       - --storage.tsdb.path=/prometheus
       - --storage.tsdb.retention.time=15d
       - --storage.tsdb.retention.size=2GB
-    configs:
-      - source: prometheus
-        target: /etc/prometheus/prometheus.yml
-      - source: alerts
-        target: /etc/prometheus/alerts.yml
     volumes:
       - prometheus:/prometheus
-      - ./native/monitoring/targets:/etc/prometheus/targets:ro
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:9090/-/ready]
+      interval: 5s
+      timeout: 3s
+      retries: 12
 
   grafana:
-    image: grafana/grafana:13.3.0@sha256:6e5d306338670f381a942f1c50d3c266bf71531e5ddd9ee4fc1a133dac5ce63d
+    image: ${COMPOSE_PROJECT_NAME:-lakehouse-r}-grafana
+    pull_policy: build
+    build:
+      <<: *configured-image
+      target: grafana
     restart: unless-stopped
     logging: *logging
     mem_limit: 512m
@@ -185,8 +202,11 @@ services:
       GF_PANELS_DISABLE_SANITIZE_HTML: 'false'
     volumes:
       - grafana:/var/lib/grafana
-      - ./native/monitoring/provisioning:/etc/grafana/provisioning:ro
-      - ./native/monitoring/dashboards:/etc/lakehouse/dashboards:ro
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:3000/api/health]
+      interval: 5s
+      timeout: 3s
+      retries: 24
     ports:
       - "127.0.0.1:${LAKEHOUSE_GRAFANA_PORT:-18501}:3000"
 
@@ -201,12 +221,6 @@ configs:
       [leveldb2]
       enabled = true
       dir = "/data/filer"
-  prometheus:
-    file: ./native/monitoring/prometheus.yml
-  blackbox:
-    file: ./native/monitoring/blackbox.yml
-  alerts:
-    file: ./native/monitoring/alerts.yml
 
 secrets:
   corporate-ca:

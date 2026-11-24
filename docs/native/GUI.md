@@ -82,13 +82,12 @@ LAKEHOUSE_CATALOG_URL=http://localhost:18504
 **Bash / Zsh共通**
 
 ```bash
-chmod -R a+rX native/gui native/monitoring
 docker compose --env-file "$site" -f compose.yaml -f compose.gui.yaml config --quiet
 docker compose --env-file "$site" -f compose.yaml -f compose.gui.yaml \
   up -d --build --wait --wait-timeout 180
 ```
 
-Dokployからは [企業向け配置手順](COMPANY.md) のRun Commandに同じComposeファイルを指定します。配置設定でポートを変更した場合は、ブラウザー向けURLも併せて更新します。Streamlitからは内部APIへ読取トークンだけを渡します。Lakekeeper UIがPOSTで要求するAPI統計は読取操作なので、ゲートウェイで該当パスだけ中継します。[Lakekeeper管理APIの仕様](https://docs.lakekeeper.io/docs/latest/api/management/)S3、PostgreSQL、Blackboxの接続情報は [稼働監視](MONITORING.md) とCompose定義で管理します。
+Dokployからは [企業向け配置手順](COMPANY.md) のAdvanced → Commandに同じComposeファイルを指定します。配置設定でポートを変更した場合は、ブラウザー向けURLも併せて更新します。Streamlitからは内部APIへ読取トークンだけを渡します。Lakekeeper UIがPOSTで要求するAPI統計は読取操作なので、ゲートウェイで該当パスだけ中継します。[Lakekeeper管理APIの仕様](https://docs.lakekeeper.io/docs/latest/api/management/)。S3、PostgreSQL、Blackboxの接続情報は [稼働監視](MONITORING.md) とCompose定義で管理します。
 
 [Streamlit公式の表表示](https://docs.streamlit.io/develop/api-reference/data/st.dataframe) · [NGINXのBasic認証](https://nginx.org/en/docs/http/ngx_http_auth_basic_module.html)
 

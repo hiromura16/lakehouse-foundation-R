@@ -40,7 +40,7 @@ flowchart TB
 | --- | --- | --- |
 | cloneする端末のGit | OSの信頼CA、組織指定の `HTTPS_PROXY` またはGit設定 | `git ls-remote` |
 | DokployのGit取得プロセス | Dokployの実行環境でGitHubに到達する経路とCA。GitHub Appを選ぶ場合は対象へのアクセス許可 | 初回Deployログのcheckout |
-| Docker Engineのイメージ取得 | デーモンのプロキシとCA、レジストリへのアクセス | `docker compose pull` |
+| Docker Engineのイメージ取得 | デーモンのプロキシとCA、レジストリへのアクセス | `docker compose pull --ignore-buildable` と `docker compose build` |
 | BuildKit内のPython依存取得 | Composeの標準proxy引数と `CORPORATE_CA_FILE` | `docker compose build lakehouse` |
 | 稼働中のサービス | Composeの内部DNS。Kafkaを使う場合は直接到達するTCPとTLS | `ps`、監視、受入試験 |
 
@@ -120,7 +120,7 @@ DokployのEnvironmentはComposeの横に `.env` を生成します。このプ�
 
 ## 追加のCompose構成を有効にする
 
-Dokployの既定コマンドに待機・再生成を追加する場合は、UIに表示される実際のappNameを使ってAdvancedのCommand欄に以下を入力します。コマンド欄には `compose` から入力します。checkout更新で監視設定のマウント先も確実に切り替える場合は `--force-recreate` を付けます。これは対象プロジェクトのサービスを再起動します。
+Dokployの既定コマンドに待機・再生成を追加する場合は、UIに表示される実際のappNameを使ってAdvancedのCommand欄に以下を入力します。コマンド欄には `compose` から入力します。監視設定と閲覧入口の公開ファイルは、読み取り権限を固定してイメージへ組み込みます。Gitで設定を変更したら `--build` 付きで再配備します。Dockerのレジストリ取得とBuildKitのレジストリ取得を許可してください。
 
 ```text
 compose -p APP_NAME_FROM_HEADER --env-file .env -f compose.yaml up -d --build --wait --wait-timeout 180 --remove-orphans

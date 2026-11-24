@@ -22,7 +22,12 @@ services:
     logging: *tool-logging
 
   n8n:
-    image: docker.n8n.io/n8nio/n8n:2.46.7@sha256:6102ca27d9392c7f4778c0a35a80834d6620a365ab4d546a9fdf855a2b52fe4e
+    image: ${COMPOSE_PROJECT_NAME:-lakehouse-r}-n8n
+    pull_policy: build
+    build:
+      context: .
+      dockerfile: native/Dockerfile.configured
+      target: n8n
     environment:
       DB_TYPE: postgresdb
       DB_POSTGRESDB_HOST: tools-db
@@ -49,9 +54,6 @@ services:
       TZ: Asia/Tokyo
     volumes:
       - tools-n8n:/home/node/.n8n
-    configs:
-      - source: n8n-health-workflow
-        target: /opt/foundation/health-workflow.json
     depends_on:
       tools-db:
         condition: service_healthy
@@ -174,7 +176,12 @@ services:
     logging: *tool-logging
 
   tools-portal:
-    image: docker.io/library/nginx:stable-alpine@sha256:8eb2b5540eae779603cc3db84b3986a15ecb5308b54303146eee9837c137b51a
+    image: ${COMPOSE_PROJECT_NAME:-lakehouse-r}-tools-portal
+    pull_policy: build
+    build:
+      context: .
+      dockerfile: native/Dockerfile.configured
+      target: tools-portal
     entrypoint: [nginx]
     command: [-g, daemon off;]
     user: "${LANDING_UID}:${LANDING_GID}"
@@ -182,22 +189,8 @@ services:
     security_opt: [no-new-privileges:true]
     tmpfs: ["/tmp:size=32m,mode=1777"]
     configs:
-      - source: tools-nginx
-        target: /etc/nginx/nginx.conf
       - source: tools-ports
         target: /etc/foundation-tools/ports.json
-      - source: tools-page
-        target: /usr/share/nginx/html/index.html
-      - source: tools-style
-        target: /usr/share/nginx/html/portal.css
-      - source: tools-script
-        target: /usr/share/nginx/html/portal.js
-      - source: slide-page
-        target: /usr/share/nginx/html/slides/index.html
-      - source: slide-style
-        target: /usr/share/nginx/html/slides/slides.css
-      - source: slide-script
-        target: /usr/share/nginx/html/slides/slides.js
     secrets: [tools-htpasswd]
     ports:
       - 127.0.0.1:${TOOLS_PORT:-18506}:8060
@@ -213,20 +206,11 @@ services:
     logging: *tool-logging
 
   prometheus:
-    configs:
-      - source: tools-targets
-        target: /etc/prometheus/tool-targets/tools.yml
+    build:
+      args:
+        TOOL_TARGETS: '1'
 
 configs:
-  tools-nginx: {file: ./native/tools/nginx.conf}
-  tools-page: {file: ./native/tools/portal/index.html}
-  tools-style: {file: ./native/tools/portal/portal.css}
-  tools-script: {file: ./native/tools/portal/portal.js}
-  slide-page: {file: ./docs/presentation/index.html}
-  slide-style: {file: ./docs/presentation/slides.css}
-  slide-script: {file: ./docs/presentation/slides.js}
-  tools-targets: {file: ./native/tools/targets.yml}
-  n8n-health-workflow: {file: ./native/tools/health-workflow.json}
   tools-ports:
     content: |
       {"grafana":${LAKEHOUSE_GRAFANA_PORT:-18501},"lakehouse":${LAKEHOUSE_API_PORT:-18502},

@@ -43,8 +43,13 @@ services:
       retries: 10
 
   ops-proxy:
-    # digestを固定し、認証と経路の設定は読み取り専用でマウントする。
-    image: docker.io/library/nginx:stable-alpine@sha256:8eb2b5540eae779603cc3db84b3986a15ecb5308b54303146eee9837c137b51a
+    # 公開の経路設定を組み込み、認証は非公開ファイルとして別途マウントする。
+    image: ${COMPOSE_PROJECT_NAME:-lakehouse-r}-ops-proxy
+    pull_policy: build
+    build:
+      context: .
+      dockerfile: native/Dockerfile.configured
+      target: ops-proxy
     restart: unless-stopped
     entrypoint: [nginx]
     command: [-g, daemon off;]
@@ -59,11 +64,6 @@ services:
       options:
         max-size: 10m
         max-file: '3'
-    configs:
-      - source: ops-proxy
-        target: /etc/nginx/nginx.conf
-      - source: ops-proxy-headers
-        target: /etc/nginx/lakehouse-proxy.conf
     volumes:
       - type: bind
         source: ${LAKEHOUSE_OPS_HTPASSWD:?運用画面の認証ファイルを指定してください}
@@ -81,7 +81,7 @@ services:
       catalog:
         condition: service_healthy
       prometheus:
-        condition: service_started
+        condition: service_healthy
     healthcheck:
       test: [CMD, wget, -q, -O, /dev/null, "http://127.0.0.1:8501/_proxy-health"]
       interval: 10s
@@ -89,11 +89,6 @@ services:
       retries: 10
 
   prometheus:
-    volumes:
-      - ./native/monitoring/gui-targets:/etc/prometheus/optional-targets:ro
-
-configs:
-  ops-proxy:
-    file: ./native/gui/nginx.conf
-  ops-proxy-headers:
-    file: ./native/gui/lakehouse-proxy.conf
+    build:
+      args:
+        GUI_TARGETS: '1'

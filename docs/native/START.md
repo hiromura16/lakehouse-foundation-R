@@ -44,7 +44,7 @@ landing="$HOME/.config/lakehouse-foundation-r/landing"
 2. **General** でProviderを **Git** にし、下表の値を設定して **Save** します。
 3. **Environment** を開いて `site.env` の内容を登録します。**Create .env file** を有効にして **Save** します。プロジェクトと環境の共通設定に同じ名前がある場合は、対象サービスの値を確認します。企業CAやビルド用のプロキシが必要な場合は、[企業ネットワークの設定](COMPANY.md) もここで登録します。
 4. **General → Deploy** を選び、**Deployments** の最新ログを開きます。初回はイメージと依存のダウンロードに時間がかかります。
-5. **Docker → Containers** で対象サーバーを選びます。対象Composeの `catalog-migrate` は終了コード0、`lakehouse` はhealthyが合格です。Grafanaを含め、ほかの7サービスが稼働します。
+5. **Docker → Containers** で対象サーバーを選びます。対象Composeの `catalog-migrate` は終了コード0、`lakehouse`、Grafana、Prometheus、Blackboxはhealthyが合格です。標準の常駐サービスは計7件です。監視設定はGitの設定ファイルからイメージに組み込まれます。
 
 | Generalの項目 | 入力する値 |
 | --- | --- |
