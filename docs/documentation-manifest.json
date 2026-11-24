@@ -20,8 +20,8 @@
       "status": "active"
     },
     {
-      "path": "README.md",
-      "title": "Lakehouse Foundation",
+      "path": "FOUNDATION.md",
+      "title": "Lakehouse Foundation 互換構成",
       "purpose": "MES・ERP向けPoC基盤の機能、構築入口、任意機能と報告素材を見渡す。",
       "audience": [
         "初めて使う人",
@@ -507,7 +507,7 @@
       "when_to_use": "できることと未実施の評価を確認し、PoCの範囲や進捗を説明するとき。",
       "category": "05 運用・根拠",
       "prerequisites": [
-        "README.md"
+        "FOUNDATION.md"
       ],
       "next": [
         "docs/VALIDATION.md",
@@ -527,7 +527,7 @@
       "when_to_use": "読む順番が分からないときや、次に学ぶ操作を決めるとき。",
       "category": "01 入口・学習",
       "prerequisites": [
-        "README.md"
+        "FOUNDATION.md"
       ],
       "next": [
         "docs/GLOSSARY.md",
@@ -806,7 +806,7 @@
       "when_to_use": "初めてこのリポジトリを配置し、段階ごとの成功条件を確認するとき。",
       "category": "01 入口・学習",
       "prerequisites": [
-        "README.md"
+        "FOUNDATION.md"
       ],
       "next": [
         "docs/HOST-SETUP.md",
@@ -1333,6 +1333,150 @@
       ],
       "next": [],
       "status": "reference"
+    },
+    {
+      "path": "README.md",
+      "title": "Lakehouse Foundation R",
+      "purpose": "JVMを使わない標準構成の機能と導入入口を確認します。",
+      "audience": [
+        "初めて使う人",
+        "基盤構築担当"
+      ],
+      "when_to_use": "導入の方法を選ぶとき。",
+      "category": "01 入口・学習",
+      "prerequisites": [],
+      "next": [
+        "docs/native/START.md"
+      ],
+      "status": "active"
+    },
+    {
+      "path": "docs/native/API.md",
+      "title": "認証付きAPIとLangChain",
+      "purpose": "固定API操作とスナップショットを根拠にしたLangChain利用を確認します。",
+      "audience": [
+        "初めて使う人",
+        "基盤構築担当"
+      ],
+      "when_to_use": "分析やAIのツールを実装するとき。",
+      "category": "01 入口・学習",
+      "prerequisites": [],
+      "next": [
+        "docs/native/ARCHITECTURE.md"
+      ],
+      "status": "active"
+    },
+    {
+      "path": "docs/native/ARCHITECTURE.md",
+      "title": "アーキテクチャと業務契約",
+      "purpose": "責務、元の業務契約、公開世代、既存機能の関係を確認します。",
+      "audience": [
+        "初めて使う人",
+        "基盤構築担当"
+      ],
+      "when_to_use": "実装を理解・変更するとき。",
+      "category": "01 入口・学習",
+      "prerequisites": [],
+      "next": [
+        "docs/native/SOURCES.md"
+      ],
+      "status": "active"
+    },
+    {
+      "path": "docs/native/COMPANY.md",
+      "title": "Dokployと企業ネットワーク",
+      "purpose": "Git・Docker・BuildKitの通信を準備し、Dokployで配備します。",
+      "audience": [
+        "初めて使う人",
+        "基盤構築担当"
+      ],
+      "when_to_use": "会社環境の準備と配置時。",
+      "category": "01 入口・学習",
+      "prerequisites": [],
+      "next": [
+        "docs/native/OPERATIONS.md"
+      ],
+      "status": "active"
+    },
+    {
+      "path": "docs/native/MONITORING.md",
+      "title": "Grafanaの稼働監視を設定ファイルで管理する",
+      "purpose": "PrometheusとGrafanaの監視対象・パネルを変更します。",
+      "audience": [
+        "初めて使う人",
+        "基盤構築担当"
+      ],
+      "when_to_use": "起動確認や監視対象の変更時。",
+      "category": "01 入口・学習",
+      "prerequisites": [],
+      "next": [
+        "docs/native/OPERATIONS.md"
+      ],
+      "status": "active"
+    },
+    {
+      "path": "docs/native/OPERATIONS.md",
+      "title": "運用、バックアップ、受入試験",
+      "purpose": "障害対応、状態の保全と合成データでの受入を行います。",
+      "audience": [
+        "初めて使う人",
+        "基盤構築担当"
+      ],
+      "when_to_use": "導入先で検証・運用するとき。",
+      "category": "01 入口・学習",
+      "prerequisites": [],
+      "next": [
+        "docs/native/REFERENCES.md"
+      ],
+      "status": "active"
+    },
+    {
+      "path": "docs/native/REFERENCES.md",
+      "title": "公式リファレンスと採用バージョン",
+      "purpose": "固定した版と公式仕様への参照を調べます。",
+      "audience": [
+        "初めて使う人",
+        "基盤構築担当"
+      ],
+      "when_to_use": "採用版の理由や更新差分を調べるとき。",
+      "category": "01 入口・学習",
+      "prerequisites": [],
+      "next": [
+        "docs/native/OPERATIONS.md"
+      ],
+      "status": "active"
+    },
+    {
+      "path": "docs/native/SOURCES.md",
+      "title": "SQL Server・Kafka・データ投入アプリとの接続",
+      "purpose": "ファイル・SQLバッチ・Kafka・設備の入力契約を確認します。",
+      "audience": [
+        "初めて使う人",
+        "基盤構築担当"
+      ],
+      "when_to_use": "外部ソースを接続するとき。",
+      "category": "01 入口・学習",
+      "prerequisites": [],
+      "next": [
+        "docs/native/API.md"
+      ],
+      "status": "active"
+    },
+    {
+      "path": "docs/native/START.md",
+      "title": "Foundation Rの初回導入と操作",
+      "purpose": "Composeで起動し、合成データの結果を確認します。",
+      "audience": [
+        "初めて使う人",
+        "基盤構築担当"
+      ],
+      "when_to_use": "初めて起動するとき。",
+      "category": "01 入口・学習",
+      "prerequisites": [],
+      "next": [
+        "docs/native/COMPANY.md"
+      ],
+      "status": "active"
     }
   ]
 }

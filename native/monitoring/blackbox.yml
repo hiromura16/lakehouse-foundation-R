@@ -1,0 +1,13 @@
+# Only Prometheus can reach the probe listener from the standard host setup.
+modules:
+  http_ready:
+    prober: http
+    timeout: 4s
+    http:
+      preferred_ip_protocol: ip4
+      follow_redirects: false
+  tcp_connect:
+    prober: tcp
+    timeout: 3s
+    tcp:
+      preferred_ip_protocol: ip4

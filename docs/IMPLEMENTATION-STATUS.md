@@ -7,7 +7,7 @@
 >
 > **読むタイミング:** できることと未実施の評価を確認し、PoCの範囲や進捗を説明するとき。
 >
-> **前提となる資料:** [Lakehouse Foundation](<../README.md>)
+> **前提となる資料:** [Lakehouse Foundation 互換構成](<../FOUNDATION.md>)
 >
 > **次に読む資料:** [検証記録](<VALIDATION.md>) / [報告する主張と根拠の対応表](<reports/EVIDENCE-MATRIX.md>)
 >

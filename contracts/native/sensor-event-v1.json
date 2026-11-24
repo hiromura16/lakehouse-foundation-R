@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Foundation R sensor event v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["factory_id", "line_id", "equipment_id", "sensor_id", "measurement", "unit", "timestamp", "sequence_no", "value", "quality_code"],
+  "$defs": {
+    "identity": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._%/-]{0,127}$"}
+  },
+  "properties": {
+    "factory_id": {"$ref": "#/$defs/identity"},
+    "line_id": {"$ref": "#/$defs/identity"},
+    "equipment_id": {"$ref": "#/$defs/identity"},
+    "sensor_id": {"$ref": "#/$defs/identity"},
+    "measurement": {"$ref": "#/$defs/identity"},
+    "unit": {"$ref": "#/$defs/identity"},
+    "timestamp": {"type": "string", "format": "date-time", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?(Z|[+-][0-9]{2}:[0-9]{2})$"},
+    "sequence_no": {"type": "integer", "minimum": 0, "maximum": 9223372036854775807},
+    "value": {"type": "number"},
+    "quality_code": {"enum": ["GOOD", "UNCERTAIN", "BAD"]}
+  }
+}

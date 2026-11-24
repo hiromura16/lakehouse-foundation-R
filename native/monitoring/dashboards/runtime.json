@@ -1,0 +1,321 @@
+{
+  "uid": "lakehouse-r-runtime",
+  "title": "Lakehouse R 稼働監視",
+  "schemaVersion": 41,
+  "editable": false,
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": {
+    "from": "now-3h",
+    "to": "now"
+  },
+  "tags": [
+    "lakehouse-r",
+    "operations"
+  ],
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "現在の稼働状態",
+      "description": "Status is from the Compose network. A direct probe failure or a failed scrape is red.",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 6
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "lakehouse-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "probe_success or on(app) (0 * up{job=\"app-probes\"})",
+          "legendFormat": "{{app}}",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 1,
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "停止・障害",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "稼働",
+                  "color": "green"
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value_and_name",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      }
+    },
+    {
+      "id": 2,
+      "type": "state-timeline",
+      "title": "稼働履歴",
+      "description": "HTTP means a successful status response. TCP means that the port was reachable.",
+      "gridPos": {
+        "x": 0,
+        "y": 6,
+        "w": 24,
+        "h": 10
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "lakehouse-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "probe_success or on(app) (0 * up{job=\"app-probes\"})",
+          "legendFormat": "{{app}}",
+          "instant": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 1,
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "停止・障害",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "稼働",
+                  "color": "green"
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showValue": "auto",
+        "mergeValues": true
+      }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "ヘルスチェック応答時間",
+      "description": "Probe duration includes connection and HTTP processing when applicable.",
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "lakehouse-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "probe_duration_seconds",
+          "legendFormat": "{{app}}",
+          "instant": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "取込・変換ジョブ",
+      "description": "Counters reset when the worker restarts.",
+      "gridPos": {
+        "x": 12,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "lakehouse-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "lakehouse_successful_runs or lakehouse_failed_runs",
+          "legendFormat": "{{__name__}}",
+          "instant": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "最終ジョブ成功からの経過時間",
+      "description": "No data indicates no successful job has been recorded since the worker started.",
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 12,
+        "h": 5
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "lakehouse-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(time() - lakehouse_last_success) and lakehouse_last_success > 0",
+          "legendFormat": "最終成功",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value_and_name",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      }
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "プロセス監視",
+      "description": "Scrape availability helps distinguish a monitoring failure from a target application failure.",
+      "gridPos": {
+        "x": 12,
+        "y": 24,
+        "w": 12,
+        "h": 5
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "lakehouse-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "up{job=\"native-metrics\"}",
+          "legendFormat": "{{app}}",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 1,
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "停止・障害",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "稼働",
+                  "color": "green"
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value_and_name",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      }
+    }
+  ]
+}

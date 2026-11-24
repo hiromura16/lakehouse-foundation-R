@@ -473,6 +473,29 @@ def query(sql):
         raise RuntimeError("Trino query failed.") from None
 
 
+def with_sql_provenance(statement):
+    """Pass SQL Server observation metadata through the shared projections."""
+    # Preserve SQL origin columns through each typed/final SELECT.
+    # Keep the same qualifier when a source is selected via alias.
+    from scripts.sql_batch_worker import SQL_SOURCE_COLUMNS
+
+    def sql_provenance(match):
+        """Extend a projection, retaining its source alias."""
+        qualifier = match.group("qualifier") or ""
+        return (
+            ", ".join(qualifier + column for column in SQL_SOURCE_COLUMNS)
+            + ", "
+            + qualifier
+            + "_source_file,"
+        )
+
+    return re.sub(
+        r"(?P<qualifier>[A-Za-z_]\w*\.)?_source_file,",
+        sql_provenance,
+        statement,
+    )
+
+
 def medallion(prefix=""):
     """管理されたSQLを依存順で実行し、完了した文数を返す。
 
@@ -495,27 +518,7 @@ def medallion(prefix=""):
             if not statement.strip():
                 continue
             if prefix in {"sql_", "sqlcdc_"}:
-                # Preserve SQL origin columns through each typed/final SELECT.
-                # Keep the same qualifier when a source is selected via alias.
-                from scripts.sql_batch_worker import SQL_SOURCE_COLUMNS
-
-                def sql_provenance(match):
-                    """Extend a projection, retaining its source alias."""
-                    qualifier = match.group("qualifier") or ""
-                    return (
-                        ", ".join(
-                            qualifier + column for column in SQL_SOURCE_COLUMNS
-                        )
-                        + ", "
-                        + qualifier
-                        + "_source_file,"
-                    )
-
-                statement = re.sub(
-                    r"(?P<qualifier>[A-Za-z_]\w*\.)?_source_file,",
-                    sql_provenance,
-                    statement,
-                )
+                statement = with_sql_provenance(statement)
             for layer in ["bronze", "silver", "gold", "quarantine"]:
                 statement = statement.replace(
                     "iceberg." + layer + ".",
@@ -526,13 +529,26 @@ def medallion(prefix=""):
     return {"sql_statements": count}
 
 
-def verify():
+def legacy_verify_query(sql, prefix):
+    """Resolve controlled oracle SQL to the isolated Trino namespaces."""
+    for layer in ["bronze", "silver", "gold", "quarantine"]:
+        sql = sql.replace(
+            "iceberg." + layer + ".",
+            "iceberg." + schema(prefix, layer) + ".",
+        )
+    return query(sql)
+
+
+def verify(*, transform=None, run_query=None):
     """専用namespaceで固定合成素材・画像・再実行の期待値を照合する。
 
     取込→変換→独立期待値→同一素材の再取込→再変換の順に検査する。
     結果は成功した検査名と取込件数。通常の業務表は変更対象にしない。
     後片付けもこの実行の表・原本だけへ限定し、取消未確定なら保全する。
     """
+    # Both compute engines use exactly the same source fixture and oracle.
+    transform = medallion if transform is None else transform
+    run_query = legacy_verify_query if run_query is None else run_query
     # 実行ごとの隔離先を使い、通常業務表を検証・削除の対象にしない。
     prefix = "verify_" + secrets.token_hex(5) + "_"
     cat = catalog()
@@ -565,7 +581,7 @@ def verify():
                 image_hash + "\n"
             )
             first = ingest(Path(directory), prefix)
-            medallion(prefix)
+            transform(prefix)
             image_table = cat.load_table(schema(prefix, "bronze") + ".images")
             image_record = image_table.scan().to_arrow().to_pylist()[0]
             image_uri = urlsplit(image_record["s3_uri"])
@@ -585,12 +601,7 @@ def verify():
                     check.get("sql")
                     or (ROOT / "medallion" / check["sql_file"]).read_text()
                 )
-                for layer in ["bronze", "silver", "gold", "quarantine"]:
-                    sql = sql.replace(
-                        "iceberg." + layer + ".",
-                        "iceberg." + schema(prefix, layer) + ".",
-                    )
-                actual = query(sql)
+                actual = run_query(sql, prefix)
                 if actual != check["expected"]:
                     raise AssertionError(
                         "MES/ERP check failed: " + check["name"]
@@ -599,19 +610,14 @@ def verify():
             second = ingest(Path(directory), prefix)
             if second["imported"]:
                 raise AssertionError("Unchanged inputs imported twice.")
-            medallion(prefix)
+            transform(prefix)
             for check in checks:
                 # 再実行後にも同じ期待値を照合し、追記二重計上を検出する。
                 sql = (
                     check.get("sql")
                     or (ROOT / "medallion" / check["sql_file"]).read_text()
                 )
-                for layer in ["bronze", "silver", "gold", "quarantine"]:
-                    sql = sql.replace(
-                        "iceberg." + layer + ".",
-                        "iceberg." + schema(prefix, layer) + ".",
-                    )
-                if query(sql) != check["expected"]:
+                if run_query(sql, prefix) != check["expected"]:
                     raise AssertionError("Medallion replay changed results.")
             result.update(
                 first_import=first,

@@ -216,7 +216,15 @@ def poll_maintenance(consumer, runtime, next_observation, interval):
     return next_observation
 
 
-def run(directory, mapping_file):
+def run(
+    directory,
+    mapping_file,
+    *,
+    admin_module=None,
+    configured_values=None,
+    kafka_connection=None,
+    topic_has_database=None,
+):
     """state dirを排他し、有限poll窓のbatchを失敗・中断まで繰り返す。
 
     source identityとmappingをstateへ結び付け、Kafkaの自動commitを無効にする。
@@ -224,14 +232,24 @@ def run(directory, mapping_file):
     brokerへ次offsetを同期commitする。失敗は上位へ返し、無限再試行で隠さない。
     同じstate dirのlockは、別volumeや外部writerの競合までは調停しない。
     """
-    import admin
+    if admin_module is None:
+        import admin as admin_module
     from confluent_kafka import Consumer, KafkaError, TopicPartition
     from consumer_runtime import Runtime
     from runtime_control import Control, start_server
 
-    values = settings()
+    admin = admin_module
+    values = settings() if configured_values is None else configured_values
     mapping = selected_mapping(values, mapping_file)
     topics = topic_names(values, mapping)
+    if topic_has_database is not None:
+        # A native deployment can subscribe only to its broker's naming mode.
+        expected_parts = 4 if topic_has_database else 3
+        topics = {
+            topic: target
+            for topic, target in topics.items()
+            if len(topic.split(".")) == expected_parts
+        }
     fixed = values.get("CDC_SOURCE_MODE") == "fixed-demo"
     if fixed:
         preflight(values, mapping)
@@ -254,7 +272,7 @@ def run(directory, mapping_file):
         lost_state = True
     consumer = Consumer(
         {
-            "bootstrap.servers": "cdc-kafka:9092",
+            **(kafka_connection or {"bootstrap.servers": "cdc-kafka:9092"}),
             "group.id": values["CDC_GROUP_ID"],
             # pollしただけでは完了扱いにせず、下段の同期commitだけで進める。
             "enable.auto.commit": False,

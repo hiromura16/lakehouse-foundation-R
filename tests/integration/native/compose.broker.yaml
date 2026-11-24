@@ -1,0 +1,21 @@
+# Synthetic test only. A local JVM-free broker and topics are disposable.
+services:
+  test-broker:
+    image: docker.redpanda.com/redpandadata/redpanda:v26.3.1@sha256:260532f70fd840bf2159106bd4ef900f199c1f5ca2a23cb362642320513b90f5
+    command:
+      - redpanda
+      - start
+      - --mode
+      - dev-container
+      - --smp
+      - '1'
+      - --kafka-addr
+      - 0.0.0.0:9092
+      - --advertise-kafka-addr
+      - test-broker:9092
+    mem_limit: 1536m
+    healthcheck:
+      test: [CMD, rpk, cluster, health, --exit-when-healthy]
+      interval: 5s
+      timeout: 5s
+      retries: 20

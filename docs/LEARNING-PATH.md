@@ -7,7 +7,7 @@
 >
 > **読むタイミング:** 読む順番が分からないときや、次に学ぶ操作を決めるとき。
 >
-> **前提となる資料:** [Lakehouse Foundation](<../README.md>)
+> **前提となる資料:** [Lakehouse Foundation 互換構成](<../FOUNDATION.md>)
 >
 > **次に読む資料:** [用語を役割と実際の操作へ結び付ける](<GLOSSARY.md>) / [初めて構築する人の一本道ガイド](<START-HERE.md>)
 >

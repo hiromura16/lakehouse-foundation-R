@@ -1,0 +1,17 @@
+{
+  "source": {
+    "CDC_SQLSERVER_HOST": "sql.example.invalid",
+    "CDC_SQLSERVER_PORT": "1433",
+    "CDC_SQLSERVER_DATABASE": "synthetic_sales",
+    "CDC_TOPIC_PREFIX": "foundation_r",
+    "CDC_GROUP_ID": "lakehouse-r-staging",
+    "CDC_BATCH_SIZE": "100",
+    "CDC_POLL_SECONDS": "5"
+  },
+  "kafka": {
+    "bootstrap.servers": "kafka.example.invalid:9093",
+    "security.protocol": "SSL",
+    "ssl.ca.location": "/etc/ssl/certs/ca-certificates.crt"
+  },
+  "topic_has_database": true
+}

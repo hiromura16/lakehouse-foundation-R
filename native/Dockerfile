@@ -1,0 +1,41 @@
+FROM docker.io/library/python:3.14-slim@sha256:ac25e5afbfdb4a94ff99cc24b0345719210133144481480bcba6085efa36a341 AS base
+COPY --from=ghcr.io/astral-sh/uv:0.13.7@sha256:96f40d3904aad8d0bd010539001d36c8e2188b981e1334471a90c4a1d93bb490 /uv /usr/local/bin/uv
+
+# Preserve the base trust store and add only the optional public corporate CA.
+# BuildKit's predefined proxy args never become runtime ENV declarations.
+ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt \
+    REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt \
+    AWS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt \
+    UV_SYSTEM_CERTS=true \
+    UV_PYTHON_DOWNLOADS=never \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+COPY infra/proxy/install_ca.py /tmp/install_ca.py
+RUN --mount=type=secret,id=corporate-ca,required=false \
+    python /tmp/install_ca.py --ca-file /run/secrets/corporate-ca
+
+WORKDIR /opt/lakehouse
+COPY native/requirements.lock ./requirements.lock
+RUN uv --no-cache venv /opt/venv \
+    && uv --no-cache pip sync --python /opt/venv/bin/python \
+       --require-hashes --only-binary :all: requirements.lock
+
+# The runtime stage keeps only the trust store, environment and explicit code.
+FROM docker.io/library/python:3.14-slim@sha256:ac25e5afbfdb4a94ff99cc24b0345719210133144481480bcba6085efa36a341
+COPY --from=base /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY --from=base /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH" \
+    SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt \
+    REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt \
+    AWS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+WORKDIR /opt/lakehouse
+COPY --chmod=644 scripts/admin.py ./admin.py
+COPY --chmod=644 scripts/raw_file_input.py scripts/generate-demo.py scripts/source_scenarios.py scripts/sql_batch_worker.py ./scripts/
+COPY --chmod=755 medallion ./medallion
+COPY --chmod=644 native/*.py ./native/
+COPY --chmod=644 infra/cdc/*.py ./cdc/
+RUN chmod 755 /opt/lakehouse/native /opt/lakehouse/scripts /opt/lakehouse/cdc
+USER 10001:10001
+CMD ["python", "-m", "native.api", "serve"]

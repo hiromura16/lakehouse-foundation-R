@@ -7,7 +7,7 @@
 >
 > **読むタイミング:** 初めてこのリポジトリを配置し、段階ごとの成功条件を確認するとき。
 >
-> **前提となる資料:** [Lakehouse Foundation](<../README.md>)
+> **前提となる資料:** [Lakehouse Foundation 互換構成](<../FOUNDATION.md>)
 >
 > **次に読む資料:** [Linuxサーバーを最初に準備する](<HOST-SETUP.md>) / [Dokploy 0.31.0でGitから配置する](<DOKPLOY.md>) / [GUIからダミーデータを投入する](<DEMO-GUI.md>)
 >

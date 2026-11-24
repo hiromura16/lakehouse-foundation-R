@@ -47,7 +47,7 @@ def read_env(path):
     return values
 
 
-def settings(values=None):
+def settings(values=None, *, require_connector=True):
     """Select CDC credentials and validate transport and namespace settings."""
     values = dict(os.environ if values is None else values)
     mode = values.setdefault("CDC_SOURCE_MODE", "generic")
@@ -56,7 +56,10 @@ def settings(values=None):
     validate_state_volume(values.get("CDC_STATE_VOLUME_NAME", ""))
     if mode == "fixed-demo":
         values = select_settings(values)
-    for suffix in ["HOST", "DATABASE", "USER", "PASSWORD"]:
+    required = ["HOST", "DATABASE"]
+    if require_connector or mode == "fixed-demo":
+        required.extend(["USER", "PASSWORD"])
+    for suffix in required:
         if not values.get("CDC_SQLSERVER_" + suffix):
             raise ValueError("Complete the separate CDC_SQLSERVER settings.")
     host = values["CDC_SQLSERVER_HOST"]

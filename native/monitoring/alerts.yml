@@ -1,0 +1,21 @@
+# Rules appear under Prometheus Alerts. Add Alertmanager for notifications.
+groups:
+  - name: lakehouse-r
+    rules:
+      - alert: LakehouseApplicationDown
+        expr: probe_success == 0 or up{job="app-probes"} == 0
+        for: 1m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.app }} failed its availability check"
+      - alert: LakehouseApplicationMetricsDown
+        expr: up{job="native-metrics"} == 0
+        for: 1m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.app }} metrics are unavailable"
+      - alert: LakehouseJobFailure
+        expr: increase(lakehouse_failed_runs[15m]) > 0
+        labels: {severity: warning}
+        annotations:
+          summary: "A native batch job failed in the last 15 minutes"

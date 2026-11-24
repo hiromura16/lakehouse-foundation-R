@@ -1,0 +1,16 @@
+# Give every app a unique app label. This is the dashboard's row identity.
+# Catalog migration is a one-shot. Its exit code gates Lakekeeper readiness.
+- targets: [catalog-db:5432]
+  labels: {app: PostgreSQL, module: tcp_connect}
+- targets: [storage:8333]
+  labels: {app: SeaweedFS S3, module: tcp_connect}
+- targets: [http://catalog:8181/health]
+  labels: {app: Lakekeeper, module: http_ready}
+- targets: [http://lakehouse:8080/health]
+  labels: {app: Lakehouse, module: http_ready}
+- targets: [http://prometheus:9090/-/ready]
+  labels: {app: Prometheus, module: http_ready}
+- targets: [http://grafana:3000/api/health]
+  labels: {app: Grafana, module: http_ready}
+- targets: [blackbox:9115]
+  labels: {app: Blackbox, module: tcp_connect}

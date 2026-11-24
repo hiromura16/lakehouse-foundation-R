@@ -1,0 +1,35 @@
+# file_sd lets operators add targets without editing the Prometheus scrape jobs.
+global:
+  scrape_interval: 15s
+  scrape_timeout: 5s
+  evaluation_interval: 15s
+
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+scrape_configs:
+  - job_name: native-metrics
+    static_configs:
+      - targets: [prometheus:9090]
+        labels: {app: Prometheus}
+      - targets: [blackbox:9115]
+        labels: {app: Blackbox}
+      - targets: [lakehouse:8080]
+        labels: {app: Lakehouse}
+      - targets: [grafana:3000]
+        labels: {app: Grafana}
+
+  - job_name: app-probes
+    metrics_path: /probe
+    file_sd_configs:
+      - files: [/etc/prometheus/targets/*.yml]
+        refresh_interval: 30s
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [module]
+        target_label: __param_module
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox:9115

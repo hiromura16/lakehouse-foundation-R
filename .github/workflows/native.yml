@@ -1,0 +1,51 @@
+name: Native Lakehouse acceptance
+
+on:  # yamllint disable-line rule:truthy
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Verify Foundation source contracts
+        run: python3 native/check_contracts.py
+      - name: Validate and launch a dedicated Compose project
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          site="$RUNNER_TEMP/native-site.env"
+          landing="$RUNNER_TEMP/native-landing"
+          chmod -R a+rX native/monitoring
+          python3 native/setup.py --output "$site" --landing "$landing"
+          printf '%s\n' \
+            LAKEHOUSE_API_PORT=18502 LAKEHOUSE_GRAFANA_PORT=18501 >> "$site"
+          docker compose --env-file "$site" -p native-ci config --quiet
+          docker compose --env-file "$site" -p native-ci up \
+            -d --build --wait --wait-timeout 180
+      - name: Check live SQL parity, Iceberg versions, API and UI
+        run: |
+          python3 tests/integration/native/acceptance.py \
+            --env-file "$RUNNER_TEMP/native-site.env" \
+            --landing "$RUNNER_TEMP/native-landing" --api-port 18502 \
+            --grafana-port 18501
+          docker compose --env-file "$RUNNER_TEMP/native-site.env" -p native-ci \
+            exec -T prometheus promtool check config /etc/prometheus/prometheus.yml
+          docker compose --env-file "$RUNNER_TEMP/native-site.env" -p native-ci \
+            exec -T blackbox /bin/blackbox_exporter \
+            --config.file=/etc/blackbox/blackbox.yml --config.check
+      - name: Dispose of the test project and synthetic data
+        if: always()
+        run: |
+          if test -f "$RUNNER_TEMP/native-site.env"; then
+            docker compose --env-file "$RUNNER_TEMP/native-site.env" -p native-ci \
+              down --volumes --remove-orphans
+          fi

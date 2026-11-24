@@ -1,0 +1,59 @@
+# Dokployと企業ネットワーク
+
+<!-- doc-purpose:start -->
+> **役割:** Git・Docker・BuildKitの通信を準備し、Dokployで配備します。
+>
+> **対象読者:** 初めて使う人 / 基盤構築担当
+>
+> **読むタイミング:** 会社環境の準備と配置時。
+>
+> **前提となる資料:** なし。必要な用語は本文で確認します。
+>
+> **次に読む資料:** [運用、バックアップ、受入試験](<OPERATIONS.md>)
+>
+> **文書一覧:** [目的・読者から探す文書マニフェスト](<../DOCUMENTATION-MANIFEST.md>)
+<!-- doc-purpose:end -->
+
+## プロキシの設定箇所を確認する
+
+| どこで通信するか | 準備するもの | 確認方法 |
+| --- | --- | --- |
+| cloneする端末のGit | OSの公開CA、組織指定の `HTTPS_PROXY` またはGit設定、GitHubの認証 | `git ls-remote` |
+| DokployのGit取得プロセス | Dokployの実行環境でGitHubに到達する経路とCA、GitHub Appの対象リポジトリアクセス | 初回Deployログのcheckout |
+| Docker Engineのイメージ取得 | デーモンのプロキシとCA、レジストリへのアクセス | `docker compose pull` |
+| BuildKit内のPython依存取得 | Composeの標準proxy引数と `CORPORATE_CA_FILE` | `docker compose build lakehouse` |
+| 稼働中のサービス | Composeの内部DNS。Kafkaを使う場合は直接到達するTCPとTLS | `ps`、監視、受入試験 |
+
+公式の [Docker Engineのプロキシ](https://docs.docker.com/engine/daemon/proxy/) と [DockerとOSの信頼CA](https://docs.docker.com/engine/network/ca-certs/) に従って、管理者がサーバー側を設定します。ホストでDockerの再起動が必要な変更は既存サービスの保守時間に適用します。独立したBuildKitを使う場合は、そのビルダー自身のレジストリ到達性と信頼CAも確認します。DokployのEnvironmentでの設定は、ホストのDockerデーモンの設定とは別です。
+
+BuildKit用の設定はprivate `site.env` またはDokployの対象ComposeのEnvironmentへ入力します。
+
+```dotenv
+HTTP_PROXY=http://proxy.example.invalid:3128
+HTTPS_PROXY=http://proxy.example.invalid:3128
+NO_PROXY=corp.example.invalid
+CORPORATE_CA_FILE=/absolute/path/to/company-public-chain.pem
+```
+
+値は会社指定のものへ置き換えます。CAファイルには公開証明書チェーンをPEM形式で置きます。ビルドは既存の公開ルートを保持したうえで社内ルートを追加します。CAの内容を変更したら `docker compose build --no-cache lakehouse` で依存層を再作成し、再配置します。内部service名は `NO_PROXY` に自動追加します。標準の実行コンテナにプロキシ資格情報は渡しません。
+
+Dockerが取得する固定イメージの起点は Docker Hub、Quay、GHCR です。Python依存は通常 PyPI と files.pythonhosted.org から取得します。会社ミラーへ切り替える場合は、ミラーのCAと同じ配布物のハッシュを確認してください。CIや管理者が `config --quiet` を使うのは、展開済みの設定には秘密値が含まれるためです。既存Foundation構成のProxy Doctorと追加の診断は [旧構成の会社プロキシガイド](../COMPANY-PROXY.md) にあります。
+
+## DokployのGUIから配置する
+
+1. 導入先ホストで [初回設定の生成](START.md) を実施します。権限は実際にlandingへ書くユーザーに合わせ、ファイルとディレクトリをDokployのcheckout先の外に置きます。
+2. DokployでGitHub Appを連携し、対象に `hiromura16/lakehouse-foundation-R` を追加します。Projectで `Create Service` → `Compose` を選び、Compose Typeを `Docker Compose` にします。
+3. ProviderでGitHubリポジトリを選び、Branchは `main`、Compose Pathは `compose.yaml` にします。
+4. 対象ComposeサービスのEnvironmentへ `site.env` の内容を登録し、Environmentファイルを作成する設定を有効にします。プロキシとCAが必要な環境では同じタブで追加します。
+5. Deployします。Logsとサービス一覧に `catalog-migrate` の終了0、Lakehouseのhealthy、Grafanaの起動が出ます。ホストのブラウザーまたはSSH転送からGrafanaへログインして、稼働監視を確認します。
+6. ブラウザーを別端末から使うなら、既存のSSHアカウントと導入先ホストでローカルポート転送を使います。GUIのDomainsでHTTPS化する場合は、Grafanaだけをservice port 3000で公開し、`GRAFANA_ROOT_URL` に公開HTTPS origin、`GRAFANA_COOKIE_SECURE=true` を設定します。Lakekeeper、S3、Prometheus、Blackboxをドメインへ付ける必要はありません。
+
+Dokployの既定コマンドに待機・再生成を追加する場合は、UIに表示される実際のappNameを使ってAdvancedのRun Commandに以下を入力します。コマンド欄には `compose` から入力します。checkout更新で監視設定のマウント先も確実に切り替える場合は `--force-recreate` を付けます。これは対象プロジェクトのサービスを再起動します。
+
+```text
+compose -p APP_NAME_FROM_HEADER --env-file .env -f compose.yaml up -d --build --wait --wait-timeout 180 --remove-orphans
+```
+
+Dokployの再取得後も、名前付きデータvolumeおよびcheckout外のlanding・設定・CAを維持します。既存のFoundationを同じホストで起動する場合は、別appName、別ポート、別landingを割り当てます。標準ポートはAPI 18502、Grafana 18501です。社内の実プロキシ、IdP、証明書とDokployのGUI操作は、導入先で [受入手順](OPERATIONS.md) を実行して確認します。
+
+[Dokploy Docker Compose](https://docs.dokploy.com/docs/core/docker-compose) · [GitHub App連携](https://docs.dokploy.com/docs/core/github) · [ComposeのDomains](https://docs.dokploy.com/docs/core/docker-compose/domains)

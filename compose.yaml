@@ -1,0 +1,221 @@
+# Keep the default stack JVM-free. The Foundation compatibility entry point
+# remains under infra/lakehouse and uses its own project, settings and volumes.
+name: lakehouse-r
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: '3'
+
+# Interpolation inputs are private. Set initial credentials with native/setup.py
+# so these values are safe for the PostgreSQL URL and the S3 JSON config.
+x-catalog: &catalog-env
+  LAKEKEEPER__PG_ENCRYPTION_KEY: ${CATALOG_ENCRYPTION_KEY:?Run native/setup.py}
+  LAKEKEEPER__PG_DATABASE_URL_READ: postgresql://lakekeeper:${CATALOG_DB_PASSWORD:?Run native/setup.py}@catalog-db:5432/lakekeeper
+  LAKEKEEPER__PG_DATABASE_URL_WRITE: postgresql://lakekeeper:${CATALOG_DB_PASSWORD:?Run native/setup.py}@catalog-db:5432/lakekeeper
+  LAKEKEEPER__BASE_URI: http://catalog:8181
+  LAKEKEEPER__AUTHZ_BACKEND: allowall
+
+x-no-proxy: &no-proxy "localhost,127.0.0.1,::1,catalog,catalog-db,storage,lakehouse,prometheus,grafana,blackbox,${NO_PROXY:-${no_proxy:-}}"
+
+services:
+  catalog-db:
+    image: postgres:18.6-alpine@sha256:300ebd02c6d4de9ee27ad7f6855d5d21b4d3a4a5117767c1197d284c635d9736
+    restart: unless-stopped
+    logging: *logging
+    mem_limit: 512m
+    environment:
+      POSTGRES_DB: lakekeeper
+      POSTGRES_USER: lakekeeper
+      POSTGRES_PASSWORD: ${CATALOG_DB_PASSWORD:?Run native/setup.py}
+    volumes:
+      # The PostgreSQL 18 official image keeps its versioned PGDATA below here.
+      - catalog-db:/var/lib/postgresql
+    healthcheck:
+      test: [CMD, pg_isready, -U, lakekeeper, -d, lakekeeper]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+
+  catalog-migrate:
+    image: quay.io/lakekeeper/catalog:v0.14.3@sha256:0009e7ccb26db811b8fc485974b624a999fd096f4da549a8704d3121dc20e98a
+    command: [migrate]
+    logging: *logging
+    environment: *catalog-env
+    depends_on:
+      catalog-db:
+        condition: service_healthy
+
+  catalog:
+    image: quay.io/lakekeeper/catalog:v0.14.3@sha256:0009e7ccb26db811b8fc485974b624a999fd096f4da549a8704d3121dc20e98a
+    command: [serve]
+    restart: unless-stopped
+    logging: *logging
+    mem_limit: 512m
+    environment: *catalog-env
+    depends_on:
+      catalog-migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: [CMD, /home/nonroot/lakekeeper, healthcheck]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  storage:
+    image: chrislusf/seaweedfs:4.53@sha256:972ba30c529dfc72a6a12ed427e94d99c7b6a6e59d97bfa52be0a849f43e2cc9
+    restart: unless-stopped
+    logging: *logging
+    mem_limit: 768m
+    command:
+      - server
+      - -dir=/data
+      - -ip=storage
+      - -ip.bind=0.0.0.0
+      - -volume.max=16
+      - -master.volumeSizeLimitMB=1024
+      - -filer
+      - -s3
+      - -s3.config=/etc/seaweedfs/s3.json
+    configs:
+      - source: storage-auth
+        target: /etc/seaweedfs/s3.json
+      - source: filer
+        target: /etc/seaweedfs/filer.toml
+    volumes:
+      - storage:/data
+
+  lakehouse:
+    image: ${COMPOSE_PROJECT_NAME:-lakehouse-r}-lakehouse
+    pull_policy: build
+    build:
+      context: .
+      dockerfile: native/Dockerfile
+      args:
+        HTTP_PROXY: ${HTTP_PROXY:-${http_proxy:-}}
+        HTTPS_PROXY: ${HTTPS_PROXY:-${https_proxy:-}}
+        http_proxy: ${http_proxy:-${HTTP_PROXY:-}}
+        https_proxy: ${https_proxy:-${HTTPS_PROXY:-}}
+        NO_PROXY: *no-proxy
+        no_proxy: *no-proxy
+      secrets: [corporate-ca]
+    restart: unless-stopped
+    logging: *logging
+    mem_limit: 2g
+    cpus: 2
+    user: "${LANDING_UID:?Run native/setup.py}:${LANDING_GID:?Run native/setup.py}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: ["/tmp:size=268435456,mode=1777"]
+    environment:
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:?Run native/setup.py}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:?Run native/setup.py}
+      S3_BUCKET_RAW: lakehouse-r-raw
+      S3_BUCKET_WAREHOUSE: lakehouse-r-warehouse
+      WAREHOUSE_NAME: foundation-r
+      WORKER_TOKEN: ${WORKER_TOKEN:?Run native/setup.py}
+      READER_TOKEN: ${READER_TOKEN:?Run native/setup.py}
+      NO_PROXY: *no-proxy
+      no_proxy: *no-proxy
+    volumes:
+      - type: bind
+        source: ${LANDING_DIR:?Run native/setup.py}
+        target: /landing
+        read_only: true
+        bind:
+          create_host_path: false
+    ports:
+      - "127.0.0.1:${LAKEHOUSE_API_PORT:-18502}:8080"
+    depends_on:
+      catalog:
+        condition: service_healthy
+      storage:
+        condition: service_started
+    healthcheck:
+      test: [CMD, python, -m, native.api, health]
+      interval: 5s
+      timeout: 3s
+      retries: 45
+
+  blackbox:
+    image: prom/blackbox-exporter:v0.29.1@sha256:ea1c7aa3ef3f307cd03e85f34abb604478ccb90b567fc690da0cd9776da76b13
+    command: [--config.file=/etc/blackbox/blackbox.yml]
+    restart: unless-stopped
+    logging: *logging
+    mem_limit: 96m
+    configs:
+      - source: blackbox
+        target: /etc/blackbox/blackbox.yml
+
+  prometheus:
+    image: prom/prometheus:v3.16.0@sha256:89c1a644817e9ad70fa2af76c84898e327c1de7063735f962e8313b1e28672c3
+    restart: unless-stopped
+    logging: *logging
+    mem_limit: 512m
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+      - --storage.tsdb.retention.size=2GB
+    configs:
+      - source: prometheus
+        target: /etc/prometheus/prometheus.yml
+      - source: alerts
+        target: /etc/prometheus/alerts.yml
+    volumes:
+      - prometheus:/prometheus
+      - ./native/monitoring/targets:/etc/prometheus/targets:ro
+
+  grafana:
+    image: grafana/grafana:13.3.0@sha256:6e5d306338670f381a942f1c50d3c266bf71531e5ddd9ee4fc1a133dac5ce63d
+    restart: unless-stopped
+    logging: *logging
+    mem_limit: 512m
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Run native/setup.py}
+      GF_AUTH_ANONYMOUS_ENABLED: 'false'
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:18501/}
+      GF_SECURITY_COOKIE_SECURE: ${GRAFANA_COOKIE_SECURE:-false}
+      GF_ANALYTICS_REPORTING_ENABLED: 'false'
+      GF_ANALYTICS_CHECK_FOR_UPDATES: 'false'
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: 'false'
+      GF_PLUGINS_PREINSTALL_DISABLED: 'true'
+      GF_PANELS_DISABLE_SANITIZE_HTML: 'false'
+    volumes:
+      - grafana:/var/lib/grafana
+      - ./native/monitoring/provisioning:/etc/grafana/provisioning:ro
+      - ./native/monitoring/dashboards:/etc/lakehouse/dashboards:ro
+    ports:
+      - "127.0.0.1:${LAKEHOUSE_GRAFANA_PORT:-18501}:3000"
+
+configs:
+  storage-auth:
+    content: |
+      {"identities":[{"name":"lakehouse-r","credentials":[
+        {"accessKey":"${S3_ACCESS_KEY}","secretKey":"${S3_SECRET_KEY}"}
+      ],"actions":["Admin","Read","Write","List","Tagging"]}]}
+  filer:
+    content: |
+      [leveldb2]
+      enabled = true
+      dir = "/data/filer"
+  prometheus:
+    file: ./native/monitoring/prometheus.yml
+  blackbox:
+    file: ./native/monitoring/blackbox.yml
+  alerts:
+    file: ./native/monitoring/alerts.yml
+
+secrets:
+  corporate-ca:
+    # The public, empty fallback keeps local and Dokploy builds identical.
+    file: ${CORPORATE_CA_FILE:-./infra/proxy/empty-ca.pem}
+
+volumes:
+  catalog-db:
+  storage:
+  prometheus:
+  grafana:

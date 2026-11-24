@@ -1,0 +1,49 @@
+# Use with compose.yaml on the same isolated site. The Kafka broker and
+# Debezium connector are managed separately and receive no source writes here.
+services:
+  native-cdc:
+    image: ${COMPOSE_PROJECT_NAME:-lakehouse-r}-lakehouse
+    pull_policy: never
+    command: [python, -m, native.cdc]
+    restart: on-failure:5
+    user: "${LANDING_UID:?Run native/setup.py}:${LANDING_GID:?Run native/setup.py}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: ["/tmp:size=268435456,mode=1777"]
+    mem_limit: 2g
+    cpus: 2
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    environment:
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:?Run native/setup.py}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:?Run native/setup.py}
+      S3_BUCKET_RAW: lakehouse-r-raw
+      S3_BUCKET_WAREHOUSE: lakehouse-r-warehouse
+      WAREHOUSE_NAME: foundation-r
+      WORKER_TOKEN: ${WORKER_TOKEN:?Run native/setup.py}
+      CDC_ALLOW_PLAINTEXT: ${CDC_ALLOW_PLAINTEXT:-0}
+    depends_on:
+      lakehouse:
+        condition: service_healthy
+    volumes:
+      - type: bind
+        source: ${CDC_STATE_DIR:?Set an empty private CDC state directory}
+        target: /state
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${CDC_SETTINGS_FILE:?Set private Kafka consumer settings}
+        target: /run/cdc/settings.json
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${CDC_TABLE_MAP_FILE:?Set private six-table mapping}
+        target: /run/cdc/table-map.json
+        read_only: true
+        bind:
+          create_host_path: false

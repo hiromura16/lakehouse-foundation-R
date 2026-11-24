@@ -23,12 +23,21 @@
 
 | 文書 | 何のために読むか | 読むタイミング | 区分 |
 | --- | --- | --- | --- |
-| [Lakehouse Foundation](<../README.md>) | MES・ERP向けPoC基盤の機能、構築入口、任意機能と報告素材を見渡す。 | clone直後に、何を構築できるかと最初の手順を選ぶとき。 | active |
+| [Lakehouse Foundation 互換構成](<../FOUNDATION.md>) | MES・ERP向けPoC基盤の機能、構築入口、任意機能と報告素材を見渡す。 | clone直後に、何を構築できるかと最初の手順を選ぶとき。 | active |
+| [Lakehouse Foundation R](<../README.md>) | JVMを使わない標準構成の機能と導入入口を確認します。 | 導入の方法を選ぶとき。 | active |
 | [目的・読者から探す文書マニフェスト](<DOCUMENTATION-MANIFEST.md>) | 公開Markdown全件の固有の目的・読者・読む時点を、目的別と読者別に引く。 | 必要な文書を探すときや、文書の追加・改名時に登録を更新するとき。 | reference |
 | [用語を役割と実際の操作へ結び付ける](<GLOSSARY.md>) | 保存・処理・配置・操作の用語を、同梱実装の役割へ結び付ける。 | Iceberg、snapshot、profile、jobなどの違いを確認するとき。 | reference |
 | [初めての理解から運用・設計へ進む道順](<LEARNING-PATH.md>) | 理解・操作・運用・設計の段階ごとに、練習と到達条件を選ぶ。 | 読む順番が分からないときや、次に学ぶ操作を決めるとき。 | active |
 | [BashとZshの両方で手順を実行する](<SHELLS.md>) | 会社VMのZshとBashでコマンドを使い分け、対話入力・コメント・shebang・引用の違いを確認する。 | Zsh端末で初回構築や運用のコマンドを貼る前、シェル例を追加・変更するとき。 | active |
 | [初めて構築する人の一本道ガイド](<START-HERE.md>) | 新規Linux環境の準備からcore配置と合成データ検証までを順に進める。 | 初めてこのリポジトリを配置し、段階ごとの成功条件を確認するとき。 | active |
+| [認証付きAPIとLangChain](<native/API.md>) | 固定API操作とスナップショットを根拠にしたLangChain利用を確認します。 | 分析やAIのツールを実装するとき。 | active |
+| [アーキテクチャと業務契約](<native/ARCHITECTURE.md>) | 責務、元の業務契約、公開世代、既存機能の関係を確認します。 | 実装を理解・変更するとき。 | active |
+| [Dokployと企業ネットワーク](<native/COMPANY.md>) | Git・Docker・BuildKitの通信を準備し、Dokployで配備します。 | 会社環境の準備と配置時。 | active |
+| [Grafanaの稼働監視を設定ファイルで管理する](<native/MONITORING.md>) | PrometheusとGrafanaの監視対象・パネルを変更します。 | 起動確認や監視対象の変更時。 | active |
+| [運用、バックアップ、受入試験](<native/OPERATIONS.md>) | 障害対応、状態の保全と合成データでの受入を行います。 | 導入先で検証・運用するとき。 | active |
+| [公式リファレンスと採用バージョン](<native/REFERENCES.md>) | 固定した版と公式仕様への参照を調べます。 | 採用版の理由や更新差分を調べるとき。 | active |
+| [SQL Server・Kafka・データ投入アプリとの接続](<native/SOURCES.md>) | ファイル・SQLバッチ・Kafka・設備の入力契約を確認します。 | 外部ソースを接続するとき。 | active |
+| [Foundation Rの初回導入と操作](<native/START.md>) | Composeで起動し、合成データの結果を確認します。 | 初めて起動するとき。 | active |
 
 ### 02 構築・通信
 
@@ -158,7 +167,8 @@
 
 | 文書 | 目的 |
 | --- | --- |
-| [Lakehouse Foundation](<../README.md>) | MES・ERP向けPoC基盤の機能、構築入口、任意機能と報告素材を見渡す。 |
+| [Lakehouse Foundation 互換構成](<../FOUNDATION.md>) | MES・ERP向けPoC基盤の機能、構築入口、任意機能と報告素材を見渡す。 |
+| [Lakehouse Foundation R](<../README.md>) | JVMを使わない標準構成の機能と導入入口を確認します。 |
 | [Lakehouse Foundation アーキテクチャ](<ARCHITECTURE.md>) | 保存・変換・操作の構成とprofileの責務を、データと制御の経路から把握する。 |
 | [GUIからダミーデータを投入する](<DEMO-GUI.md>) | Streamlitで素材生成条件を選び、投入jobと生成結果を確認する。 |
 | [目的・読者から探す文書マニフェスト](<DOCUMENTATION-MANIFEST.md>) | 公開Markdown全件の固有の目的・読者・読む時点を、目的別と読者別に引く。 |
@@ -168,13 +178,22 @@
 | [PoC操作ポータル](<POC-PORTAL.md>) | 操作ポータルの各ページから、サービス入口・データ・診断・履歴へ移動する。 |
 | [BashとZshの両方で手順を実行する](<SHELLS.md>) | 会社VMのZshとBashでコマンドを使い分け、対話入力・コメント・shebang・引用の違いを確認する。 |
 | [初めて構築する人の一本道ガイド](<START-HERE.md>) | 新規Linux環境の準備からcore配置と合成データ検証までを順に進める。 |
+| [認証付きAPIとLangChain](<native/API.md>) | 固定API操作とスナップショットを根拠にしたLangChain利用を確認します。 |
+| [アーキテクチャと業務契約](<native/ARCHITECTURE.md>) | 責務、元の業務契約、公開世代、既存機能の関係を確認します。 |
+| [Dokployと企業ネットワーク](<native/COMPANY.md>) | Git・Docker・BuildKitの通信を準備し、Dokployで配備します。 |
+| [Grafanaの稼働監視を設定ファイルで管理する](<native/MONITORING.md>) | PrometheusとGrafanaの監視対象・パネルを変更します。 |
+| [運用、バックアップ、受入試験](<native/OPERATIONS.md>) | 障害対応、状態の保全と合成データでの受入を行います。 |
+| [公式リファレンスと採用バージョン](<native/REFERENCES.md>) | 固定した版と公式仕様への参照を調べます。 |
+| [SQL Server・Kafka・データ投入アプリとの接続](<native/SOURCES.md>) | ファイル・SQLバッチ・Kafka・設備の入力契約を確認します。 |
+| [Foundation Rの初回導入と操作](<native/START.md>) | Composeで起動し、合成データの結果を確認します。 |
 | [合成入力を最初に作る](<../samples/README.md>) | 実データを使わずに最初の6契約素材を生成し、出力と後続処理の境界を確認する。 |
 
 ### 基盤構築担当
 
 | 文書 | 目的 |
 | --- | --- |
-| [Lakehouse Foundation](<../README.md>) | MES・ERP向けPoC基盤の機能、構築入口、任意機能と報告素材を見渡す。 |
+| [Lakehouse Foundation 互換構成](<../FOUNDATION.md>) | MES・ERP向けPoC基盤の機能、構築入口、任意機能と報告素材を見渡す。 |
+| [Lakehouse Foundation R](<../README.md>) | JVMを使わない標準構成の機能と導入入口を確認します。 |
 | [Lakehouse Foundation アーキテクチャ](<ARCHITECTURE.md>) | 保存・変換・操作の構成とprofileの責務を、データと制御の経路から把握する。 |
 | [BuildKit auth session timeout: 公開前の診断draft](<BUILD-KIT-AUTH-DIAGNOSTIC.md>) | PR11後も報告されたBuildKit timeoutの事実・仮説・次の診断を分離し、未解決として引き継ぐ。 |
 | [SQL Server の変更を Iceberg へ反映する](<CDC.md>) | SQL ServerのsnapshotとI/U/DをDebezium・Kafka・consumer経由でIcebergへ反映する。 |
@@ -206,6 +225,14 @@
 | [初めて構築する人の一本道ガイド](<START-HERE.md>) | 新規Linux環境の準備からcore配置と合成データ検証までを順に進める。 |
 | [症状から確認する](<TROUBLESHOOTING.md>) | 観測した症状から設定・起動・通信・job・データの失敗箇所を絞り込む。 |
 | [Vectorによる対象ログの整形と秘匿化](<VECTOR.md>) | 対象projectの有限capture・VRL重大度・秘匿化・有界配送と未検証項目を確認する。 |
+| [認証付きAPIとLangChain](<native/API.md>) | 固定API操作とスナップショットを根拠にしたLangChain利用を確認します。 |
+| [アーキテクチャと業務契約](<native/ARCHITECTURE.md>) | 責務、元の業務契約、公開世代、既存機能の関係を確認します。 |
+| [Dokployと企業ネットワーク](<native/COMPANY.md>) | Git・Docker・BuildKitの通信を準備し、Dokployで配備します。 |
+| [Grafanaの稼働監視を設定ファイルで管理する](<native/MONITORING.md>) | PrometheusとGrafanaの監視対象・パネルを変更します。 |
+| [運用、バックアップ、受入試験](<native/OPERATIONS.md>) | 障害対応、状態の保全と合成データでの受入を行います。 |
+| [公式リファレンスと採用バージョン](<native/REFERENCES.md>) | 固定した版と公式仕様への参照を調べます。 |
+| [SQL Server・Kafka・データ投入アプリとの接続](<native/SOURCES.md>) | ファイル・SQLバッチ・Kafka・設備の入力契約を確認します。 |
+| [Foundation Rの初回導入と操作](<native/START.md>) | Composeで起動し、合成データの結果を確認します。 |
 | [PoCの評価計画と受入条件](<reports/EVALUATION-PLAN.md>) | 配置・品質・CDC・AI・復旧の評価範囲と受入条件を、実施前に記入する。 |
 | [報告書用の実装構成一覧](<reports/IMPLEMENTATION-INVENTORY.md>) | 41サービス・14profile・port・volume・接続主体を公開定義から技術付録として照合する。 |
 | [Vectorのログ正規化・転送設定](<../infra/monitoring/vector/README.md>) | 選択版の明示YAML合成、parser期待fixture、権限と配送上限を開発時に照合する。 |
@@ -214,7 +241,7 @@
 
 | 文書 | 目的 |
 | --- | --- |
-| [Lakehouse Foundation](<../README.md>) | MES・ERP向けPoC基盤の機能、構築入口、任意機能と報告素材を見渡す。 |
+| [Lakehouse Foundation 互換構成](<../FOUNDATION.md>) | MES・ERP向けPoC基盤の機能、構築入口、任意機能と報告素材を見渡す。 |
 | [会社への導入・受入ガイド](<COMPANY-ROLLOUT.md>) | 会社側の担当分担、Samba、外部SQL、業務照合と導入受入条件を決める。 |
 | [目的・読者から探す文書マニフェスト](<DOCUMENTATION-MANIFEST.md>) | 公開Markdown全件の固有の目的・読者・読む時点を、目的別と読者別に引く。 |
 | [実装・配置・検証の追跡表](<IMPLEMENTATION-STATUS.md>) | 依頼された機能のソース実装、配置、既存検証、残る受入を別々に追跡する。 |

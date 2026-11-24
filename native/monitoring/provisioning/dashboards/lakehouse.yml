@@ -1,0 +1,11 @@
+apiVersion: 1
+providers:
+  - name: lakehouse-r
+    folder: Lakehouse R
+    type: file
+    disableDeletion: false
+    allowUiUpdates: false
+    # Polling survives bind mounts where file watcher notifications are lost.
+    updateIntervalSeconds: 30
+    options:
+      path: /etc/lakehouse/dashboards

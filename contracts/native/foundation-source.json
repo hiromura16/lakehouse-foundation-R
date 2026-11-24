@@ -1,0 +1,27 @@
+{
+  "source_repository": "https://github.com/hiromura16/lakehouse-foundation",
+  "source_commit": "8adaef6d28a4fa01f2e409fd01a568cd6770e071",
+  "contract_version": "foundation-at-8adaef6",
+  "copied_at": "2026-11-24",
+  "source_sha256": {
+    "medallion/01_silver.sql": "856eda1e230681859ca4b0f411344adb9e6618fbbbfda2cbc3c228bf745ebabe",
+    "medallion/02_quarantine.sql": "1951c637ae9f61e6bd999487c6eec9205f9ab7faa117a9a22a847e2676ca601c",
+    "medallion/03_gold.sql": "17747027ef9c91985175a3b233e8d007df96db8c7c9a8b00fdb99193b6c3652a",
+    "medallion/checks/01-bronze-row-counts.sql": "24a07eb9db7e36933cb2e40c66e48283c6d317c2dfe16f64b236d4b3ace7ebcc",
+    "medallion/checks/02-silver-row-counts.sql": "6559c5130d54a62c4cc22054ddfd855069dbfb6cb2e547f520bfae07e62c238b",
+    "medallion/checks/03-quarantine-row-counts.sql": "84c185d8a639806e00ea783e135cc81322d7399a0332054f4902c239d2afa029",
+    "medallion/checks/04-factory-daily-measures-avoid-join-multiplication.sql": "44ed30f6d78a56f022cf26a82e8e1a21f7e4531a8236feee1ce9339c1e9ef0c5",
+    "medallion/checks/05-sales-partial-and-late-deliveries.sql": "bdb407360659e65eb9a118fc72f688e287b70cf231e0a16c1075ed89665c5e5b",
+    "medallion/checks/06-latest-revision-wins-once.sql": "5eb7cf1e16b1e4524ea163be5fc3f01ce5466e342c7b4e8281cbc28dcd3f6e61",
+    "medallion/checks/07-late-arrival-belongs-to-original-event-date.sql": "a97f03e874349d32b34b4689e035109cce8b848db58501da27086484ecc464f2",
+    "medallion/checks/08-invalid-original-value-remains-inspectable.sql": "cee7a661f6295d8f87c6c8caea3571b39a8560ab8374f74d6aac0177211a263f",
+    "medallion/checks/09-production-totals.sql": "2bcd97fd8657eee6094b69220cdbe3bb286f8b9ee3c67b5be97c36d0cc2380c5",
+    "medallion/checks/10-sales-totals.sql": "76ee6855857f0d3f7a06f9792d2252cc43dfdc1bb09fe8305499f37bf4a53f30",
+    "medallion/expected-demo.json": "bcb4f1bf215c1b845c70db68297ea09786a49520ba8fc140d5d3c2f9457016f1",
+    "medallion/sources.json": "f4760de1b8757855ea79f6dfc49947009980770dc31c174e0cfce79db0d77105",
+    "infra/cdc/state.py": "ac65da7c53a20702608a816091b03d1674d50104026ece722cf07f6b72bbbb4c",
+    "infra/cdc/raw_writer.py": "1b739c78373004c3f9ba475a8d1b2d052b6ebcaec96ba48541af363b1d3e91b3",
+    "infra/cdc/raw_history.py": "3b2c6c6c0b8a0bc0b1f8efe29f5ce7839befcf890a76101056b99198ddc94a45",
+    "infra/cdc/cdc_replay.py": "ada62250a79dc7785e97d94a1bb16d8aac98e3d24aa9eaec62b7eb2c3a8ce888"
+  }
+}
