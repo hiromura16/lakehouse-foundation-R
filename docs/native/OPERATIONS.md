@@ -260,6 +260,51 @@ python -m native.catalog_audit --objects --channel files   --release "$release_s
 [Apache Icebergのテーブル仕様](https://iceberg.apache.org/spec/)
 · [S3 HEADと権限](https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadObject.html)
 
+## イメージと依存のセキュリティ確認
+
+上流イメージのタグとdigestは両方固定し、Pythonの依存は版とhashを
+固定しています。配備先で審査に提出するときは、対象コミット、イメージID、
+CPUアーキテクチャ、スキャナー版、脆弱性データベースの更新時刻を記録します。
+タグが同じであってもビルド時の基点と実行イメージを区別します。
+
+1. 配備したComposeのサービス名とイメージIDは、Dokployの対象サーバーの
+   **Docker → Containers** または配備先の `docker compose images` で確認します。
+2. 担当者が導入したTrivyで各イメージを調べます。 `image` の値を確認した
+   イメージIDへ置き換えます。レジストリへ取得に行かず、Dockerに存在する
+   イメージだけを使用します。初回はTrivyの脆弱性DBを取得する通信が必要です。
+   社内でDBを配布する場合は [TrivyのDB設定](https://trivy.dev/docs/latest/guide/configuration/db/) を参照します。
+3. HIGH以上は、対象のパッケージ、修正の有無、入力やネットワークから
+   到達する経路、配備した組織の判断を記録します。上流が発行した修正版は
+   digestを更新し、隔離配備、原本・公開世代の照合、復元を行ってから切り替えます。
+
+**Bash / Zsh共通**
+
+```bash
+image=REPLACE_WITH_LOCAL_IMAGE_ID
+umask 077
+trivy image --image-src docker --scanners vuln --severity HIGH,CRITICAL \
+  --format json --output image-vulnerabilities.json "$image"
+```
+
+2026-11-25 JST、x86-64で16の実行イメージをTrivy 0.76.2で検査しました。
+同じデータベース（2026-11-24 13:06 UTC更新）で更新候補も比較しました。
+HIGH／CRITICALはパッケージ検出件数です。
+
+| 対象 | 検出件数の比較と判断 |
+| --- | --- |
+| ワーカー・閲覧画面 | 各59→53 HIGH。実行イメージから依存のインストールに使わないpipを取り除き、公式Pythonベースを更新したところ、修正版ありの6件が各イメージで解消。残る53件にスキャン時点の修正版の記載なし |
+| Grafana OSS | 13.3.0→13.3.2で54→15 HIGH、CRITICALは両方0 |
+| PostgreSQLイメージの `gosu` | TrivyがGo標準ライブラリのCRITICALを検出。Goのバイナリ解析から該当TLS関数の到達性は確定できず、継続確認 |
+| InfluxDB Explorer | Debian BookwormのzlibでCRITICALを1件検出。Debianは該当MiniZipをBookwormのzlibバイナリに含めていないと記載。同梱のOSパッケージ一覧も確認。組織で利用条件・更新時期を確認 |
+
+別に、リポジトリのPythonロック19ファイルに含まれる148種類の版を
+PyPIの版別JSONで確認し、掲載された脆弱性情報は0件でした。この照合結果には
+OSや個別イメージの組み込み依存は含まれないため、配備時は両方を確認します。
+[Trivyの検出範囲](https://trivy.dev/docs/latest/guide/scanner/vulnerability/)
+· [PyPIのJSON API](https://docs.pypi.org/api/json/)
+· [Goの脆弱性情報](https://pkg.go.dev/vuln/GO-2026-4337)
+· [DebianのMiniZip判定](https://security-tracker.debian.org/tracker/CVE-2023-45853)
+
 ## 受入の手順
 
 - `python3 native/check_contracts.py` で業務SQLと契約のhashを照合します。
