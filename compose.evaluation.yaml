@@ -16,7 +16,7 @@ services:
     build:
       context: .
       dockerfile: native/evaluation/sail.Dockerfile
-      secrets: [corporate-ca]
+      secrets: [corporate-ca, python-index-config, python-index-auth]
     ports: ["127.0.0.1:${EVAL_SAIL_PORT:-18601}:50051"]
     mem_limit: 1g
     cpus: 2
@@ -31,7 +31,7 @@ services:
     <<: *evaluation
     profiles: [stream]
     image: docker.redpanda.com/redpandadata/redpanda:v26.3.1@sha256:260532f70fd840bf2159106bd4ef900f199c1f5ca2a23cb362642320513b90f5
-    command: [redpanda, start, "--mode=dev-container", "--smp=1", "--memory=512M", "--kafka-addr=0.0.0.0:9092", "--advertise-kafka-addr=broker:9092"]
+    command: [redpanda, start, "--mode=dev-container", "--smp=1", "--memory=512M", "--kafka-addr=0.0.0.0:9092", "--advertise-kafka-addr=broker:9092", --set, redpanda.enable_metrics_reporter=false]
     volumes: [broker:/var/lib/redpanda/data]
     mem_limit: 768m
 
@@ -53,6 +53,8 @@ services:
     profiles: [timeseries]
     image: greptime/greptimedb:v1.3.0@sha256:d8a199398da2b105e6cb3a168f249ecbbc078893abff5ea668bd59e05f1027df
     command: [standalone, start, "--http-addr=0.0.0.0:4000", "--grpc-bind-addr=0.0.0.0:4001", "--data-home=/greptimedb_data"]
+    environment:
+      GREPTIMEDB_STANDALONE__ENABLE_TELEMETRY: "false"
     ports: ["127.0.0.1:${EVAL_GREPTIME_PORT:-18603}:4000"]
     volumes: [greptime:/greptimedb_data]
     mem_limit: 1g
@@ -83,7 +85,7 @@ services:
     build:
       context: .
       dockerfile: native/evaluation/ballista.Dockerfile
-      secrets: [corporate-ca]
+      secrets: [corporate-ca, python-index-config, python-index-auth]
     mem_limit: 512m
     cap_drop: [ALL]
 
@@ -126,6 +128,10 @@ configs:
 secrets:
   corporate-ca:
     file: ${CORPORATE_CA_FILE:-./infra/proxy/empty-ca.pem}
+  python-index-config:
+    file: ${CORPORATE_UV_CONFIG_FILE:-./infra/proxy/empty-ca.pem}
+  python-index-auth:
+    file: ${CORPORATE_PYPI_NETRC_FILE:-./infra/proxy/empty-ca.pem}
 
 volumes:
   broker:

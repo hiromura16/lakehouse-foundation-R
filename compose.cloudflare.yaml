@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: native/edge/Dockerfile
-      secrets: [corporate-ca]
+      secrets: [corporate-ca, python-index-config, python-index-auth]
     user: "${LANDING_UID}:${LANDING_GID}"
     networks: [default, edge]
     environment:

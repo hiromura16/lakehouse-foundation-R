@@ -33,3 +33,6 @@ __pycache__/
 .venv-evaluation/
 
 .venv-r2/
+
+# 企業PyPI用の認証ファイルは非公開の絶対パスで渡す。
+*.netrc

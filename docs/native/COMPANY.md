@@ -67,6 +67,49 @@ git ls-remote --exit-code https://github.com/hiromura16/lakehouse-foundation-R.g
 
 Dockerが取得する固定イメージの起点は Docker Hub、Quay、GHCR です。Python依存は通常 PyPI と files.pythonhosted.org から取得します。会社ミラーへ切り替える場合は、ミラーのCAと同じ配布物のハッシュを確認してください。CIや管理者が `config --quiet` を使うのは、展開済みの設定には秘密値が含まれるためです。導入先で実測する項目は [受入手順](ACCEPTANCE.md) にあります。
 
+### 社内のPythonパッケージミラーを使う
+
+会社で公開PyPIの代わりに社内ミラーを使う場合は、接続先を記入した
+`uv.toml` を配備先VMの非公開ディレクトリに置きます。BuildKitは
+`requirements.lock` の版とSHA-256が一致するwheelだけを使います。
+ミラーには対象CPU・Python版のwheelを用意します。
+
+```toml
+[[index]]
+name = "company"
+url = "https://packages.example.invalid/simple"
+default = true
+authenticate = "always"
+```
+
+private `site.env` またはDokployの対象ComposeのEnvironmentに
+`CORPORATE_UV_CONFIG_FILE` を絶対パスで記載します。ミラーにログインが
+必要な場合は `CORPORATE_PYPI_NETRC_FILE` も指定します。
+認証が不要なミラーでは `authenticate = "always"` の行を外します。会社のCAを
+使うミラーには `CORPORATE_CA_FILE` を指定します。設定ファイルは
+Docker CLIが動く側から読める場所とし、ミラーの認証ファイルは所有者のみ
+読取可能にします。URLには資格情報を埋め込まず、`.netrc` の対象ホストを
+管理者が指定します。
+
+```dotenv
+CORPORATE_UV_CONFIG_FILE=/path/to/private/uv.toml
+CORPORATE_PYPI_NETRC_FILE=/path/to/private/pypi.netrc
+```
+
+ミラーの設定と認証はBuildKitの依存取得ステップにマウントされます。
+Dockerイメージの実行設定には渡しません。ミラーのファイルやCAだけを
+更新して疎通を確認する場合は、Dockerのビルドキャッシュを使わずに
+再ビルドします。確認は会社側で公開してよい情報に絞り、認証ファイルは
+Gitやログに残さないでください。
+[uvのpip設定](https://docs.astral.sh/uv/reference/settings/#pip) · [uvの認証形式](https://docs.astral.sh/uv/concepts/authentication/http/#netrc-files) · [Dockerのビルド用secret](https://docs.docker.com/build/building/secrets/)
+
+合成ミラーを用いた受入では、BakuのBuildKitで同じ依存取得処理を実行
+しました。正しいCAと認証で導入でき、CAなし・誤CA、認証なし・誤認証、
+ロックのSHA-256と違うwheelは拒否されました。合成HTTP CONNECTでは
+プロキシ経由でインデックスとwheelに到達しました。ビルド後の仮想環境と
+次のRUNに認証値が残らないことを確認しました。会社のサーバーでは同じ
+接続の検査を会社のCA・認証・許可リストで行います。
+
 ## Dokployの設定を確認する
 
 [Dokployでの初回配備](START.md) の手順でサービスを作成します。公開GitHubのProviderは **Git** を選択します。GitHub Appによる取得を組織で管理している場合は、対象リポジトリへのアクセスを許可したアプリを使い、Providerを **GitHub** にします。

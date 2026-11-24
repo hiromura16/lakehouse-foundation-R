@@ -9,6 +9,7 @@ import argparse
 import hashlib
 import ipaddress
 import json
+import netrc
 import os
 import re
 import subprocess
@@ -45,7 +46,7 @@ REVIEWED_PNG_SHA256 = {
         "2081bca6c5b85bdb6710fc764b7f9ecff60cd3c87e30dd78665e530928443c10",
     },
 }
-# The CA placeholder must stay empty in worktree, index and history blobs.
+# CAまたはビルド用secretの空ファイルは、作業木・ステージ・履歴で空を保つ。
 EMPTY_CA_SOURCE = "infra/proxy/empty-ca.pem"
 PRIVATE_NETWORKS = tuple(
     ipaddress.ip_network(value)
@@ -77,6 +78,7 @@ LOCAL_CACHE_PARTS = {
     "__pycache__",
 }
 FORBIDDEN_SUFFIXES = {
+    ".netrc",
     ".bak",
     ".crt",
     ".db",
@@ -235,6 +237,17 @@ def private_inputs(args, root):
                 continue
             if path.stat().st_size > MAX_TEXT_BYTES:
                 raise ValueError("A private credential file is too large.")
+            if path.name.casefold().endswith(".netrc"):
+                try:
+                    hosts = netrc.netrc(path).hosts
+                except netrc.NetrcParseError:
+                    raise ValueError("Invalid private netrc syntax.") from None
+                secrets.update(
+                    password
+                    for _, _, password in hosts.values()
+                    if password and len(password) >= 8
+                )
+                continue
             try:
                 text = path.read_text(encoding="utf-8")
             except UnicodeError:

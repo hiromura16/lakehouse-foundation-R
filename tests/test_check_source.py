@@ -1,5 +1,6 @@
 """Test publication checks with synthetic values and temporary Git state."""
 
+import argparse
 import importlib.util
 import json
 import subprocess
@@ -93,6 +94,25 @@ class PublicationChecks(unittest.TestCase):
             check=True,
             capture_output=True,
         )
+
+    def test_netrc_password_is_scanned_without_printing_values(self):
+        """ミラー資格情報のパスワードだけを非公開の照合対象とする。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "checkout"
+            root.mkdir()
+            settings = Path(tmp) / "private"
+            settings.mkdir()
+            target = settings / "python-index.netrc"
+            password = "example-value-" + "p" * 22
+            target.write_text(
+                "machine packages.example.invalid login sync-bot "
+                f"password {password}\n"
+            )
+            args = argparse.Namespace(deny_file=None, secret_dir=settings)
+            terms, secrets = MODULE.private_inputs(args, root)
+            self.assertEqual(terms, set())
+            self.assertEqual(secrets, {password})
+            self.assertIsNotNone(MODULE.path_rule("ops/python-index.netrc"))
 
     def test_catalog_examples_are_path_and_value_scoped(self):
         """固定JSON leafだけ許可し、未知欄・実IP・構文不正は拒否。"""

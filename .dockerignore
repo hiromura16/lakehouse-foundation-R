@@ -15,3 +15,7 @@ landing
 backups
 runtime
 tests
+
+# ミラーの認証設定はBuildKit secretだけに渡す。
+*.netrc
+**/*.netrc

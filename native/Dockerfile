@@ -10,15 +10,16 @@ ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt \
     UV_PYTHON_DOWNLOADS=never \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
+COPY --chmod=644 infra/proxy/uv_sync.py /tmp/uv_sync.py
 COPY infra/proxy/install_ca.py /tmp/install_ca.py
 RUN --mount=type=secret,id=corporate-ca,required=false \
     python /tmp/install_ca.py --ca-file /run/secrets/corporate-ca
 
 WORKDIR /opt/lakehouse
 COPY native/requirements.lock ./requirements.lock
-RUN uv --no-cache venv /opt/venv \
-    && uv --no-cache pip sync --python /opt/venv/bin/python \
-       --require-hashes --only-binary :all: requirements.lock
+RUN --mount=type=secret,id=python-index-config,target=/run/secrets/uv.toml,required=false \
+    --mount=type=secret,id=python-index-auth,target=/run/secrets/pypi.netrc,required=false \
+    python /tmp/uv_sync.py requirements.lock /opt/venv
 
 # 実行ステージへは信頼ストア、仮想環境、実行に必要なコードだけを移す。
 FROM docker.io/library/python:3.14-slim@sha256:ac25e5afbfdb4a94ff99cc24b0345719210133144481480bcba6085efa36a341

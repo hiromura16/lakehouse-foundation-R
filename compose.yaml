@@ -98,7 +98,7 @@ services:
         https_proxy: ${https_proxy:-${HTTPS_PROXY:-}}
         NO_PROXY: *no-proxy
         no_proxy: *no-proxy
-      secrets: [corporate-ca]
+      secrets: [corporate-ca, python-index-config, python-index-auth]
     restart: unless-stopped
     logging: *logging
     mem_limit: 2g
@@ -212,6 +212,10 @@ secrets:
   corporate-ca:
     # 社内CA未指定時は空ファイルを使い、ローカルとDokployの手順をそろえる。
     file: ${CORPORATE_CA_FILE:-./infra/proxy/empty-ca.pem}
+  python-index-config:
+    file: ${CORPORATE_UV_CONFIG_FILE:-./infra/proxy/empty-ca.pem}
+  python-index-auth:
+    file: ${CORPORATE_PYPI_NETRC_FILE:-./infra/proxy/empty-ca.pem}
 
 volumes:
   catalog-db:
