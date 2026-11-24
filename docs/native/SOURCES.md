@@ -178,11 +178,14 @@ source_env="$HOME/.config/lakehouse-foundation-r/sql-source.env"
 source_map="$HOME/.config/lakehouse-foundation-r/sql-tables.json"
 landing="$HOME/.config/lakehouse-foundation-r/landing"
 site="$HOME/.config/lakehouse-foundation-r/site.env"
+project="APP_NAME_FROM_HEADER"
 "$HOME/.config/lakehouse-foundation-r/sql-source-venv/bin/python" \
   scripts/extract-sqlserver.py --env-file "$source_env" --table-map "$source_map" \
   --output "$landing" --snapshot
-docker compose --env-file "$site" exec -T lakehouse python -m native.api medallion
+docker compose -p "$project" --env-file "$site" exec -T lakehouse python -m native.api medallion
 ```
+
+例の `project` はDokploy画面のApp Nameに置き換えます。抽出を別ホストで行う場合は、確定ファイルを配備先VMに搬送してから Dokployの `lakehouse` Terminalで `python -m native.api medallion` を実行します。
 
 `--snapshot` は、DBAが `ALLOW_SNAPSHOT_ISOLATION ON` を設定済みのソースで使います。
 1つのSQL Server接続でトランザクションを開き、固定6表を同じ時点で読みます。
@@ -359,14 +362,15 @@ SQL Rawへ残る原本は抽出したJSONです。SQLiteのDBバックアップ�
 2. [設定例](../../native/kafka-settings.example.json) をcheckout外のprivateファイルへコピーして、broker、DB、topic prefix、`lakehouse-r-` から始まる専用groupを入力します。実接続ではTLSまたはSASL_SSLを使い、brokerが広告する全アドレスへ直接接続できるようにします。OSの信頼ストアを使う場合は設定例のCAパスを維持し、broker専用のCAを使う場合は `site.env` に `CDC_BROKER_CA_FILE` の絶対パスを、Kafka設定の `ssl.ca.location` に `/run/cdc/broker-ca.pem` を入力します。
 3. Sourceと契約の対応を `{"tables":[...]}` で記述します。項目は `source_schema`、`source_table`、`target_table`、`columns` です。 `columns` はsource列名をkey、契約列をvalueにし、6表・全列を一対一対応させます。 `topic_has_database` は `prefix.database.schema.table` 形式ならtrueです。
 4. 専用空ディレクトリを同じUIDで作り、`site.env` に絶対パスの `CDC_STATE_DIR`、`CDC_SETTINGS_FILE`、`CDC_TABLE_MAP_FILE` を追加します。configファイルは0600、stateディレクトリは0700を使用します。
-5. 既存Rと同じproject名で次を実行します。Dokployの場合は同じ `-f` をRun Commandへ追加します。
+5. Dokployでは既存の追加ファイルを保持し、`-f compose.cdc.yaml` を **Run Command** の `up` より前に追加します。接続設定の変数は同じComposeの **Environment** に登録します。端末で直接起動した検証用Composeでは、`project` を既存プロジェクト名に置き換え、同じ追加ファイルと設定を使います。
 
 **Bash / Zsh共通**
 
 ```bash
-docker compose --env-file "$site" -f compose.yaml -f compose.cdc.yaml \
+project="lakehouse-r"
+docker compose -p "$project" --env-file "$site" -f compose.yaml -f compose.cdc.yaml \
   up -d --build --wait --wait-timeout 180
-docker compose --env-file "$site" -f compose.yaml -f compose.cdc.yaml \
+docker compose -p "$project" --env-file "$site" -f compose.yaml -f compose.cdc.yaml \
   logs --tail 60 native-cdc
 ```
 

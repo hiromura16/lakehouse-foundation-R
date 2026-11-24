@@ -16,7 +16,7 @@
 
 ## 毎日の確認
 
-1. Dokployの対象Composeと **Docker → Containers** で状態を確認し、Grafanaで標準7件、閲覧構成を追加した場合は9件の監視先を確認します。
+1. Dokployの対象Composeと **Docker → Containers** で状態を確認し、Grafanaの監視先を確認します。標準7件、閲覧付き9件、運用ツール付き12件、両方付き14件です。[監視URLと接続方法](MONITORING.md)
 2. `catalog-migrate` の終了コード0と、Lakehouseのhealthyを確認します。
 3. 取り込み後は件数とGold公開世代を控えます。 `JOB_FAILED` のときは Dokployの対象コンテナの **View Logs** で例外型・行番号を確認し、完了印、列、空き領域、監視状態を照合します。
 4. 入力修正後に同じジョブを再実行し、アプリが示す公開世代が更新されたことを確認します。古い世代を読む利用者がいる間は、そのIceberg表のスナップショットを失効させないでください。
@@ -25,7 +25,9 @@
 | --- | --- |
 | GitHub cloneが403 | 同じHTTPS URLで `git ls-remote` を試し、会社のproxy・許可リストを確認。DokployでGitHub Appを使用している場合は連携対象も確認 |
 | pull/buildがTLSエラー | ホスト、Docker daemon、BuildKitのどの層で失敗したか。 [企業設定](COMPANY.md) |
-| bind mountのpermission denied | landing作成者と環境設定のUID/GID、ディレクトリ階層の権限 |
+| bind mountのpermission denied | landing作成者と環境設定のUID/GID、ディレクトリ階層の権限、DokployのView Mounts。BuildKitで `fs.read` が出た場合は [CA・ミラーの事前ビルド](COMPANY.md#社内のpythonパッケージミラーを使う) を参照 |
+| ポート競合、Dockerの割当プール枯渇 | [配備先VMの診断](COMPANY.md#初回deployの前に配備先vmを診断する) を同じApp Nameで実行し、`PORTS` または `IPV4_POOL` を確認 |
+| 手元のブラウザーから画面を開けない | VMのIPv4ループバックとブラウザー側を分けて確認します。既定ポート・認証と、[SSH転送](MONITORING.md) または許可済みHTTPS経路を照合 |
 | Grafanaが開けるがダッシュボードがない | provisioningのread権限とGrafanaログ。 [設定ファイル](MONITORING.md) |
 | Goldが404 | `medallion` の成功、ファイル・SQL・CDCに合うAPIパス、指定世代の保持を確認。閲覧画面では「最新版を読み込む」で再確認 |
 | CDCが停止 | broker接続、保有topic、stateの所有者、保持期限がcheckpointを超えたか |

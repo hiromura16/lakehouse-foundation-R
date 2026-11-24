@@ -18,7 +18,8 @@
 
 ## 1. 配備先を確認する
 
-- Linux x86-64の配備先にDocker Engine、Compose 2.23.1以上、Git、Python 3.12以上を用意します。最初の検証用VMの初期目安は4 vCPU、8 GiB RAM、空き30 GiBです。
+- Linux x86-64の配備先にDocker Engine、Compose 2.23.1以上、Git、Python 3.12以上を用意します。標準構成を試すVMの初期目安は4 vCPU、8 GiB RAM、空き30 GiBです。
+- この手順のホスト公開ポートはIPv4ループバックを使います。Docker Engine 28.0未満を使う場合は、同一L2からの到達を防ぐホスト側の設定を管理者と確認します。[Dockerのポート公開](https://docs.docker.com/engine/network/port-publishing/)
 - Dokployの管理画面で、配備先のサーバーとプロジェクトを選べることを確認します。Docker Composeサービスを作成できる権限が必要です。
 - 社内プロキシを使う場合は、VMのGit、DokployのGit取得、Docker EngineとBuildKitの経路を準備します。[プロキシ・CAの確認](COMPANY.md)
 
@@ -43,13 +44,14 @@ landing="$HOME/.config/lakehouse-foundation-r/landing"
 1. **Projects** から対象プロジェクトと環境を開き、**Create Service → Compose** を選びます。**Compose Type** は **Docker Compose** にします。
 2. **General** でProviderを **Git** にし、下表の値を設定して **Save** します。
 3. **Environment** を開いて `site.env` の内容を登録します。**Create Environment File**（`.env` を作成） を有効にして **Save** します。プロジェクトと環境の共通設定に同じ名前がある場合は、対象サービスの値を確認します。企業CAやビルド用のプロキシが必要な場合は、[企業ネットワークの設定](COMPANY.md) もここで登録します。
-4. **General → Deploy** を選び、**Deployments** の最新ログを開きます。初回はイメージと依存のダウンロードに時間がかかります。
-5. **Docker → Containers** で対象サーバーを選びます。対象Composeの `catalog-migrate` は終了コード0、内部の `read-api` と `health-relay` を含む常駐9サービスはhealthyが合格です。Grafanaは標準で7対象を表示します。監視設定はGitの設定ファイルからイメージに組み込まれます。
+4. 画面上部の **App Name** を控え、配備先VMで [Deploy前の診断](COMPANY.md#初回deployの前に配備先vmを診断する) を実行します。ファイル・ネットワーク・ポートの診断を、Deployと同じ設定で確認します。
+5. **General → Deploy** を選び、**Deployments** の最新ログを開きます。初回はイメージと依存のダウンロードに時間がかかります。
+6. **Docker → Containers** で対象サーバーを選びます。対象Composeの `catalog-migrate` は終了コード0、内部の `read-api` と `health-relay` を含む常駐9サービスはhealthyが合格です。Grafanaは標準で7対象を表示します。監視設定はGitの設定ファイルからイメージに組み込まれます。
 
 | Generalの項目 | 入力する値 |
 | --- | --- |
 | Provider | Git |
-| Repository URL | `https://github.com/hiromura16/lakehouse-foundation-R.git` |
+| HTTPS URL（Repository URL） | `https://github.com/hiromura16/lakehouse-foundation-R.git` |
 | Branch | `main` |
 | Compose Path | `compose.yaml` |
 
@@ -89,7 +91,11 @@ python -m native.api gold factory_daily_production --limit 5
 
 空のlandingでの期待値は `imported: 6`、`sql_statements: 14` です。日次生産14行のうち先頭5行を返します。同じ入力でもう一度実行し、新規0、`unchanged: true` と同じ公開世代を確認します。[会社VMの合格条件](ACCEPTANCE.md)
 
-ブラウザーから見る場合は、まず [Grafana監視](MONITORING.md) へ接続します。[業務集計の画面](GUI.md) や [運用ポータル・n8nなど](TOOLS.md) を使う場合も、Dokployの同じComposeサービスに追加します。[Dokployの追加構成とアクセス方法](COMPANY.md)
+VMに直接ブラウザーがない場合は、担当者が許可されたSSH転送で [Grafana](http://localhost:18501/d/lakehouse-r-runtime) を開きます。標準の7対象が緑の✓になったことと、初回ジョブの結果を確認します。[GrafanaのログインとSSH転送](MONITORING.md)
+
+[業務集計の画面](GUI.md) や [運用ポータル・n8nなど](TOOLS.md) は、Dokployの同じComposeサービスの **Run Command** に追加します。[構成ごとの指定ファイルと合格条件](COMPANY.md#追加のcompose構成を有効にする)
+
+合成データの照合が済んでから、会社で使う別の投入アプリを同じ受け渡し先へ接続します。[外部との受け渡し確認](ACCEPTANCE.md#別の投入アプリと受け渡しを照合する)
 
 ## 6. 次回の配備
 

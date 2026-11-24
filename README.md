@@ -14,7 +14,7 @@
 > **文書一覧:** [目的・読者から探す文書マニフェスト](<docs/DOCUMENTATION-MANIFEST.md>)
 <!-- doc-purpose:end -->
 
-MES・ERP・設備の入力原本を保管し、工場別の日次生産、出荷の充足状況、設備の最新値と1分集計を提供するデータレイクハウスです。標準構成は、JVMを使わずに1台のLinux VMで動きます。
+MES・ERP・設備の入力原本を保管し、工場別の日次生産、出荷の充足状況、設備の最新値と1分集計を提供するデータレイクハウスです。標準構成は、JVMを使わずに1台のLinux VMで動きます。別の投入アプリとは、配備先VMの受け渡しフォルダーで原本と完了印を照合します。[ファイル受け渡しの契約](docs/native/SOURCES.md#ファイル受け渡し)
 
 ![Foundation Rの4層構造と標準・任意コンポーネントの配置](docs/native/images/foundation-r-structure.png)
 

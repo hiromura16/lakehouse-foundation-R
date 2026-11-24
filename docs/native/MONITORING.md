@@ -16,9 +16,20 @@
 
 標準起動で `Foundation R サービス監視` がGrafanaに自動作成されます。サーバー自身から `http://localhost:18501/d/lakehouse-r-runtime` を開き、ユーザー名 `admin` とprivate `site.env` の `GRAFANA_ADMIN_PASSWORD` で入ります。初回パスワードはGrafanaデータvolumeが空のときに適用されます。
 
+会社がSSHポート転送を許可している場合は、手元の端末で次を実行します。`operator@vm.example.invalid` は、会社から案内されたSSHユーザーと配備先VMに置き換えます。SSH接続を開いたまま、手元のブラウザーで同じGrafana URLを開きます。別の画面は [閲覧URL](GUI.md) と [運用ツールの入口](TOOLS.md) から必要なポートを選びます。
+
+**Bash / Zsh共通**
+
+```bash
+ssh -N -o ExitOnForwardFailure=yes \
+  -L 127.0.0.1:18501:127.0.0.1:18501 operator@vm.example.invalid
+```
+
+[OpenSSHのローカル転送](https://man.openbsd.org/ssh#L)
+
 ![合成環境で各サービスの稼働状態と履歴を表示したGrafana](images/runtime-demo.png)
 
-画像は [閲覧画面を追加](GUI.md) した構成です。標準構成は7対象、閲覧画面を追加すると9対象、さらに運用ツールを追加すると14対象が表示されます。標準の常駐コンテナは、監視対象の7個に内部の `read-api` と `health-relay` を加えた9個です。内部の2個はDockerのヘルスチェックで確認します。「サービスの状態」は緑の✓が正常、赤の×が異常です。履歴は `app` ごとに1行です。対象が応答できない点は赤になり、Prometheusが停止して取得できなかった区間は空白になります。履歴のバーにカーソルを合わせるとその区間の判定が表示されます。「取込・変換ジョブ」は成功と失敗を別の系列で表示します。「最終ジョブ成功からの経過時間」はワーカーの起動後に観測した成功を表示します。成功前は「この起動では未実行」と表示し、メトリクスが取得できない状態と区別します。会社の実行間隔に応じたアラートは別途設定します。
+画像は [閲覧画面を追加](GUI.md) した構成です。標準構成は7対象、閲覧画面付きは9対象、運用ツール付きは12対象、両方追加した構成は14対象です。標準の常駐コンテナは、監視対象の7個に内部の `read-api` と `health-relay` を加えた9個です。内部の2個はDockerのヘルスチェックで確認します。「サービスの状態」は緑の✓が正常、赤の×が異常です。履歴は `app` ごとに1行です。対象が応答できない点は赤になり、Prometheusが停止して取得できなかった区間は空白になります。履歴のバーにカーソルを合わせるとその区間の判定が表示されます。「取込・変換ジョブ」は成功と失敗を別の系列で表示します。「最終ジョブ成功からの経過時間」はワーカーの起動後に観測した成功を表示します。成功前は「この起動では未実行」と表示し、メトリクスが取得できない状態と区別します。会社の実行間隔に応じたアラートは別途設定します。
 
 「Goldの同時参照件数」は受理済みのクエリと上限を表示します。
 「Goldの混雑による応答」は上限に達してHTTP 503と再試行時間を返した累計です。
@@ -40,7 +51,7 @@
 
 ## Dockerネットワークの容量
 
-起動するComposeプロジェクトごとに、標準構成は6個、閲覧を追加すると7個、閲覧と運用ツールを追加すると10個のDockerネットワークを使います。CDCは1個、Cloudflareは2個を追加するため、同じプロジェクトでこれらを有効にすると13個です。通知用のAlertmanagerを加えるとさらに1個を使います。隔離したRustFS受入環境を同じホストに追加すると、さらに6個を使います。
+起動するComposeプロジェクトごとに、標準構成は6個、閲覧付きは7個、運用ツール付きは9個、両方付きは10個のDockerネットワークを使います。CDCは1個、Cloudflareは2個を追加するため、同じプロジェクトでこれらを有効にすると13個です。通知用のAlertmanagerを加えるとさらに1個を使います。隔離したRustFS受入環境を同じホストに追加すると、さらに6個を使います。
 
 Dockerが `all predefined address pools have been fully subnetted` を返す場合は、ホスト上の各Composeプロジェクトと停止済みの検証環境が使うネットワークを管理者と確認します。会社やVPNの経路と重複しないアドレス範囲を確保したうえで、ホスト側のDocker自動割当プールを設計します。停止だけではComposeネットワークが残るため、不要になった検証環境は、その環境のプロジェクト名とComposeファイルを指定して `docker compose down` で片付けます。[Dockerのサブネット割当](https://docs.docker.com/engine/network/#subnet-allocation)
 
@@ -64,14 +75,15 @@ Blackbox Exporterは書込側の疎通と内部の監視専用ネットワーク
 **Bash / Zsh共通**
 
 ```bash
-docker compose --env-file "$site" up -d --build --force-recreate --no-deps blackbox prometheus grafana health-relay
-docker compose --env-file "$site" exec -T prometheus \
+project="APP_NAME_FROM_HEADER"
+docker compose -p "$project" --env-file "$site" up -d --build --force-recreate --no-deps blackbox prometheus grafana health-relay
+docker compose -p "$project" --env-file "$site" exec -T prometheus \
   promtool check config /etc/prometheus/prometheus.yml
-docker compose --env-file "$site" exec -T blackbox \
+docker compose -p "$project" --env-file "$site" exec -T blackbox \
   /bin/blackbox_exporter --config.file=/etc/blackbox/blackbox.yml --config.check
 ```
 
-例は標準構成です。閲覧や運用ツールを有効にしている場合は、最初の起動と同じプロジェクト名、追加の `-f`、環境ファイルを指定します。
+例は標準構成です。`project` は起動時のプロジェクト名、`site` は環境ファイルのパスです。閲覧や運用ツールを有効にしている場合は、起動時と同じ順番で追加の `-f`、環境ファイル、プロファイルを指定します。Dokploy管理の構成で設定変更を反映するには、次の段落に従います。
 
 Dokployでは変更をGitへ保存し、対象Composeを再配備します。公開設定はビルド時に読み取り権限を固定してイメージへ組み込みます。Dokployの標準Deployはビルドも実行します。[Advanced → Run Command](COMPANY.md) でカスタムコマンドを使う場合も `--build` を含め、Grafana・Prometheus・Blackboxがhealthyになったことを確認します。GrafanaのUIで試作したパネルはClassic JSONへexportし、`runtime.json` を更新します。配布したダッシュボードは `uid` を維持し、起動時にファイルからプロビジョニングします。GrafanaのUIからの永続上書きは無効です。配信が必要な場合は、次の任意構成を選びます。
 

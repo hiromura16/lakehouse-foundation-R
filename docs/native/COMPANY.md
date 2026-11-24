@@ -44,7 +44,9 @@ flowchart TB
 | BuildKit内のPython依存取得 | Composeの標準proxy引数と `CORPORATE_CA_FILE` / `CORPORATE_CA_SHA256` | `docker compose build lakehouse` |
 | 稼働中のサービス | Composeの内部DNS。Kafkaを使う場合は直接到達するTCPとTLS | `ps`、監視、受入試験 |
 
-公式の [Docker Engineのプロキシ](https://docs.docker.com/engine/daemon/proxy/) と [DockerとOSの信頼CA](https://docs.docker.com/engine/network/ca-certs/) に従って、管理者がサーバー側を設定します。ホストでDockerの再起動が必要な変更は既存サービスの保守時間に適用します。独立したBuildKitを使う場合は、そのビルダー自身のレジストリ到達性と信頼CAも確認します。DokployのEnvironmentでの設定は、ホストのDockerデーモンの設定とは別です。
+管理者がサーバー側のプロキシと信頼CAを設定します。GitのHTTPS取得で個別の信頼CAを使う場合は、取得を実行する環境から参照できる `http.sslCAInfo`（または `GIT_SSL_CAINFO`）を使います。DokployのGit取得プロセスにも、その環境の信頼設定を適用します。[GitのHTTPS設定](https://git-scm.com/docs/git-config#Documentation/git-config.txt-httpsslCAInfo) · [Docker Engineのプロキシ](https://docs.docker.com/engine/daemon/proxy/) · [DockerとOSの信頼CA](https://docs.docker.com/engine/network/ca-certs/)
+
+ホストでDockerの再起動が必要な変更は既存サービスの保守時間に適用します。独立したBuildKitを使う場合は、そのビルダー自身のレジストリ到達性と信頼CAも確認します。DokployのEnvironmentでの設定は、ホストのDockerデーモンの設定とは別です。
 
 BuildKit用の設定はprivate `site.env` またはDokployの対象ComposeのEnvironmentへ入力します。
 
@@ -114,13 +116,18 @@ Gitやログに残さないでください。
 Compose 5系と新しいBuildxの組み合わせでは、Gitの作業ディレクトリ
 外に置いた会社CAやミラーファイルのビルドで、`additional privileges
 requested: ... fs.read=...` が出る場合があります。ビルドを担当する
-管理者は、`docker compose build --print` で対象サービスの計画を生成し、
+管理者は、配備のApp Name・Composeファイル・環境ファイル・プロファイルを
+揃えて `docker compose build --print` で全ビルド対象の計画を生成し、
 `docker buildx bake --load --allow fs.read=対象ファイル` へ渡します。
-許可引数は外部の入力ファイルごとに指定します。配備時は構築済みの
-同じプロジェクト名を選び、`up --no-build --pull missing` で使います。
-Dokployがこの組み合わせを使う場合は、配備先で事前ビルドを行い、
-同じApp Name・Composeファイル・Environmentで **Run Command** に
-`--no-build --pull missing` を指定します。
+標準構成でも `lakehouse` に加えて監視や内部ゲートウェイのイメージを
+ビルドします。コマンド末尾で個別サービスを絞らず、外部ファイルごとに
+読取許可を指定します。計画には展開された設定が含まれるため、ログや
+共有場所に保存せず、パイプで受け渡します。
+
+ビルドしたイメージを配備先のDocker Engineに読み込みます。Dokployでは
+同じApp Name・Composeファイル・Environmentを使い、下の **Run Command**
+例の `--build` を `--no-build --pull missing` に置き換えます。
+ソースやビルド設定を変更したら、同じ手順で事前ビルドをやり直します。
 [Composeのビルド計画](https://docs.docker.com/reference/cli/docker/compose/build/)
 · [Bakeのファイル読取許可](https://docs.docker.com/reference/cli/docker/buildx/bake/#allow)
 
@@ -130,12 +137,12 @@ Dokployがこの組み合わせを使う場合は、配備先で事前ビルド�
 **Bash / Zsh共通**
 
 ```bash
-docker compose --env-file "$site" -p "$project" build --print lakehouse |
+docker compose --env-file "$site" -p "$project" -f compose.yaml build --print |
   docker buildx bake --file - --load \
     --allow "fs.read=/absolute/path/to/company-public-chain.pem"
 ```
 
-[uvのpip設定](https://docs.astral.sh/uv/reference/settings/#pip) · [uvの認証形式](https://docs.astral.sh/uv/concepts/authentication/http/#netrc-files) · [Dockerのビルド用secret](https://docs.docker.com/build/building/secrets/)
+[uvのパッケージインデックス設定](https://docs.astral.sh/uv/concepts/indexes/#authentication) · [uvの認証形式](https://docs.astral.sh/uv/concepts/authentication/http/#netrc-files) · [Dockerのビルド用secret](https://docs.docker.com/build/building/secrets/)
 
 合成ミラーを用いた受入では、BakuのBuildKitで同じ依存取得処理を実行
 しました。正しいCAと認証で導入でき、CAなし・誤CA、認証なし・誤認証、
@@ -171,7 +178,8 @@ Dockerを通常 `sudo` で利用しているVMでは `--sudo` を付けます。
 このオプションは `sudo -n docker` を使うため、事前に管理者の承認と
 sudoの利用権限が必要です。`--env-file`、`-f`、`--profile` は複数
 指定できます。複数の環境ファイルは、配備時と同じ優先順で後の値が
-上書きします。環境変数の優先順位もDeploy時と揃えます。
+上書きします。DokployのEnvironmentにだけ追加した設定があれば、
+同じ値を検査用の保護された環境ファイルにも反映し、優先順位を揃えます。
 [Composeの変数展開](https://docs.docker.com/compose/how-tos/environment-variables/variable-interpolation/)
 
 | 診断 | 結果の見方 |
@@ -213,17 +221,29 @@ TCPの待受と、待受中のUDPソケットを比較します。この診断�
 
 ## 追加のCompose構成を有効にする
 
-Dokployの標準Deployには `--build` が含まれます。待機や追加構成を指定する場合は、UIに表示される対象サービスのApp Nameを使い、**Advanced → Run Command** の **Command** 欄に入力します。Dokployが先頭の `docker` を付けるので、`compose` で始めます。監視設定と閲覧入口の公開ファイルは、読み取り権限を固定してイメージへ組み込みます。Gitで設定を変更したら `--build` 付きで再配備します。DockerとBuildKitのレジストリ到達性を確認します。カスタムのCommandでは、DokployのPull Imagesに対応する `--pull always` と、DokployのMountsを使う場合の `--project-directory` が自動で追加されないため、必要な場合は既定コマンドを参考に併せて指定します。 [Dokploy v0.31のコマンド組立](https://github.com/Dokploy/dokploy/blob/v0.31.0/packages/server/src/utils/builders/compose.ts#L125-L188)
+Dokployの標準Deployには `--build` が含まれます。待機や追加構成を指定する場合は、UIに表示される対象サービスのApp Nameを使い、**Advanced → Run Command** の **Command** 欄に入力します。Dokployが先頭の `docker` を付けるので、`compose` で始めます。監視設定と閲覧入口の公開ファイルは、読み取り権限を固定してイメージへ組み込みます。Gitで設定を変更したら `--build` 付きで再配備します。DockerとBuildKitのレジストリ到達性を確認します。カスタムのCommandでは、DokployのPull Imagesに対応する `--pull always` と、DokployのMountsを使う場合の `--project-directory` が自動で追加されないため、必要な場合は既定コマンドを参考に併せて指定します。 [Dokploy v0.31.4のコマンド組立](https://github.com/Dokploy/dokploy/blob/v0.31.4/packages/server/src/utils/builders/compose.ts)
 
 ```text
 compose -p APP_NAME_FROM_HEADER --env-file .env -f compose.yaml up -d --build --wait --wait-timeout 180 --remove-orphans
 ```
 
-[任意の閲覧画面](GUI.md) を有効にする場合は、非公開の認証ファイルを準備して、Command欄に `-f compose.gui.yaml` を追加します。
+`APP_NAME_FROM_HEADER` を画面上部の **App Name** に置き換えます。
+下の追加ファイルは `-f compose.yaml` の後、`up` の前に指定します。
+既に使っているファイルやプロファイルも保持します。
+
+| 使う構成 | 追加指定 | 常駐サービス / Grafana監視 |
+| --- | --- | --- |
+| 標準 | 追加なし | 9 / 7 |
+| [業務集計の閲覧](GUI.md) | `-f compose.gui.yaml` | 11 / 9 |
+| [運用ツール](TOOLS.md) | `-f compose.tools.yaml` | 15 / 12 |
+| 閲覧と運用ツール | `-f compose.gui.yaml -f compose.tools.yaml` | 17 / 14 |
+
+追加構成の認証ファイルと環境変数はDeploy前に準備します。OpenObserveへの転送は、[転送用パスコードを作成](TOOLS.md#openobserveに監視メトリクスを送る) してから `--profile tools-metrics` を `up` の前に加えます。常駐サービスは1個増えます。
+[外部Kafka CDC](SOURCES.md#kafka互換ブローカーでcdcを取り込む)、[Cloudflare](CLOUDFLARE.md)、[通知](MONITORING.md#オンプレミスの通知を追加する) は、それぞれの接続設定を済ませてから対応するComposeファイルを追加します。
 
 [運用ツール](TOOLS.md) を有効にする場合は、ホストで追加ツールの秘密ファイルを作成して、`tools.env` の値を同じComposeのEnvironmentにも登録します。秘密ファイルのパスはDockerを実行するホストから参照できる絶対パスを使います。Command欄に `-f compose.tools.yaml` を加え、n8nをHTTPSで使う場合は公開originとSecure Cookieを設定します。n8nは既定でGHCRから取得し、`N8N_IMAGE_REPO=docker.io/n8nio/n8n` または `docker.n8n.io/n8nio/n8n` に切り替えられます。3レジストリで同一digestを確認しています。OpenObserveの公開レジストリを変更する場合は `OPENOBSERVE_IMAGE_PATH=public.ecr.aws/zinclabs/openobserve` を指定できます。固定するdigestは両方で同一です。
 
-Dokployの再取得後も、名前付きデータvolumeおよびcheckout外のlanding・設定・CAを維持します。同じホストに検証用と本番用を配置する場合は、個別のappName、ポート、landingを割り当てます。標準ポートはAPI 18502、Grafana 18501です。社内の実プロキシ、IdP、証明書とDokployのGUI操作は、導入先で [受入手順](OPERATIONS.md) を実行して確認します。
+Dokployの再取得後も、名前付きデータvolumeおよびcheckout外のlanding・設定・CAを維持します。同じホストに検証用と本番用を配置する場合は、個別のappName、ポート、landingを割り当てます。標準ポートはAPI 18502、Grafana 18501です。社内の実プロキシ、IdP、証明書とDokployのGUI操作は、導入先で [会社VMの受入手順](ACCEPTANCE.md) を実行して確認します。端末だけで検証する場合も、目的のComposeを `-p` と配備時の全 `-f` で選び、環境の組を一致させます。[Composeのプロジェクト名](https://docs.docker.com/compose/how-tos/project-name/)
 
 [Dokploy Docker Compose](https://docs.dokploy.com/docs/core/docker-compose) · [公開リポジトリのHTTPS取得](https://docs.dokploy.com/docs/core/providers) · [GitHub App連携](https://docs.dokploy.com/docs/core/github) · [ComposeのDomains](https://docs.dokploy.com/docs/core/docker-compose/domains)
 

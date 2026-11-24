@@ -26,7 +26,7 @@
 | 業務契約 | `python3 native/check_contracts.py`、Dokployのコンテナ端末で `verify` | 契約20ファイルとデータ製品の定義が一致。画像原本・型検査・集計など11項目。初回7ファイル、再実行0 | 検査名、固定の期待値、カタログとS3 |
 | 業務処理 | 合成ファイルを生成し `medallion`、Gold参照 | 初回6ファイル、SQL14本。日次生産は2工場×7日。上限5で全14行中5行を返す | 完了印、ファイル名・列、Gold公開時刻 |
 | 再実行 | 入力を変えずに `medallion` とGold参照 | 新規0、`unchanged: true`。前回と同じ公開世代 | 入力の変更、変換の版、稼働中のwriter |
-| 画面・監視 | Grafana、任意GUIに接続 | 監視は標準7対象、GUI付き9対象、GUIと運用ツール付き14対象。閲覧は認証が必要。公開した日次集計と公開世代を確認 | 各サービスの状態、ブラウザー接続経路、ゲートウェイ認証 |
+| 画面・監視 | Grafana、任意GUIに接続 | 監視は標準7対象、GUI付き9対象、運用ツール付き12対象、両方付き14対象が正常。閲覧は認証が必要。公開した日次集計と公開世代を確認 | 各サービスの状態、ブラウザー接続経路、ゲートウェイ認証 |
 
 [Dokployからの初回導入](START.md) · [企業環境の疎通](COMPANY.md) · [障害対応](OPERATIONS.md)
 
@@ -48,7 +48,15 @@
 | 大容量原本 | 既定の256 MiBと、上限を変更した257 MiBを隔離保全 | 条件付き作成、SHA-256とサイズ、再起動後の台帳が一致。[2 GiBの実測](EVALUATION.md#2-gibの検査原本を両s3保存先で照合する) |
 | 外部Kafka CDC | 隔離brokerに新旧更新、遅延snapshot、DELETE、tombstoneを発行し、consumerを再起動 | Raw 9件、offset 0〜8で欠落・重複0。旧版が勝たず、削除後の古い追加は復活せず、再開後の新しい追加を公開 |
 
-[標準Composeの受入コード](../../tests/integration/native/acceptance.py) · [CDCの受入コード](../../tests/integration/native/cdc_acceptance.py) · [業務集計の期待値](../../medallion/expected-demo.json) · [実行結果の一覧](https://github.com/hiromura16/lakehouse-foundation-R/actions)
+[標準Composeの受入コード](../../tests/integration/native/acceptance.py) · [CDCの受入コード](../../tests/integration/native/cdc_acceptance.py) · [業務集計の期待値](../../medallion/expected-demo.json)
+
+2026年11月24日の公開コミット `d832ece` では、以下の合成受入が成功しています。実行結果を開くと、対象コミット・検査項目・各ジョブのログを確認できます。
+
+- [標準・閲覧・運用ツールのCompose受入](https://github.com/hiromura16/lakehouse-foundation-R/actions/runs/45465553603)
+- [CDCの外部broker・配送位置・再起動](https://github.com/hiromura16/lakehouse-foundation-R/actions/runs/45465553526)
+- [物理バックアップと新しいボリュームへの復元](https://github.com/hiromura16/lakehouse-foundation-R/actions/runs/45465553795)
+
+現地では利用したコミットと設定に対応する実測を別途記録します。[CIの実行結果一覧](https://github.com/hiromura16/lakehouse-foundation-R/actions)
 
 ## 別の投入アプリと受け渡しを照合する
 
@@ -63,9 +71,12 @@ Iceberg Silverの日本語名2件と周期の `DECIMAL(18,3)`、固定の指図�
 | 受信側の変換 | 初回6ファイル、SQL14文。日次は計画20・良品10・不良1・停止5分。出荷は受注5・出荷3・未出荷2 |
 | 再実行 | 新規0、再変換0、同じ公開世代で全行一致 |
 
-会社で試す際は [入力契約](SOURCES.md) に合う受け渡し先に配置します。
-生成アプリが示す完了と、基盤の取込・公開はそれぞれ確認します。
-テスト用合成データで通した取り込み経路はローカル共有です。
+送信側は別のアプリとして扱います。会社で試すときは、`site.env` の `LANDING_DIR` に対応する受け渡し先に確定ファイルを置き、同じSHA-256の `<ファイル名>.ready` を最後に確定します。
+
+1. 送信側で配送ID、確定ファイルの名前、SHA-256と完了印を控えます。
+2. 基盤側で取込件数と隔離数を確認し、同じ入力によるGoldの公開世代IDと結果を控えます。双方を照合してから再送し、世代と集計が一致することを確認します。
+
+上の確認は合成データをローカル共有フォルダーで受け渡した実績です。会社で使う搬送経路・書込権限は配備先で確認します。[完了印とファイル名の入力契約](SOURCES.md#ファイル受け渡し)
 
 ## 実データへ移る前に
 

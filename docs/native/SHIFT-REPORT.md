@@ -56,14 +56,15 @@
 
 Dokployで配備したサーバーで、対象のComposeを操作する管理者がリポジトリの
 ルートから実行します。使用中の環境ファイル、暦のパス、取込経路、対象の
-公開世代IDを先に確認します。暦は標準入力でコンテナに渡せます。
+公開世代IDを先に確認します。`project` は対象サービスのApp Nameに置き換えます。暦は標準入力でコンテナに渡せます。
 公開世代IDは、経路ごとのGold応答の `release_snapshot_id` で確認できます。
 [経路ごとのGold参照API](API.md)
 
 **Bash / Zsh共通**
 
 ```bash
-docker compose --env-file "$site_env" exec -T lakehouse \
+project="APP_NAME_FROM_HEADER"
+docker compose -p "$project" --env-file "$site_env" exec -T lakehouse \
   python -m native.shift_report --calendar - --factory F01 \
   --from 2026-01-05 --until 2026-01-07 --channel files \
   --release "$release_snapshot_id" < "$shift_calendar_file"

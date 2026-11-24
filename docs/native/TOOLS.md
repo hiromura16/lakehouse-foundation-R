@@ -16,13 +16,13 @@
 
 [標準構成](START.md) の運用を始めた後、同じComposeプロジェクトに追加できます。管理画面は運用者向けです。会社VMではTLS終端またはSSH転送を用意し、Composeの公開ポートはループバックへ限定します。
 
-| アプリ | 何に使うか | 初期ポート |
+| アプリ | 何に使うか | ホスト上の既定URL |
 | --- | --- | --- |
-| 運用ポータル | 疎通状況、作業別の入口、説明スライドを開く | 18506 |
-| n8n | 手動実行やイベントから定型手順をつなぐ。ワークフローをJSONで管理 | 18507 |
-| OpenObserve | Rust製の観測基盤。取り込んだPrometheusの監視履歴をPromQLで調査 | 18508 |
-| InfluxDB 3 Explorer | 保存した測定点をSQLで検索し、表やチャートで確認 | 18509 |
-| InfluxDB 3 Core | Rust製の時系列DB。Line Protocolで受信し、DataFusionによるSQLを提供 | 18510 |
+| 運用ポータル | 疎通状況、作業別の入口、説明スライドを開く | `http://localhost:18506/` |
+| n8n | 手動実行やイベントから定型手順をつなぐ。ワークフローをJSONで管理 | `http://localhost:18507/` |
+| OpenObserve | Rust製の観測基盤。取り込んだPrometheusの監視履歴をPromQLで調査 | `http://localhost:18508/` |
+| InfluxDB 3 Explorer | 保存した測定点をSQLで検索し、表やチャートで確認 | `http://localhost:18509/` |
+| InfluxDB 3 Core | Rust製の時系列DB。Line Protocolで受信し、DataFusionによるSQLを提供 | `http://localhost:18510`（API） |
 
 n8nの永続状態は専用PostgreSQLに分離します。InfluxDBの測定点は時系列の調査用データです。業務集計の公開範囲と版はIcebergのGoldで管理します。n8n CommunityとInfluxDB 3 Explorerは独自の利用条件があるため、会社で有効にする前に採用版の契約を確認します。[各コンポーネントの配布条件](REFERENCES.md#追加機能の配布条件) · [InfluxDB 3 Core](https://docs.influxdata.com/influxdb3/core/)
 
@@ -32,7 +32,7 @@ n8nから見える `lakehouse:8080` は、許可した読取GET専用のゲー�
 
 ## 起動する
 
-DockerとOpenSSLを使います。標準構成で使った `site.env` を指定し、追加ツールの秘密ファイルは初回だけ生成します。閲覧UIなしでも起動できます。閲覧UIを併用する場合は [GUIの認証を準備](GUI.md) した上で `-f compose.gui.yaml` を `-f compose.tools.yaml` の手前に加えます。以降の起動・停止でも同じComposeファイルを指定します。
+DockerとOpenSSLを使います。配備先VMで追加ツールの秘密ファイルを初回だけ生成します。閲覧を併用するときは [GUIの認証](GUI.md) も準備します。
 
 **Bash / Zsh共通**
 
@@ -40,16 +40,25 @@ DockerとOpenSSLを使います。標準構成で使った `site.env` を指定�
 site="$HOME/.config/lakehouse-foundation-r/site.env"
 tools="$HOME/.config/lakehouse-foundation-r/tools"
 python3 native/tools/setup.py --directory "$tools"
-chmod a+r native/tools/targets.yml native/tools/health-workflow.json
-docker compose --env-file "$site" --env-file "$tools/tools.env" \
+```
+
+Dokployでは `tools.env` の内容を同じComposeの **Environment** へ登録します。[会社VMの追加構成](COMPANY.md#追加のcompose構成を有効にする) に従い、**Run Command** に `-f compose.tools.yaml` を追加してDeployを実行します。閲覧も使う場合は `-f compose.gui.yaml` をその手前に置きます。初回にOpenObserveを設定するまでは転送用プロファイルを指定しません。
+
+端末から直接Composeを起動する専用の検証環境では、`project` を同じプロジェクト名に統一します。初回と再起動で同じComposeファイルを指定します。
+
+**Bash / Zsh共通**
+
+```bash
+project="lakehouse-r"
+docker compose -p "$project" --env-file "$site" --env-file "$tools/tools.env" \
   -f compose.yaml -f compose.tools.yaml config --quiet
-docker compose --env-file "$site" --env-file "$tools/tools.env" \
+docker compose -p "$project" --env-file "$site" --env-file "$tools/tools.env" \
   -f compose.yaml -f compose.tools.yaml up -d --build --wait --wait-timeout 240
 ```
 
 ポータルは `http://localhost:18506/` です。`operator.json` に記録された専用アカウントを使います。n8nとExplorerの入口でも同じ認証が必要です。n8nの初回画面で管理者を登録します。OpenObserveは `tools.env` の `TOOLS_OBSERVE_USER` と `TOOLS_OBSERVE_PASSWORD` を使います。
 
-ホストのポートは `TOOLS_PORT`、`TOOLS_N8N_PORT`、`TOOLS_OBSERVE_PORT`、`TOOLS_EXPLORER_PORT`、`TOOLS_INFLUX_PORT` で変更できます。ポータルの接続先URLは、開いているホスト名と構成で指定したポートを使います。n8nをHTTPSで使う場合は `TOOLS_N8N_URL` を実際のHTTPS URLへ設定し、`TOOLS_SECURE_COOKIES=true` にします。リバースプロキシの段数は `TOOLS_N8N_PROXY_HOPS` で指定します。[Dokployの配置手順](COMPANY.md) · [n8nのリバースプロキシ](https://docs.n8n.io/deploy/host-n8n/configure-n8n/basic-configuration/configuration-examples/configure-webhook-urls-with-reverse-proxy)
+ホストのポートは `TOOLS_PORT`、`TOOLS_N8N_PORT`、`TOOLS_OBSERVE_PORT`、`TOOLS_EXPLORER_PORT`、`TOOLS_INFLUX_PORT` で変更できます。OpenObserveの準備・検査とInfluxDBの合成入力のCLIには、変更後のポートを `--port` で渡します。ポータルの接続先URLは、開いているホスト名と構成で指定したポートを使います。n8nをHTTPSで使う場合は `TOOLS_N8N_URL` を実際のHTTPS URLへ設定し、`TOOLS_SECURE_COOKIES=true` にします。リバースプロキシの段数は `TOOLS_N8N_PROXY_HOPS` で指定します。[Dokployの配置手順](COMPANY.md) · [n8nのリバースプロキシ](https://docs.n8n.io/deploy/host-n8n/configure-n8n/basic-configuration/configuration-examples/configure-webhook-urls-with-reverse-proxy)
 
 ## ワークフローを手動実行する
 
@@ -65,7 +74,14 @@ docker compose --env-file "$site" --env-file "$tools/tools.env" \
 
 ```bash
 python3 -m native.tools.observe provision --directory "$tools"
-docker compose --env-file "$site" --env-file "$tools/tools.env" \
+```
+
+Dokployでは **Run Command** に `--profile tools-metrics` を `up` の前に追加し、同じComposeを再配備します。端末から直接起動した検証環境では、同じ `project`・環境ファイル・追加Composeファイルで転送を有効にします。
+
+**Bash / Zsh共通**
+
+```bash
+docker compose -p "$project" --env-file "$site" --env-file "$tools/tools.env" \
   -f compose.yaml -f compose.tools.yaml --profile tools-metrics up -d --wait
 ```
 
