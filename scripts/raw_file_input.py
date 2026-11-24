@@ -7,6 +7,7 @@
 import os
 import re
 import stat
+from contextlib import contextmanager
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
@@ -24,29 +25,36 @@ class RawFile:
     digest: str
 
 
-def read_stable(path, limit, label):
-    """通常ファイルを上限付きで読み、読取中の変更と差替えを拒否する。
+@contextmanager
+def opened_regular(path, limit, label, *, dir_fd=None):
+    """通常ファイルを開き、使用後に同じファイルと属性を指すか確認する。
 
-    statとopenの間にFIFOへ差し替えられても待機しない。読んだfdと
-    現在の着地パスの属性を比較し、同名差替えも失敗にする。
+    statとopenの間にFIFOへ差し替えられても待機しない。大きな原本を
+    分割して読む場合も、呼出側が処理の最後まで同じfdを保持できる。
     """
     flags = os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW
-    with os.fdopen(os.open(path, flags), "rb") as stream:
+    with os.fdopen(os.open(path, flags, dir_fd=dir_fd), "rb") as stream:
         before = os.fstat(stream.fileno())
         if not stat.S_ISREG(before.st_mode):
             raise ValueError(f"{label} must be a regular file.")
         if before.st_size > limit:
             raise ValueError(f"{label} exceeds the bounded import limit.")
+        yield stream, before.st_size
+        after = os.fstat(stream.fileno())
+        current = os.stat(path, dir_fd=dir_fd, follow_symlinks=False)
+        if not (identity(before) == identity(after) == identity(current)):
+            raise ValueError(f"{label} changed while it was read.")
+
+
+def read_stable(path, limit, label, *, dir_fd=None):
+    """上限内の原本を一度だけ読み、途中の変更や差替えを拒否する。"""
+    with opened_regular(path, limit, label, dir_fd=dir_fd) as (stream, size):
         data = stream.read(limit + 1)
         if len(data) > limit:
             raise ValueError(f"{label} exceeds the bounded import limit.")
-        after = os.fstat(stream.fileno())
-        current = path.stat(follow_symlinks=False)
-        if len(data) != after.st_size or not (
-            identity(before) == identity(after) == identity(current)
-        ):
+        if len(data) != size:
             raise ValueError(f"{label} changed while it was read.")
-        return data
+    return data
 
 
 def identity(info):
@@ -60,9 +68,9 @@ def identity(info):
     )
 
 
-def completion_hash(marker):
+def completion_hash(marker, *, dir_fd=None):
     """通常ファイルの完了印から、改行付きSHA-256を検査して返す。"""
-    content = read_stable(marker, 66, "Completion marker")
+    content = read_stable(marker, 66, "Completion marker", dir_fd=dir_fd)
     if not re.fullmatch(rb"[a-f0-9]{64}\r?\n", content):
         raise ValueError("Invalid completion marker.")
     return content[:64].decode("ascii")

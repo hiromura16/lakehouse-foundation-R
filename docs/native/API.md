@@ -20,7 +20,7 @@
 | --- | --- |
 | GET /openapi.json | OpenAPI 3.2.1の機械可読仕様。業務データを返しません。 |
 | GET /health、GET /metrics | ヘルスと集計カウンタ。業務データを返しません。 |
-| POST /run | WORKER_TOKEN。 `{"action":"medallion"}`、`ingest`、`verify` またはSQLバッチを実行 |
+| POST /run | WORKER_TOKEN。 `{"action":"medallion"}`、`ingest`、`verify`、SQLバッチまたは大容量原本の保全を実行 |
 | GET /v1/data-products | READER_TOKEN。表の用途、粒度、確認先と指標の定義 |
 | GET /v1/ingestion/status | READER_TOKEN。直近のファイル取込と標準経路の公開中世代の件数 |
 | GET /v1/releases/latest | READER_TOKEN。標準ソースの最新公開世代とその表スナップショット |
@@ -72,6 +72,13 @@ SQLバッチを反映するときのJSONは次の形です。抽出結果のhous
 
 ```json
 {"action":"sql-load","batch_id":"<抽出結果のSHA-256>","observed_at":"2026-01-05T12:00:00.0000000Z"}
+```
+
+大容量原本の保全は操作用トークンを使い、事前に専用受け渡し領域で確定した
+ファイル名を指定します。内容はHTTPで送信しません。[原本の配置方法](SOURCES.md#大容量の原本を保全する)
+
+```json
+{"action":"archive","file":"inspection-0001.bin"}
 ```
 
 ## LangChainから参照する

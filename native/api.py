@@ -18,7 +18,7 @@ from types import SimpleNamespace
 from urllib.parse import parse_qs, urlsplit
 from urllib.request import Request, urlopen
 
-from native import engine
+from native import archive, engine
 
 
 def core_module():
@@ -63,7 +63,7 @@ def ingestion_status(core):
 
 def run_job(core, action, body):
     """書込みを直列化し、正常に完了したジョブを記録する。"""
-    if action not in {"verify", "ingest", "medallion", "sql-load"}:
+    if action not in {"verify", "ingest", "medallion", "sql-load", "archive"}:
         raise ValueError("INVALID_JOB")
     if not core.LOCK.acquire(blocking=False):
         return None
@@ -91,6 +91,8 @@ def run_job(core, action, body):
                     core, sql, prefix
                 ),
             )
+        elif action == "archive":
+            result = archive.receive(core, body["file"])
         elif action == "sql-load":
             from scripts.sql_batch_worker import load
 
@@ -356,6 +358,10 @@ def handler(core):
                     if set(body) != {"action", "batch_id", "observed_at"}:
                         raise ValueError
                     apply_identifier(body["batch_id"], body["observed_at"])
+                elif action == "archive":
+                    if set(body) != {"action", "file"}:
+                        raise ValueError
+                    archive.verify_name(body["file"])
                 elif action not in ("ingest", "medallion", "verify") or set(
                     body
                 ) != {"action"}:
@@ -371,6 +377,8 @@ def handler(core):
                         "error": "ANOTHER_JOB_RUNNING",
                     },
                 )
+            except archive.ArchiveInputError as error:
+                return self.respond(422, {"error": str(error)})
             except Exception as error:
                 report_error(error)
                 return self.respond(500, {"error": "JOB_FAILED"})
@@ -417,9 +425,13 @@ def operation(action, dataset=None, limit=50):
             headers={"Authorization": "Bearer " + os.environ["READER_TOKEN"]},
         )
     else:
+        body = {"action": action}
+        if action == "archive":
+            archive.verify_name(dataset)
+            body["file"] = dataset
         request = Request(
             origin + "/run",
-            data=json.dumps({"action": action}).encode(),
+            data=json.dumps(body).encode(),
             headers={
                 "Authorization": "Bearer " + os.environ["WORKER_TOKEN"],
                 "Content-Type": "application/json",
@@ -436,9 +448,19 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "action",
-        choices=["serve", "health", "ingest", "medallion", "verify", "gold"],
+        choices=[
+            "serve",
+            "health",
+            "ingest",
+            "medallion",
+            "verify",
+            "gold",
+            "archive",
+        ],
     )
-    parser.add_argument("dataset", nargs="?")
+    parser.add_argument(
+        "dataset", nargs="?", help="Goldの集計名、または保全するファイル名"
+    )
     parser.add_argument("--limit", type=int, default=50)
     args = parser.parse_args()
     try:

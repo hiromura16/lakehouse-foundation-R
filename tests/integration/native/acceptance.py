@@ -157,6 +157,68 @@ def reject_bad_header(root, http, writer, reader, release):
         path.unlink()
 
 
+def check_archive(root, http, writer, reader, release):
+    """通常取込より大きな原本と再送・訂正を、標準の操作APIで確かめる。"""
+    folder = root / "large-raw"
+    folder.mkdir(exist_ok=True)
+    origin = folder / f"inspection-{secrets.token_hex(4)}.bin"
+    marker = origin.with_suffix(".bin.sealed")
+    endpoint = http + "/run"
+    job = {"action": "archive", "file": origin.name}
+    size = 20 * 1024 * 1024
+
+    def write_revision(pattern):
+        """原本を分割して作り、最後に同じ原本の完了印を置く。"""
+        digest = hashlib.sha256()
+        chunk = pattern * (1024 * 1024 // len(pattern))
+        with origin.open("wb") as stream:
+            for _ in range(size // len(chunk)):
+                stream.write(chunk)
+                digest.update(chunk)
+        marker.write_text(digest.hexdigest() + "\n")
+        return digest.hexdigest()
+
+    def reject(body, actor, code, error_code):
+        """書込権限と原本の受入条件を別々に検査する。"""
+        try:
+            fetch(endpoint, authorization=actor, body=body)
+        except HTTPError as exc:
+            assert exc.code == code
+            assert json.load(exc) == {"error": error_code}
+        else:
+            raise AssertionError("失敗するはずの原本保全を受け入れました。")
+
+    reject(job, reader, 401, "AUTHENTICATION_REQUIRED")
+    reject({**job, "file": "../inspection.bin"}, writer, 400, "INVALID_JOB")
+    reject(job, writer, 422, "ARCHIVE_LOCAL_INPUT_INVALID")
+    first_hash = write_revision(b"A")
+    marker.write_text("0" * 64 + "\n")
+    reject(job, writer, 422, "ARCHIVE_COMPLETION_HASH_MISMATCH")
+    marker.write_text(first_hash + "\n")
+    first = fetch(endpoint, authorization=writer, body=job)
+    assert first == {
+        "file": origin.name,
+        "bytes": size,
+        "sha256": first_hash,
+        "object_created": True,
+        "registered": True,
+    }
+    replay = fetch(endpoint, authorization=writer, body=job)
+    assert replay == {**first, "object_created": False, "registered": False}
+    second_hash = write_revision(b"B")
+    changed = fetch(endpoint, authorization=writer, body=job)
+    assert changed == {**first, "sha256": second_hash}
+    assert write_revision(b"A") == first_hash
+    reverted = fetch(endpoint, authorization=writer, body=job)
+    assert reverted == {**first, "object_created": False}
+    assert (
+        fetch(http + "/v1/releases/latest", authorization=reader)[
+            "release_snapshot_id"
+        ]
+        == release
+    )
+
+
 def check_independent_lanes(root, http, writer, reader):
     """破損した設備完了印の横で業務が更新され、修復後に設備が再開する。"""
     source = root / "sensor/acceptance.jsonl"
@@ -336,6 +398,7 @@ def check(args, env):
         ]
         == release
     )
+    check_archive(args.landing, http, writer, reader, release)
     reject_bad_header(args.landing, http, writer, reader, release)
     check_independent_lanes(args.landing, http, writer, reader)
     verified = fetch(

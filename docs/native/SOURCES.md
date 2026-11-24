@@ -60,6 +60,34 @@ PNG、JPEG、WebPは32メガピクセル以下で先頭画像を展開できる�
 検査用画像の実データは公開APIから読めません。原本を扱う担当者を分け、
 製品番号や作業者が画像に含まれる場合は社内データとして管理します。
 
+## 大容量の原本を保全する
+
+通常取込の上限を超える検査素材、ログ圧縮ファイル、CADの書き出しなどは、
+`large-raw/` で別に受け取れます。上限は1ファイル256 MiBです。ファイル名は
+英数字で始まる英数字・ピリオド・下線・ハイフン127文字以内にし、接尾辞に
+`.sealed` や `.ready` を使用しません。
+
+1. 送信側で原本を閉じ、配備先の受け渡し先の `large-raw/` に用意します。
+   原本を書き終わってから最終名へ移し、隣にSHA-256の小文字64桁と改行だけの
+   `<ファイル名>.sealed` を最後に確定します。
+2. Dokployの `lakehouse` のTerminalから明示的に保全します。ジョブは
+   [操作API](API.md) からも実行できます。
+
+**Bash / Zsh共通**
+
+```bash
+python -m native.api archive inspection-0001.bin
+```
+
+原本を最大1MiBずつ読み、完了印と一致するSHA-256を検証します。
+S3の条件付き作成で既存原本を保護し、保存先が報告するSHA-256とサイズを照合
+してから `bronze.files` に登録します。応答の `object_created` はS3への新規作成、
+`registered` は台帳上の現在版の更新です。再送では両方false、更新版ではSHA-256
+別の原本を保全します。対応する `.sealed` の付いた入力を、通常の `medallion` は
+自動処理しません。業務表への変換、圧縮の展開、外部公開には別の承認を使います。
+[条件付き書込](https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-writes.html)
+· [S3のオブジェクト照合](https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadObject.html)
+
 ## 設備時系列JSONL
 
 `sensor/<名前>.jsonl` にUTF-8のJSONを1行1点で置き、同じSHA-256完了印を付けます。 [設備契約](../../contracts/native/sensor-event-v1.json) に規則があります。
