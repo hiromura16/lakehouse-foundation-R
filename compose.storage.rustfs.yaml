@@ -1,0 +1,41 @@
+# 合成受け入れ専用。新規プロジェクトと空ボリュームで検証する。
+# アプリが既に使う内部DNS名とポートを維持する。
+services:
+  storage: !override
+    image: docker.io/rustfs/rustfs:1.0.6@sha256:ee717072290bec9b11abfc0365f8310b00df1cd9b3639943edae47bdef05044a
+    restart: unless-stopped
+    mem_limit: 768m
+    environment:
+      RUSTFS_VOLUMES: /data/rustfs0
+      RUSTFS_ADDRESS: 0.0.0.0:8333
+      RUSTFS_CONSOLE_ENABLE: 'false'
+      RUSTFS_ACCESS_KEY: ${S3_ACCESS_KEY:?合成試験用のアクセスキーを準備する}
+      RUSTFS_SECRET_KEY: ${S3_SECRET_KEY:?合成試験用の秘密鍵を準備する}
+    volumes:
+      - rustfs-data:/data
+    healthcheck:
+      test: [CMD, curl, --fail, --silent, --show-error, http://127.0.0.1:8333/health/ready]
+      interval: 5s
+      timeout: 3s
+      retries: 18
+    security_opt: [no-new-privileges:true]
+
+  lakehouse:
+    # 先に検証済みの同じコミットのイメージを指定し、ネットワーク隔離中は再取得しない。
+    image: ${RUSTFS_TEST_LAKEHOUSE_IMAGE:?同一コミットのローカル検証イメージを指定する}
+    pull_policy: never
+    environment:
+      S3_BUCKET_RAW: foundation-rustfs-raw
+      S3_BUCKET_WAREHOUSE: foundation-rustfs-warehouse
+      WAREHOUSE_NAME: foundation-rustfs
+    ports: !reset []
+    depends_on:
+      storage:
+        condition: service_healthy
+
+networks:
+  default:
+    internal: true
+
+volumes:
+  rustfs-data:

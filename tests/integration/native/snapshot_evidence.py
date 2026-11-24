@@ -1,5 +1,6 @@
 """停止点の前後でRawとGoldの内容を比較する合成環境用の観測。"""
 
+import argparse
 import json
 from hashlib import sha256
 from urllib.parse import urlsplit
@@ -15,7 +16,7 @@ def digest(value):
     return sha256(encoded.encode()).hexdigest()
 
 
-def evidence():
+def evidence(*, files_only=False):
     """値と公開世代を読み取り、復元で比較する粒度に絞って返す。"""
     core = api.core_module()
     catalog = core.catalog()
@@ -35,6 +36,16 @@ def evidence():
             actual = sha256(body.read(16 * 1024 * 1024 + 1)).hexdigest()
         assert actual == record["sha256"]
         expected[record["path"]] = actual
+    report = {
+        "file_count": len(files),
+        "raw_file_digest": digest(expected),
+        "gold_release": gold["release_snapshot_id"],
+        "gold_snapshot": gold["snapshot_id"],
+        "gold_count": gold["total_rows"],
+        "gold_digest": digest(gold["rows"]),
+    }
+    if files_only:
+        return report
     cdc = catalog.load_table("cdc_events.events").scan(
         selected_fields=("event_id", "offset", "key_json", "envelope_json"),
         limit=10,
@@ -42,12 +53,7 @@ def evidence():
     events = sorted(cdc.to_arrow().to_pylist(), key=lambda row: row["offset"])
     assert [int(item["offset"]) for item in events] == list(range(9))
     return {
-        "file_count": len(files),
-        "raw_file_digest": digest(expected),
-        "gold_release": gold["release_snapshot_id"],
-        "gold_snapshot": gold["snapshot_id"],
-        "gold_count": gold["total_rows"],
-        "gold_digest": digest(gold["rows"]),
+        **report,
         "cdc_events": len(events),
         "cdc_event_digest": digest(events),
         "cdc_release": engine.latest_release(core, catalog, "cdc_")[
@@ -57,4 +63,7 @@ def evidence():
 
 
 if __name__ == "__main__":
-    print(json.dumps(evidence(), sort_keys=True))
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--files-only", action="store_true")
+    args = parser.parse_args()
+    print(json.dumps(evidence(files_only=args.files_only), sort_keys=True))

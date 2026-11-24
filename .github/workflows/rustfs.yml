@@ -1,0 +1,74 @@
+name: RustFS・Icebergの隔離受入
+
+on:  # yamllint disable-line rule:truthy
+  push:
+    paths:
+      - compose.yaml
+      - compose.storage.rustfs.yaml
+      - native/**
+      - tests/integration/native/rustfs_storage.py
+      - tests/integration/native/snapshot_evidence.py
+      - .github/workflows/rustfs.yml
+  pull_request:
+    paths:
+      - compose.yaml
+      - compose.storage.rustfs.yaml
+      - native/**
+      - tests/integration/native/rustfs_storage.py
+      - tests/integration/native/snapshot_evidence.py
+      - .github/workflows/rustfs.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  storage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      RUSTFS_TEST_LAKEHOUSE_IMAGE: native-rustfs-ci-lakehouse
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: ネットワーク隔離前に起動イメージを用意
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          stage="$RUNNER_TEMP/rustfs"
+          python3 native/setup.py --output "$stage/site.env" --landing "$stage/landing"
+          docker compose -p native-rustfs-ci --env-file "$stage/site.env" \
+            -f compose.yaml -f compose.storage.rustfs.yaml pull \
+            storage catalog-db catalog catalog-migrate
+          docker compose -p native-rustfs-ci --env-file "$stage/site.env" build lakehouse
+      - name: 認証、条件付き書込、公開、再起動後のRawとGoldを照合
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          stage="$RUNNER_TEMP/rustfs"
+          dc=(docker compose -p native-rustfs-ci --env-file "$stage/site.env"
+            -f compose.yaml -f compose.storage.rustfs.yaml)
+          "${dc[@]}" config --quiet
+          "${dc[@]}" up -d --no-build --pull never --wait --wait-timeout 160 lakehouse
+          "${dc[@]}" exec -T lakehouse python - < tests/integration/native/rustfs_storage.py
+          "${dc[@]}" exec -T lakehouse python -m native.api verify
+          python3 scripts/generate-demo.py --output "$stage/landing" --seed 42 --orders 20 --days 7 --scenario edge
+          "${dc[@]}" exec -T lakehouse python -m native.api medallion
+          "${dc[@]}" exec -T lakehouse python - --files-only \
+            < tests/integration/native/snapshot_evidence.py > "$stage/before.json"
+          "${dc[@]}" down --timeout 30
+          test "$(docker volume ls --quiet --filter name=native-rustfs-ci_rustfs-data)" = native-rustfs-ci_rustfs-data
+          "${dc[@]}" up -d --no-build --pull never --wait --wait-timeout 160 lakehouse
+          "${dc[@]}" exec -T lakehouse python - --files-only \
+            < tests/integration/native/snapshot_evidence.py > "$stage/after.json"
+          cmp "$stage/before.json" "$stage/after.json"
+          cat "$stage/after.json"
+      - name: 試験用のDocker資源を破棄
+        if: always()
+        run: |
+          site="$RUNNER_TEMP/rustfs/site.env"
+          if test -f "$site"; then
+            docker compose -p native-rustfs-ci --env-file "$site" \
+              -f compose.yaml -f compose.storage.rustfs.yaml down --volumes --remove-orphans
+          fi

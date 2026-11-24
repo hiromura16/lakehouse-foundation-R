@@ -23,9 +23,57 @@
 | `timeseries` | GreptimeDB 1.3.0 | 3測定点の時系列SQLと最新値 |
 | `distributed` | Ballista 55.0.0のScheduler・Executor | 別プロセスに登録し、共通の集計値を取得 |
 | `accelerator` | Spark 4.1.3とComet 1.2.0 | 合計5,050とCometの物理実行プランを確認 |
+| S3比較 | RustFS 1.0.6、Apache-2.0 | 隔離したLakekeeperからIcebergを公開し、認証・条件付き書込・再起動を確認 |
 | 単体CLI | DataFusion 55.0.0 | 8入力の現在値、CSV・JSONLからParquetへの変換 |
 
 配備するVMはプロファイルを一つずつ試せる空き容量を用意してください。接続先はループバックか専用ネットワークに限定します。CometはSparkとJVMを含むため、明示的に選んで動かす比較ジョブです。
+
+## RustFSを別のS3保存先として試す
+
+RustFS 1.0.6はRust製のS3互換ストレージです。専用ネットワークからS3を提供し、
+APIやConsoleをホストへ公開しません。標準構成と同じLakekeeper・PyIceberg・DuckDB
+を使い、新規のwarehouseと名前付きvolumeへ合成入力だけを保存します。
+Linux amd64、Compose 2.24.4以上を使用します。
+[公式Docker手順](https://docs.rustfs.com/en/installation/container/docker)
+· [Composeファイルの上書き仕様](https://docs.docker.com/reference/compose-file/merge/#replace-value)
+
+次のコマンドはcheckout直下から実行します。接続のある間にイメージを用意し、
+内部専用ネットワークに切り替えてから起動します。必ずここで作る新しい
+project名と設定を使ってください。既存のwarehouseへの上書きや移行には使用しません。
+
+**Bash / Zsh共通**
+
+```bash
+stage=$(mktemp -d)
+project="foundation-r-rustfs-$(openssl rand -hex 4)"
+export RUSTFS_TEST_LAKEHOUSE_IMAGE="$project-lakehouse"
+site="$stage/site.env"
+landing="$stage/landing"
+python3 native/setup.py --output "$site" --landing "$landing"
+docker compose --env-file "$site" -p "$project" build lakehouse
+docker compose --env-file "$site" -p "$project" \
+  -f compose.yaml -f compose.storage.rustfs.yaml \
+  pull storage catalog catalog-migrate catalog-db
+docker compose --env-file "$site" -p "$project" \
+  -f compose.yaml -f compose.storage.rustfs.yaml \
+  up -d --no-build --pull never --wait lakehouse
+docker compose --env-file "$site" -p "$project" \
+  -f compose.yaml -f compose.storage.rustfs.yaml \
+  exec -T lakehouse python - < tests/integration/native/rustfs_storage.py
+docker compose --env-file "$site" -p "$project" \
+  -f compose.yaml -f compose.storage.rustfs.yaml \
+  exec -T lakehouse python -m native.api verify
+```
+
+S3の匿名・誤認証は403、原本の条件付き書込の条件不一致は412。正常な条件のみ
+更新を許可します。合成の受入11件に加え、6業務入力から得たGold14行とRaw6件の
+SHA-256、Iceberg公開世代は、同じvolumeで再起動後も一致しました。
+単一ノード、単一ディスクの試験です。企業利用ではIAM・TLS、監視、
+複数ノードの障害復旧、データ移行を別の環境で確認します。
+[公式S3互換性の範囲](https://docs.rustfs.com/en/reference/s3-compatibility)
+
+検証を終了するだけなら同じファイル指定で `docker compose down` を実行します。
+`down --volumes` は試験データも削除するため、証跡と保管の要否を確認してから実行します。
 
 ## SailとDataFusionで同じ入力を照合する
 

@@ -43,6 +43,7 @@
 | InfluxDB 3 Core | Rust | MITまたはApache-2.0。 [公式ソース](https://github.com/influxdata/influxdb#license) |
 | InfluxDB 3 Explorer 1.11.2 | タイムシリーズのWeb画面 | 採用したDockerイメージの `/app-root/license.txt` に専用Software License Agreementを同梱。利用前に組織で契約条件を確認します。 [Explorerの公式配布手順](https://docs.influxdata.com/influxdb3/explorer/install/) |
 | n8n Community | Node.js、TypeScript | ソース公開のSustainable Use License。自組織内の利用、提供や再配布の条件を公式文書で確認します。 [ライセンス本文](https://github.com/n8n-io/n8n/blob/master/LICENSE.md) · [用途別案内](https://docs.n8n.io/n8n-community-license) |
+| RustFS 1.0.6 | Rust | Apache-2.0。 [公式リリース](https://github.com/rustfs/rustfs/releases/tag/1.0.6) · [S3互換性](https://docs.rustfs.com/en/reference/s3-compatibility) |
 | Nisshi 0.8.2 | Rust | Apache-2.0。 [公式リリース](https://github.com/nisshi-io/solace-nisshi/releases/tag/v0.8.2) · [Kafka互換性](https://docs.nisshi.io/docs/compatibility) |
 | Redpanda 26.3.1 Community | C++ | 提供元の専用ライセンス。26.3.1以降のブローカー本体はソース非公開で、無償枠は組織全体で合計50コアです。同梱の隔離試験は固定版イメージを各環境で取得します。 [変更の公式発表](https://www.redpanda.com/blog/r2-the-engine-of-engines) · [契約本文](https://docs.redpanda.com/streaming/current/get-started/licensing/redpanda-community-edition-license/) |
 
