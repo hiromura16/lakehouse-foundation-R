@@ -104,6 +104,63 @@ Dockerをsudoで利用する場合は採取コマンドに `--sudo` を付けま
 [Docker公式のボリューム保全](https://docs.docker.com/engine/storage/volumes/#back-up-restore-or-migrate-data-volumes)
 · [PostgreSQL 18のpg_controldata](https://www.postgresql.org/docs/18/app-pgcontroldata.html)
 
+### 標準のDBと保存先を新しいボリュームへ復元する
+
+`restore` は標準構成の `catalog-db` とSeaweedFSの `storage` を
+空のローカルDockerボリュームへ展開します。対応する台帳は、固定イメージ
+3種とCPUを含む形式2です。形式1の台帳やRustFSを使った採取物も
+`verify` で照合できます。代替保存先、CDCのSQLite、監視データ、
+ツール群、landingと非公開設定は個別手順で復元します。
+
+1. 復元専用VMまたは外部の投入経路から切り離したDockerホストに、
+   採取時のコミットと同版の設定を用意します。DBパスワード、カタログ暗号鍵、
+   S3資格情報は、採取時に保全した非公開設定を引き継ぎます。
+   `LANDING_DIR` は空の試験用ディレクトリを指定します。
+2. 採取側と同じCPUの固定イメージをキャッシュに揃えます。標準
+   `compose.yaml` の `catalog-db`、`catalog`、`storage` と、
+   `native/Dockerfile` の先頭に指定されたPythonベースイメージを
+   事前に取得します。復元処理はネットワークを使わず、
+   足りないイメージを自動取得しません。
+3. 暗号化保管先から原本を読み取り専用で参照できるようにし、保存台帳とは
+   別経路で保全した `manifest_sha256` を用意します。
+   `recovery` にはアプリ・ネットワーク・ボリュームのない別のApp Nameを使い、
+   `restore_output` には所有者限定の親にある未作成のパスを使います。
+
+**Bash / Zsh共通**
+
+```bash
+python3 scripts/backup-native.py restore --project "$recovery" \
+  --output "$restore_output" --expected-manifest-sha256 "$manifest_sha256" "$backup"
+
+restore_compose=(
+  docker compose --env-file "$restore_site" -p "$recovery"
+  -f compose.yaml -f "$restore_output/compose.restore.yaml"
+)
+"${restore_compose[@]}" config --quiet
+"${restore_compose[@]}" up -d --no-deps --no-build --pull never \
+  --wait --wait-timeout 160 catalog-db storage
+"${restore_compose[@]}" up -d --no-deps --no-build --pull never \
+  --wait --wait-timeout 160 catalog
+```
+
+復元先のDBが正常停止していることを確認し、2つの展開が完了した場合に
+`compose.restore.yaml` が生成されます。`plan.json` のみが残る場合は
+部分復元です。作成済みの外部ボリュームは保持されます。失敗原因と
+`plan.json` の名前、ボリュームの `foundation-r.restore-project` ラベル、
+他コンテナから参照されていないことを確認してから処置を決めます。
+`docker compose down --volumes` で外部ボリュームは削除されません。
+同じ出力先へ上書きせず、再試行には空の別App Nameと新しい出力先を使います。
+標準の通常ファイルとディレクトリのみが対象で、リンク、特殊ファイル、
+別マウントのPostgreSQL表領域を使う保全物は事前検査で中止します。
+
+公開再開やDokployへの接続は、採取側で記録した公開世代、2つの業務Gold表の
+行数とハッシュ、warehouse ID、Icebergの表IDとメタデータ位置、
+Rawの個別SHA-256を
+隔離側の読み取り結果と照合した後に行います。カタログ移行や再投入を
+照合の前に実行すると、物理復元で元の版を読めたか判断できなくなります。
+[合成データによる隔離復元のCI](../../.github/workflows/recovery.yml)
+· [Dockerの外部ボリューム](https://docs.docker.com/reference/compose-file/volumes/#external)
+
 ### 停止時点をそろえる復旧リハーサル
 
 採用したGitコミット、Composeの追加ファイル、プロファイル、Dokployの

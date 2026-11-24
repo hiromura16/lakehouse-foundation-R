@@ -2,8 +2,10 @@
 
 import argparse
 import json
+import os
 from hashlib import sha256
 from urllib.parse import urlsplit
+from uuid import UUID
 
 from native import api, engine
 
@@ -16,7 +18,7 @@ def digest(value):
     return sha256(encoded.encode()).hexdigest()
 
 
-def evidence(*, files_only=False):
+def evidence(*, files_only=False, physical=False):
     """値と公開世代を読み取り、復元で比較する粒度に絞って返す。"""
     core = api.core_module()
     catalog = core.catalog()
@@ -44,6 +46,38 @@ def evidence(*, files_only=False):
         "gold_count": gold["total_rows"],
         "gold_digest": digest(gold["rows"]),
     }
+    if physical:
+        warehouses = core.request(
+            "GET", core.CATALOG_ORIGIN + "/management/v1/warehouse"
+        )
+        (warehouse,) = [
+            item
+            for item in warehouses["warehouses"]
+            if item.get("name", item.get("warehouse-name"))
+            == os.environ["WAREHOUSE_NAME"]
+        ]
+        warehouse_id = UUID(warehouse.get("warehouse-id") or warehouse["id"])
+        # 実ファイルが同じ場所に残り、既存の公開世代から読めることを比較する。
+        products = {}
+        for name in ("factory_daily_production", "sales_fulfillment"):
+            product = engine.gold_rows(core, name, 200)
+            assert product["total_rows"] > 0 and not product["truncated"]
+            assert (
+                product["release_snapshot_id"] == gold["release_snapshot_id"]
+            )
+            table = catalog.load_table(product["table"])
+            products[name] = {
+                "table_uuid": str(table.metadata.table_uuid),
+                "metadata_location": table.metadata_location,
+                "snapshot": product["snapshot_id"],
+                "rows": product["total_rows"],
+                "digest": digest(product["rows"]),
+            }
+        return {
+            **report,
+            "warehouse_id": str(warehouse_id),
+            "products": products,
+        }
     if files_only:
         return report
     cdc = catalog.load_table("cdc_events.events").scan(
@@ -65,5 +99,7 @@ def evidence(*, files_only=False):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--files-only", action="store_true")
+    parser.add_argument("--physical", action="store_true")
     args = parser.parse_args()
-    print(json.dumps(evidence(files_only=args.files_only), sort_keys=True))
+    report = evidence(files_only=args.files_only, physical=args.physical)
+    print(json.dumps(report, sort_keys=True))

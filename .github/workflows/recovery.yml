@@ -1,0 +1,43 @@
+name: 標準の物理バックアップと隔離復元
+
+on:  # yamllint disable-line rule:truthy
+  push:
+    paths:
+      - compose.yaml
+      - native/**
+      - medallion/**
+      - contracts/**
+      - scripts/backup-native.py
+      - scripts/native_restore_tar.py
+      - scripts/generate-demo.py
+      - tests/integration/native/snapshot_evidence.py
+      - tests/integration/recovery/**
+      - .github/workflows/recovery.yml
+  pull_request:
+    paths:
+      - compose.yaml
+      - native/**
+      - medallion/**
+      - contracts/**
+      - scripts/backup-native.py
+      - scripts/native_restore_tar.py
+      - scripts/generate-demo.py
+      - tests/integration/native/snapshot_evidence.py
+      - tests/integration/recovery/**
+      - .github/workflows/recovery.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: 停止点を保全して新しいDB・S3へ復元
+        shell: bash
+        run: bash tests/integration/recovery/run.sh

@@ -1,0 +1,8 @@
+# CIの両プロジェクトでホスト公開を止め、同じアプリイメージを使う。
+services:
+  lakehouse:
+    image: ${RECOVERY_APP_IMAGE:?CIで作成したイメージを指定します}
+    ports: !reset []
+networks:
+  api_origin:
+    internal: true
