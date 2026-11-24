@@ -6,6 +6,7 @@ import ssl
 import subprocess
 import tempfile
 import unittest
+from hashlib import sha256
 from pathlib import Path
 from unittest import mock
 
@@ -98,6 +99,29 @@ class CertificateInstallTests(unittest.TestCase):
         self.assertEqual(len(list(self.cert_dir.glob("*.crt"))), 1)
         self.assertIn(self.certificates[0].strip(), self.bundle.read_bytes())
         self.assertIn(self.certificates[1].strip(), self.bundle.read_bytes())
+
+    def test_pinned_ca_must_match_before_changing_trust(self):
+        with mock.patch.object(INSTALLER.shutil, "which", return_value=None):
+            expected = sha256(self.certificates[1]).hexdigest()
+            arguments = {
+                "bundle": self.bundle,
+                "cert_dir": self.cert_dir,
+                "expected_sha256": expected,
+                "java": False,
+            }
+            self.source.unlink()
+            with self.assertRaises(ValueError):
+                INSTALLER.install(self.source, **arguments)
+            self.source.write_bytes(self.certificates[0])
+            with self.assertRaises(ValueError):
+                INSTALLER.install(self.source, **arguments)
+            self.assertEqual(self.bundle.read_bytes(), self.certificates[0])
+            self.assertFalse(self.cert_dir.exists())
+            self.source.write_bytes(self.certificates[1])
+            self.assertEqual(
+                INSTALLER.install(self.source, **arguments)["status"],
+                "installed",
+            )
 
     def test_os_update_cannot_drop_roots_from_the_original_bundle(self):
         def rebuild(*_, **__):

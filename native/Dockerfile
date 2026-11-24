@@ -12,8 +12,11 @@ ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt \
     PYTHONUNBUFFERED=1
 COPY --chmod=644 infra/proxy/uv_sync.py /tmp/uv_sync.py
 COPY infra/proxy/install_ca.py /tmp/install_ca.py
+# 公開CAのハッシュをビルドキャッシュの入力とする。認証値は含めない。
+ARG CORPORATE_CA_SHA256
 RUN --mount=type=secret,id=corporate-ca,required=false \
-    python /tmp/install_ca.py --ca-file /run/secrets/corporate-ca
+    python /tmp/install_ca.py --ca-file /run/secrets/corporate-ca \
+        --expected-sha256 "${CORPORATE_CA_SHA256}"
 
 WORKDIR /opt/lakehouse
 COPY native/requirements.lock ./requirements.lock

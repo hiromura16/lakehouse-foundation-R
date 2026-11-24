@@ -41,7 +41,7 @@ flowchart TB
 | cloneする端末のGit | OSの信頼CA、組織指定の `HTTPS_PROXY` またはGit設定 | `git ls-remote` |
 | DokployのGit取得プロセス | Dokployの実行環境でGitHubに到達する経路とCA。GitHub Appを選ぶ場合は対象へのアクセス許可 | 初回Deployログのcheckout |
 | Docker Engineのイメージ取得 | デーモンのプロキシとCA、レジストリへのアクセス | `docker compose pull --ignore-buildable` と `docker compose build` |
-| BuildKit内のPython依存取得 | Composeの標準proxy引数と `CORPORATE_CA_FILE` | `docker compose build lakehouse` |
+| BuildKit内のPython依存取得 | Composeの標準proxy引数と `CORPORATE_CA_FILE` / `CORPORATE_CA_SHA256` | `docker compose build lakehouse` |
 | 稼働中のサービス | Composeの内部DNS。Kafkaを使う場合は直接到達するTCPとTLS | `ps`、監視、受入試験 |
 
 公式の [Docker Engineのプロキシ](https://docs.docker.com/engine/daemon/proxy/) と [DockerとOSの信頼CA](https://docs.docker.com/engine/network/ca-certs/) に従って、管理者がサーバー側を設定します。ホストでDockerの再起動が必要な変更は既存サービスの保守時間に適用します。独立したBuildKitを使う場合は、そのビルダー自身のレジストリ到達性と信頼CAも確認します。DokployのEnvironmentでの設定は、ホストのDockerデーモンの設定とは別です。
@@ -53,9 +53,18 @@ HTTP_PROXY=http://proxy.example.invalid:3128
 HTTPS_PROXY=http://proxy.example.invalid:3128
 NO_PROXY=corp.example.invalid
 CORPORATE_CA_FILE=/absolute/path/to/company-public-chain.pem
+CORPORATE_CA_SHA256=PEM全体の64桁のSHA-256
 ```
 
-値は会社指定のものへ置き換えます。CAファイルには公開証明書チェーンをPEM形式で置きます。ビルドは既存の公開ルートを保持したうえで社内ルートを追加します。CAの内容を変更したら `docker compose build --no-cache lakehouse` で依存層を再作成し、再配置します。内部service名は `NO_PROXY` に自動追加します。Composeのビルド引数として渡した資格情報は標準の実行コンテナには入りません。Docker CLI全体に `proxies` を設定すると実行コンテナにも注入されるため、認証付きプロキシは対象サービスのビルド設定で管理します。
+値は会社指定のものへ置き換えます。CAファイルには公開証明書チェーンをPEM形式で置きます。ビルドは既存の公開ルートを保持したうえで社内ルートを追加します。CAの内容を変更したら対応する `CORPORATE_CA_SHA256` も更新し、再ビルドと再配置を実行します。ハッシュが変わると対象イメージの信頼設定と後続の依存取得をやり直します。ハッシュを設定していない既存環境では、`docker compose build --no-cache` で対象のPythonサービスを再ビルドしてから再配置してください。内部service名は `NO_PROXY` に自動追加します。Composeのビルド引数として渡した資格情報は標準の実行コンテナには入りません。Docker CLI全体に `proxies` を設定すると実行コンテナにも注入されるため、認証付きプロキシは対象サービスのビルド設定で管理します。
+
+会社CAを使う場合は `sha256sum` の出力の先頭列を `CORPORATE_CA_SHA256` に設定します。`CORPORATE_CA_FILE` と同じPEMファイルを指定してください。[BuildKitのキャッシュとsecret](https://docs.docker.com/build/cache/invalidation/#build-secrets)
+
+**Bash / Zsh共通**
+
+```bash
+sha256sum /absolute/path/to/company-public-chain.pem
+```
 
 会社VMでの最初の疎通確認です。GitのTLS検証は有効にし、証明書エラーの場合は会社指定のCAを管理者に確認します。成功すると `refs/heads/main` とコミットIDが表示されます。
 

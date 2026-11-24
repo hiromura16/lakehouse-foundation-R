@@ -102,6 +102,7 @@ services:
         https_proxy: ${https_proxy:-${HTTPS_PROXY:-}}
         NO_PROXY: *no-proxy
         no_proxy: *no-proxy
+        CORPORATE_CA_SHA256: ${CORPORATE_CA_SHA256:-}
       secrets: [corporate-ca, python-index-config, python-index-auth]
     restart: unless-stopped
     logging: *logging

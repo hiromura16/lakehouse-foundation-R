@@ -2,9 +2,9 @@ name: Cloudflare連携の認証境界
 
 on:  # yamllint disable-line rule:truthy
   push:
-    paths: ['compose.cloudflare.yaml', 'native/edge/**', 'tests/integration/edge/**', '.github/workflows/edge.yml']
+    paths: ['compose.yaml', 'compose.cloudflare.yaml', 'native/edge/**', 'tests/integration/edge/**', '.github/workflows/edge.yml']
   pull_request:
-    paths: ['compose.cloudflare.yaml', 'native/edge/**', 'tests/integration/edge/**', '.github/workflows/edge.yml']
+    paths: ['compose.yaml', 'compose.cloudflare.yaml', 'native/edge/**', 'tests/integration/edge/**', '.github/workflows/edge.yml']
   workflow_dispatch:
 
 permissions:
@@ -13,7 +13,7 @@ permissions:
 jobs:
   access-policy:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 18
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -42,6 +42,12 @@ jobs:
             CF_EDGE_READER_FILE="$RUNNER_TEMP/synthetic-reader" \
             docker compose --env-file "$RUNNER_TEMP/edge-site.env" \
               -f compose.yaml -f compose.cloudflare.yaml config --quiet
+
+      - name: 実Icebergと合成TLSで、世代固定・鍵取得停止・復旧を検査
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash tests/integration/edge/run_live.sh "$RUNNER_TEMP/edge-check/bin/python"
 
       - name: R2成果物の承認、再送、確定順序を検査
         shell: bash

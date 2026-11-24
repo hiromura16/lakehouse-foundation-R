@@ -5,6 +5,14 @@ services:
     build:
       context: .
       dockerfile: native/edge/Dockerfile
+      args:
+        HTTP_PROXY: ${HTTP_PROXY:-${http_proxy:-}}
+        HTTPS_PROXY: ${HTTPS_PROXY:-${https_proxy:-}}
+        http_proxy: ${http_proxy:-${HTTP_PROXY:-}}
+        https_proxy: ${https_proxy:-${HTTPS_PROXY:-}}
+        NO_PROXY: ${NO_PROXY:-${no_proxy:-}}
+        no_proxy: ${no_proxy:-${NO_PROXY:-}}
+        CORPORATE_CA_SHA256: ${CORPORATE_CA_SHA256:-}
       secrets: [corporate-ca, python-index-config, python-index-auth]
     user: "${LANDING_UID}:${LANDING_GID}"
     networks: [default, edge]

@@ -115,15 +115,20 @@ def install_java(entries, files):
     return count
 
 
-def install(ca_file, *, cert_dir=CERT_DIR, bundle=BUNDLE, java=True):
+def install(
+    ca_file, *, cert_dir=CERT_DIR, bundle=BUNDLE, java=True, expected_sha256=""
+):
     """OSと任意のJREの信頼先を保ち、上限付きの公開証明書チェーンを導入する。
 
     返すのは状態と証明書数だけ。入力が無いか空の場合は処理を省く。
+    SHA-256が指定された場合は、読み取ったPEM全体と照合してから導入する。
     導入には、選択した証明書ディレクトリとOSのバンドルへの書込権限がいる。
     Javaにも追加する場合は、既存のJava信頼ストアへの書込権限も必要になる。
     """
     source = Path(ca_file)
     if not source.exists() or source == Path("/dev/null"):
+        if expected_sha256:
+            raise ValueError("Pinned public CA file is unavailable.")
         return {"status": "skipped", "certificates": 0, "java_certificates": 0}
     if (
         not source.is_file()
@@ -132,6 +137,8 @@ def install(ca_file, *, cert_dir=CERT_DIR, bundle=BUNDLE, java=True):
     ):
         raise ValueError("CA input must be a bounded regular public PEM file.")
     content = source.read_bytes()
+    if expected_sha256 and sha256(content).hexdigest() != expected_sha256:
+        raise ValueError("Public CA file does not match the expected SHA-256.")
     if not content.strip():
         return {"status": "skipped", "certificates": 0, "java_certificates": 0}
     entries = certificates(content, strict=True)
@@ -184,9 +191,12 @@ def main():
             "未存在/空ならskip。OS/JREの信頼先を更新するため書込権限が必要"
         ),
     )
+    parser.add_argument(
+        "--expected-sha256", default="", help="PEM全体の公開SHA-256。"
+    )
     args = parser.parse_args()
     try:
-        result = install(args.ca_file)
+        result = install(args.ca_file, expected_sha256=args.expected_sha256)
     except (OSError, ValueError, ssl.SSLError, UnicodeError):
         raise SystemExit(
             "CA setup failed; check public PEM/base trust."

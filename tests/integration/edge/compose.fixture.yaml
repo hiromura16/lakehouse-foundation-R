@@ -1,0 +1,35 @@
+# Cloudflare APIへ接続せず、固定のテストチームから鍵を受け取る。
+services:
+  edge-gold:
+    ports:
+      - target: 8080
+        host_ip: 127.0.0.1
+    depends_on:
+      fixture-jwks:
+        condition: service_healthy
+
+  fixture-jwks:
+    image: docker.io/library/python:3.14-slim@sha256:ac25e5afbfdb4a94ff99cc24b0345719210133144481480bcba6085efa36a341
+    command: [python, /fixture/jwks_fixture.py]
+    user: "${LANDING_UID}:${LANDING_GID}"
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    read_only: true
+    mem_limit: 96m
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: '0'
+    volumes:
+      - type: bind
+        source: ${CF_JWKS_FIXTURE_DIR:?合成キーの専用ディレクトリが必要です}
+        target: /fixture
+        read_only: true
+        bind:
+          create_host_path: false
+    networks:
+      edge:
+        aliases: [fixture-team.cloudflareaccess.com]
+    healthcheck:
+      test: [CMD, python, -c, "import socket; socket.create_connection(('127.0.0.1', 443), 2).close()"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
