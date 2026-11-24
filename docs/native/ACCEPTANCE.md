@@ -21,6 +21,7 @@
 | 段階 | 操作 | 合格条件 | 失敗したときに見る場所 |
 | --- | --- | --- | --- |
 | Git取得 | 会社VMから公開HTTPS URLの `git ls-remote` | `refs/heads/main` とコミットIDが返る | Gitのproxy、許可リスト、OSの信頼CA |
+| 配備前診断 | 実際のApp Nameと配備ファイルで `scripts/preflight.py` を実行 | Compose、Engine、bind元、経路、IPAM、IPv4枠、公開ポートの診断が終了0。WARN・SKIPの確認事項を記録 | [診断結果の読み方](COMPANY.md#初回deployの前に配備先vmを診断する) |
 | 配置 | DokployのDeployとDeploymentsログ、対象サービスの状態を照合 | 常駐9サービスがhealthy、`catalog-migrate` 終了0 | Docker daemonとBuildKitの通信、Composeログ |
 | 業務契約 | `python3 native/check_contracts.py`、Dokployのコンテナ端末で `verify` | 契約20ファイルとデータ製品の定義が一致。画像原本・型検査・集計など11項目。初回7ファイル、再実行0 | 検査名、固定の期待値、カタログとS3 |
 | 業務処理 | 合成ファイルを生成し `medallion`、Gold参照 | 初回6ファイル、SQL14本。日次生産は2工場×7日。上限5で全14行中5行を返す | 完了印、ファイル名・列、Gold公開時刻 |
@@ -41,6 +42,10 @@
 | ファイル形式の誤り | 業務表に未定義のヘッダーを持つCSVに完了印を付けて取込 | 照合済み原本は保存する。ジョブはエラーになり、完了台帳と直前のGold公開世代を維持 |
 | 設備障害と業務更新 | 設備の完了印を破損させ、正しい製品CSVを同時投入。完了印を修復して再実行 | 新しい業務世代を公開し、設備には前回のスナップショットを表示。部分成功と設備の更新保留を記録し、旧世代と復旧後を引き続き読める |
 | 任意の閲覧構成 | 認証なしと認証付きで3画面に接続し、Lakekeeperへ更新要求 | 未認証は401、認証付き閲覧は200、更新要求は403。9対象の疎通値は1 |
+| 読取の混雑 | Goldの2枠を使用中に別経路へ同時に参照 | 追加要求は503と `Retry-After`、読取後に枠が戻る |
+| 公開世代の保存先 | 終了済みの合成世代から参照するS3オブジェクトを照合 | 欠落と異なる長さを検出し、原状復帰後は同じ台帳に一致 |
+| ワーカーの停止 | 受付済みの要求を保持したままSIGTERM | 新規接続を閉じ、受付済みの応答を最後まで返して終了0 |
+| 大容量原本 | 既定の256 MiBと、上限を変更した257 MiBを隔離保全 | 条件付き作成、SHA-256とサイズ、再起動後の台帳が一致。[2 GiBの実測](EVALUATION.md#2-gibの検査原本を両s3保存先で照合する) |
 | 外部Kafka CDC | 隔離brokerに新旧更新、遅延snapshot、DELETE、tombstoneを発行し、consumerを再起動 | Raw 9件、offset 0〜8で欠落・重複0。旧版が勝たず、削除後の古い追加は復活せず、再開後の新しい追加を公開 |
 
 [標準Composeの受入コード](../../tests/integration/native/acceptance.py) · [CDCの受入コード](../../tests/integration/native/cdc_acceptance.py) · [業務集計の期待値](../../medallion/expected-demo.json) · [実行結果の一覧](https://github.com/hiromura16/lakehouse-foundation-R/actions)
