@@ -21,7 +21,7 @@
 | オンプレS3の交換可能性 | RustFSで認証・条件付き書込・RawとGoldの再起動。SeaweedFS・RustFSで257 MiBのCI、2 GiBの原本・再起動・再送を照合 | 2 GiBでの配置先の帯域・保持・障害時回収、冗長化、既存オブジェクトとカタログの移行 |
 | Silverの再構築 | 標準DuckDBの業務処理。Sail・DataFusionで8件の共通SQLを照合。DataFusionの別経路で同じBronze 6表から派生14表の全行・型・IcebergフィールドIDを照合 | レガシー文字列の変換差を解消し、実規模でファイル数とRSSを比較 |
 | Kafkaから現在値を構築 | 標準CDCの訂正・削除・再開、承認済み複数区画の隔離復元。RisingWaveの別構成でIceberg V2への追記、MoRとPK-indexによる更新・削除、読取互換性とカタログ断復旧、設備原本の2区画を照合 | 会社側のDebezium・Kafka認証、長期保持、RisingWave採用時のライセンス・権限・並行書込と応答消失 |
-| 設備時系列の調査 | 標準JSONLのIceberg最新値・1分窓。隔離経路でMQTTの再送と10,001点の照合、OPC UAの署名・暗号化と品質、Modbus TCP・仮想RTUの読取・再接続 | 実機の証明書・物理シリアル、Modbusから時系列DBへの保存、設備JSONLへの変換、保持・断電・実負荷 |
+| 設備時系列の調査 | 標準JSONLのIceberg最新値・1分窓。隔離経路でMQTTの10,001点・再送、OPC UAの署名・暗号化と品質、Modbus TCP・仮想RTUの再接続。InfluxDBとGreptimeDBで共通5,760点を照合し、別ボリュームへ復元 | 実機の証明書・物理シリアル、Modbusから時系列DBへの保存、設備JSONLへの変換、長期保持・断電・実負荷 |
 | ローカル変換 | DataFusionのCSV・JSONLとParquet変換、DuckDBとの1万・10万・100万行比較 | 企業入力のファイルサイズ、型、ピークメモリを計測 |
 | 分散SQL | Ballista SchedulerとExecutorの個別起動、分散SQLの合計 | 複数ホスト、停止時の再試行、単一ノードを超える負荷 |
 | Sparkの比較 | Cometを有効にしたSparkのParquet集計と物理プラン | 業務SQLの互換範囲、非対応演算、JVMを含む運用コストの計測 |

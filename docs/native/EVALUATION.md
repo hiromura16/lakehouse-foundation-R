@@ -202,6 +202,100 @@ python3 -m native.evaluation.greptime
 
 合成3点で平均23.5、最新24.5を返します。InfluxDB側は [運用ツールの手順](TOOLS.md) で同じ測定値を確認できます。保持・再送・破損時復旧と負荷の比較は専用の連続試験で測ります。[GreptimeDBのスタンドアロン構成](https://docs.greptime.com/getting-started/installation/greptimedb-standalone/)
 
+## 同じ24時間の設備データを2種類の時系列DBで比較する
+
+InfluxDB 3 Core 3.12.3とGreptimeDB 1.3.0へ、2設備の1分間隔の枠に
+各2点、計5,760点の同じLine Protocolを送ります。2026年1月1日のUTC
+24時間を固定し、範囲の終端は含めません。1分平均と件数の2,880行、
+設備ごとの最新35.25・45.25、同じ入力の再送後も同じ結果に
+なることを、Pythonで作った期待値と照合します。
+
+初めて試す場合は、Composeファイルがあるcheckout直下で次を実行します。
+2つの合成試験用プロジェクトを新たに作ります。ポートを他のプロジェクトが
+使用中なら、`influx_port` と `greptime_port` の値を空いている番号に変えます。
+会社の時系列DBや既存の運用ツールには書き込みません。
+
+**Bash / Zsh共通**
+
+```bash
+stage=$(mktemp -d)
+suffix=$(openssl rand -hex 4)
+site="$stage/site.env"
+tools="$stage/tools"
+influx_port=18604
+greptime_port=18603
+python3 native/setup.py --output "$site" --landing "$stage/landing"
+python3 native/tools/setup.py --directory "$tools"
+printf 'TOOLS_INFLUX_PORT=%s\nEVAL_GREPTIME_PORT=%s\n' \
+  "$influx_port" "$greptime_port" > "$stage/ports.env"
+influx=(docker compose -p "foundation-r-influx-$suffix" --env-file "$site"
+  --env-file "$tools/tools.env" --env-file "$stage/ports.env"
+  -f compose.yaml -f compose.tools.yaml)
+greptime=(docker compose -p "foundation-r-greptime-$suffix"
+  --env-file "$stage/ports.env" -f compose.evaluation.yaml --profile timeseries)
+"${influx[@]}" up -d --build --wait influxdb3
+"${greptime[@]}" up -d greptime
+curl --disable --fail --silent --noproxy '*' --retry-all-errors --retry 20 \
+  --retry-delay 1 "http://127.0.0.1:$greptime_port/health"
+compare=(python3 -m native.evaluation.timeseries_compare
+  --database "foundation_eval_ts_$suffix" --influx-port "$influx_port"
+  --greptime-port "$greptime_port" --token-file "$tools/influx-admin.json")
+"${compare[@]}"
+```
+
+結果の `points` は5,760、`minute_groups` は2,880です。入力SHA-256は
+`d85d289c1666db0bab3cc657ebb2669bf2b812e05d23f0f677b183173fa2a95c`、
+時刻をUTCエポックのミリ秒に揃えた結果SHA-256は
+`05e54197736a016a7f396fa4e8068066ced7089a06bc542e59d34751cb8cfe7f` です。
+同じボリュームを停止後に起動したあと、同じ端末で
+`"${compare[@]}" --verify-only` を実行すると書き込まずに照合します。
+
+| Bakuの合成試験 | InfluxDB 3 Core | GreptimeDB |
+| --- | ---: | ---: |
+| 初回書込のHTTP完了 | 711.17 ms | 17.84 ms |
+| 書込後、最初の1分集計 | 33.39 ms | 8.10 ms |
+| 直後の同じSQLを3回実行 | 15.51 ms | 7.49 ms |
+| 同じボリュームの再起動 | 2,880行とSHAが一致 | 2,880行とSHAが一致 |
+| 正常停止時に空の別ボリュームへコピーして起動 | 2,880行とSHAが一致 | 2,880行とSHAが一致 |
+
+同一ホストで各コンテナを1 CPU・1 GiBに制限し、DB名を変えて順に3回
+実行した中央値です。SQLはHTTPの送受信、応答の解析と時刻変換を含み、初回の
+書込直後に測ります。OSのキャッシュはそのままです。書込完了はそれぞれの
+APIが応答した時点で計測しています。障害時の永続化保証や、最大負荷と物理I/Oを
+この値から判断するには追加試験が必要です。別ボリュームの復元は両DBを正常停止し、
+同じ固定イメージとInfluxDBのノードIDで検査しました。会社の運用には、
+[InfluxDBのバックアップと復元](https://docs.influxdata.com/influxdb3/core/admin/backup-restore/) と
+[GreptimeDBの論理エクスポートとインポート](https://docs.greptime.com/reference/command-lines/utilities/data/) を参照します。
+
+試験だけを止めるときは `"${influx[@]}" down` と `"${greptime[@]}" down` を
+使います。試験結果を保存し、ボリュームが不要と確認した場合は同じコマンドに
+`--volumes` を追加します。[実行プログラム](../../native/evaluation/timeseries_compare.py)
+· [同じボリュームで再起動するCI](../../.github/workflows/evaluation.yml)
+· [InfluxDBの書込API](https://docs.influxdata.com/influxdb3/core/api/write-data/)
+· [GreptimeDBのLine Protocol](https://docs.greptime.com/user-guide/ingest-data/for-iot/influxdb-line-protocol/)
+
+### 1時間保持の読み取り差
+
+別の試験DBに2時間前と5分前の2点を送りました。InfluxDB Coreで
+DB作成時に保持を `1h` にすると、クエリは5分前の1点だけを返しました。
+GreptimeDBで表に `ttl='1h'` を設定し、2点を同じ書込・フラッシュで
+保存すると、`ADMIN compact_table` の実行直後も両方の点が読めました。
+2点を別々に書いてその都度フラッシュした試験では、古い点は読めませんでした。
+決めた時刻以降の結果が必要な業務クエリでは、SQLにも時刻条件を指定します。
+期限切れが読めなくなったことと、物理ファイルの削除時点は別の検査です。
+
+InfluxDB CoreはDBごとの保持を作成時に固定し、DBの最大数は5です。
+GreptimeDBはテーブルのTTLを指定でき、未指定の表はDBの設定を継承します。
+無期限を扱うときも両製品の書式に合わせます。InfluxDB Coreの `0d` は
+すべての点が期限切れになり、GreptimeDBの `0d` は無期限です。
+長期間の履歴を参照するSQLは、InfluxDB Coreの既定Parquetファイル数制限を
+設置先で確認し、長期の基準記録はIcebergへ保存します。
+[InfluxDBの保持](https://docs.influxdata.com/influxdb3/core/reference/internals/data-retention/)
+· [InfluxDBのDB上限](https://docs.influxdata.com/influxdb3/core/admin/databases/create/#database-limit)
+· [InfluxDBの検索範囲](https://docs.influxdata.com/influxdb3/core/reference/config-options/#query-file-limit)
+· [GreptimeDBのTTL](https://docs.greptime.com/reference/sql/create/#create-a-table-with-ttl)
+· [GreptimeDBのストレージと圧縮](https://docs.greptime.com/contributor-guide/datanode/storage-engine/)
+
 ## 分散SQLを確認する
 
 **Bash / Zsh共通**

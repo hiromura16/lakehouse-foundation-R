@@ -5,6 +5,8 @@ on:  # yamllint disable-line rule:truthy
     paths: &engine_paths
       - .github/workflows/evaluation.yml
       - compose.evaluation.yaml
+      - compose.tools.yaml
+      - native/tools/influx.Dockerfile
       - medallion/**
       - native/catalog_schema.py
       - native/engine.py
@@ -123,3 +125,60 @@ jobs:
             native/evaluation/parquet_benchmark.lock \
             native/evaluation/business_parity.lock
           "$eval_env/bin/python" -m native.evaluation.business_parity
+
+  factory-timeseries:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: 同じ24時間の設備データを時系列DB2種で照合
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          stage="$RUNNER_TEMP/factory-timeseries"
+          site="$stage/site.env"
+          tools="$stage/tools"
+          python3 native/setup.py --output "$site" --landing "$stage/landing"
+          python3 native/tools/setup.py --directory "$tools"
+          influx=(docker compose -p fr-ts-ci-influx --env-file "$site" --env-file "$tools/tools.env"
+            -f compose.yaml -f compose.tools.yaml)
+          greptime=(docker compose -p fr-ts-ci-greptime -f compose.evaluation.yaml --profile timeseries)
+          cleanup() {
+            "${influx[@]}" down --volumes
+            "${greptime[@]}" down --volumes
+          }
+          trap cleanup EXIT
+          wait_greptime() {
+            curl --disable --fail --silent --noproxy '*' --retry-all-errors \
+              --retry 20 --retry-delay 1 http://127.0.0.1:18603/health >/dev/null
+          }
+          "${influx[@]}" up -d --build --wait --wait-timeout 120 influxdb3
+          "${greptime[@]}" up -d greptime
+          wait_greptime
+          compare=(python3 -m native.evaluation.timeseries_compare
+            --database foundation_eval_ts_20260101 --influx-port 18510
+            --greptime-port 18603 --token-file "$tools/influx-admin.json")
+          "${compare[@]}" | tee "$stage/before.json"
+          "${influx[@]}" stop --timeout 25 influxdb3
+          "${greptime[@]}" stop --timeout 25 greptime
+          "${influx[@]}" up -d --no-build --pull never --wait --wait-timeout 120 influxdb3
+          "${greptime[@]}" up -d --no-build --pull never greptime
+          wait_greptime
+          "${compare[@]}" --verify-only | tee "$stage/after.json"
+          python3 - "$stage" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          stage = Path(sys.argv[1])
+          before, after = (
+              json.loads((stage / f"{phase}.json").read_text())
+              for phase in ("before", "after")
+          )
+          expected = ("points", "minute_groups", "input_sha256", "result_sha256")
+          for field in expected:
+              assert before[field] == after[field], field
+          assert before["points"] == 5760 and before["minute_groups"] == 2880
+          PY
