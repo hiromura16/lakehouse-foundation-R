@@ -78,6 +78,43 @@ git ls-remote --exit-code https://github.com/hiromura16/lakehouse-foundation-R.g
 
 Dockerが取得する固定イメージの起点は Docker Hub、Quay、GHCR です。Python依存は通常 PyPI と files.pythonhosted.org から取得します。会社ミラーへ切り替える場合は、ミラーのCAと同じ配布物のハッシュを確認してください。CIや管理者が `config --quiet` を使うのは、展開済みの設定には秘密値が含まれるためです。導入先で実測する項目は [受入手順](ACCEPTANCE.md) にあります。
 
+### 固定イメージの到達性を確認する
+
+Gitの取得後、Dokployで使うユーザーと通信経路からレジストリへ
+接続できるか調べます。例では `site` を初回手順で作成した設定ファイルへの
+絶対パスとし、標準のカタログイメージをComposeから取得します。
+
+**Bash / Zsh共通**
+
+```bash
+image=$(docker compose --env-file "$site" -f compose.yaml config --images catalog)
+docker buildx imagetools inspect "$image"
+```
+
+`Digest` がComposeの `@sha256:` と一致し、`Platform` に
+`linux/amd64` があることを確認します。標準で使うDocker HubとQuay、
+運用ツールを使う場合のGHCRなど、採用するイメージのレジストリごとに
+同じ確認をします。ビルド元の参照は [Dockerfile](../../native/Dockerfile) と
+[監視・運用ツールのDockerfile](../../native/Dockerfile.configured) にあります。
+この操作はレジストリの照会で、イメージのレイヤーをDocker Engineへ
+取り込みません。Docker EngineとBuildKitのダウンロード経路は
+配備に使う `docker compose pull` と事前ビルドで別に確認します。
+
+| 結果 | 確認する場所 |
+| --- | --- |
+| TLS証明書の検証エラー | 照会を実行したユーザーとDocker Engineの信頼済みCA |
+| HTTP 407 | 企業プロキシの認証と利用者設定 |
+| HTTP 401／403 | レジストリの認証、アクセス権、会社の許可リスト |
+| HTTP 429 | レジストリの利用制限、組織の認証やミラーの設定 |
+| `manifest unknown` や指定digestがない | 会社ミラーの同期と、同じ固定版が上流に残っているか |
+| `linux/amd64` がない | 配備VMのCPUと採用イメージの対応 |
+
+照会に失敗した場合は原因ごとに対処し、Composeの固定digestは維持します。
+報告にはレジストリ名とエラーの種類を残し、プロキシURLに含まれる認証値や
+配備先の秘密設定を添付しません。
+[Buildxのイメージ照会](https://docs.docker.com/reference/cli/docker/buildx/imagetools/inspect/)
+· [Docker Engineのプロキシ](https://docs.docker.com/engine/daemon/proxy/)
+
 ### 社内のPythonパッケージミラーを使う
 
 会社で公開PyPIの代わりに社内ミラーを使う場合は、接続先を記入した
