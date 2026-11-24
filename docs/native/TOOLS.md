@@ -85,7 +85,7 @@ python3 -m native.tools.observe verify --directory "$tools"
 python3 -m native.tools.demo --token-file "$tools/influx-admin.json"
 ```
 
-結果に `foundation_demo` と `points: 3` が表示されます。Explorerは運用者がポート18509を開き、**Add Server** でDocker内部URL `http://influxdb3:8181` と `influx-admin.json` の `token` を登録します。データベース `foundation_demo` を選び、次のSQLで値を確認します。
+結果に `foundation_demo` と `points: 3` が表示されます。Explorerを初めて開くと利用条件の確認画面が表示されます。利用条件を読み、利用状況の送信設定を会社の方針に合わせて選んでください。設定画面の **Add Server** でDocker内部URL `http://influxdb3:8181` と `influx-admin.json` の `token` を登録します。データベース `foundation_demo` を選び、次のSQLで値を確認します。
 
 ```sql
 SELECT time, device, celsius
@@ -94,4 +94,4 @@ ORDER BY time DESC
 LIMIT 3;
 ```
 
-Explorerはクエリモードで動かします。使用するInfluxDB Coreのトークンには管理権限があります。接続登録と閲覧を許可された運用者の作業環境として運用してください。会社の設備データを送る前に、保持期間・バックアップとリストア・API認証を受け入れます。[InfluxDB Explorerの接続手順](https://docs.influxdata.com/influxdb3/explorer/connect-to-server/) · [管理トークン](https://docs.influxdata.com/influxdb3/core/admin/tokens/)
+Explorerはクエリモードで動かします。使用するInfluxDB Coreのトークンには管理権限があります。接続登録と閲覧を許可された運用者の作業環境として運用してください。会社の設備データを送る前に、保持期間・バックアップとリストア・API認証を受け入れます。[InfluxDB Explorerの接続手順](https://docs.influxdata.com/influxdb3/explorer/get-started/) · [管理トークン](https://docs.influxdata.com/influxdb3/core/admin/tokens/)

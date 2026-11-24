@@ -167,7 +167,8 @@ services:
     volumes:
       - tools-explorer:/db
     restart: unless-stopped
-    mem_limit: 256m
+    # 接続UIの起動直後にも約220 MiB使用するため、SQL表示の余裕を確保する。
+    mem_limit: 512m
     logging: *tool-logging
 
   tools-portal:
