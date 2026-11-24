@@ -111,16 +111,22 @@ async def simulate():
             )
         )
 
+    async def wait_for_trigger(name):
+        """通知を照合してから試験側が次の点を進める。"""
+        flag = Path("/tmp") / name
+        while not flag.exists():
+            await asyncio.sleep(0.2)
+
     await measure(0, 22.5)
     async with server:
         print("試験用OPC UAを開始しました。")
-        # 開始指示は、ネットワークに公開しないコンテナ内の一時ファイル。
-        while not Path("/tmp/next-values").exists():
-            await asyncio.sleep(0.2)
+        # 試験指示はコンテナ内のファイルだけで受ける。
+        # 収集周期が変わっても複数の値が同じ周期に重ならないようにする。
+        await wait_for_trigger("next-bad")
         await measure(1, 99.5, ua.StatusCodes.BadNoCommunication)
-        await asyncio.sleep(1.5)
+        await wait_for_trigger("next-good")
         await measure(2, 23.5)
-        await asyncio.sleep(1.5)
+        await wait_for_trigger("last-good")
         await measure(3, 24.5)
         await asyncio.Future()
 

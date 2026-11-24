@@ -129,11 +129,30 @@ def opcua_acceptance(docker, project, run, root, http, endpoint):
         check=True,
         timeout=30,
     )
-    run("exec", "-T", "opcua-simulator", "touch", "/tmp/next-values")
-    assert until(
-        lambda: points if len(points := rows()) >= 3 else None,
-        "OPC UA品質フィルター通過後の保存",
-    ) == [
+
+    def trigger(name):
+        """観測した段階の次だけを模擬設備へ指示する。"""
+        run("exec", "-T", "opcua-simulator", "touch", f"/tmp/{name}")
+
+    def bad_quality_arrived():
+        """時系列へ書く前に、収集器まで非OK通知が届いたことを判定する。"""
+        logs = run("logs", "telegraf-opcua")
+        return "StatusBadNoCommunication" in logs.stdout + logs.stderr
+
+    def observed(size):
+        """送信順の揺れを避けるため、保存が進んだ段階を照合する。"""
+        points = rows()
+        return points if len(points) >= size else None
+
+    trigger("next-bad")
+    until(bad_quality_arrived, "通信異常の受信")
+    trigger("next-good")
+    assert until(lambda: observed(2), "復帰後の正常値の保存") == [
+        [semantic_first_ms, "opc01", "GOOD", 22.5],
+        [semantic_first_ms + 2000, "opc01", "GOOD", 23.5],
+    ]
+    trigger("last-good")
+    assert until(lambda: observed(3), "最後の正常値の保存") == [
         [semantic_first_ms + offset * 1000, "opc01", "GOOD", val]
         for offset, val in ((0, 22.5), (2, 23.5), (3, 24.5))
     ]
@@ -350,7 +369,7 @@ def verify(docker, root, *, opcua=False):
         raise
     finally:
         # 試験のたびに一意なプロジェクト名を取り、合成状態だけを取り除く。
-        run("down", "--volumes", "--remove-orphans")
+        run("down", "--volumes", "--remove-orphans", "--rmi", "local")
 
 
 def main():
