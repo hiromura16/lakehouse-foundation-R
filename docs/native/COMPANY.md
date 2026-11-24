@@ -181,11 +181,12 @@ sudoの利用権限が必要です。`--env-file`、`-f`、`--profile` は複数
 | `HOST_FILES` | `missing` は既存ファイル・ディレクトリが必須の参照元、`invalid` は通常ファイルが必要なsecret・configの種別違いです。`review` では権限やDockerの自動作成設定を確認します。 |
 | `HOST_ROUTES` / `IPAM` | `docker_overlap` は割当済み・宣言済みの標準IPAMとの重複です。`route_overlap`、外部ネットワーク、独自ドライバー、再作成の警告は、会社の経路・命名規則を管理者と確認します。 |
 | `IPV4_POOL` | 自動割当が必要な標準bridgeの数と、既存割当・直接接続経路から見た空きの概算を返します。足りない場合は既存アプリのネットワークを削除せず、管理者と割当計画を確認します。 |
+| `PORTS` | 固定のTCP・UDP公開割当を照合します。`config_conflicts` は設定内、`docker_conflicts` は別の稼働中コンテナとの確実な重複です。同じApp Name・サービス・割当での再配備は除きます。 |
 
 `FAIL` は終了1、使い方のエラーは終了2です。`WARN` や `SKIP` だけの
 場合は終了0ですが、該当項目はDeploy前に個別に確認します。`--json` は
 同じ診断コードと件数を返します。ファイルの中身、展開済みCompose設定、
-パス、CIDR、コマンドのエラー詳細は出力しません。ネットワーク・
+パス、CIDR、ポート番号、コマンドのエラー詳細は出力しません。ネットワーク・
 ボリュームの作成や削除、イメージ取得、サービスの起動は行いません。
 
 SSHやTCPのDocker context、Docker Desktop、他コンテナ内では、Dockerの
@@ -197,6 +198,18 @@ IPAMの範囲と照合します。名前解決、同時に起きる割当、IPv6
 実行ユーザーやBuildKitの読取可否は別途確認します。
 [Compose config](https://docs.docker.com/reference/cli/docker/compose/config/)
 · [Dockerの自動サブネット割当](https://docs.docker.com/engine/network/#automatic-subnet-allocation)
+
+ポート診断の `possible` は、バインド先の省略やIPv6ワイルドカードで
+割当範囲が決まらない場合です。`recreate_review` は同じApp Name内で
+割当の変更・削除が必要か確認する項目です。`unchecked` は任意割当、
+範囲指定など固定の比較ができない件数です。ローカルVMでは `ss` も
+使い、Dockerの割当に紐づけられない待受は `host_review` として確認します。
+Dockerを読めない場合の `docker_unreadable` と、`ss` を使えない場合や
+rootlessの場合の `host_unreadable` は、未確認を示す警告です。
+TCPの待受と、待受中のUDPソケットを比較します。この診断にはポートを確保する操作がないため、
+配備までの間に発生した割当は配備時に確認します。
+[Composeの公開ポート](https://docs.docker.com/reference/compose-file/workload-spec/#ports)
+· [Dockerのポート割当](https://docs.docker.com/engine/network/port-publishing/)
 
 ## 追加のCompose構成を有効にする
 

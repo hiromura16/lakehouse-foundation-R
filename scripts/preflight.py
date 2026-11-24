@@ -8,7 +8,9 @@ import stat
 import subprocess
 import sys
 from collections import defaultdict
-from ipaddress import ip_network
+from dataclasses import dataclass
+from ipaddress import IPv4Address, IPv6Address, ip_address, ip_network
+from itertools import combinations
 from pathlib import Path
 
 DEFAULT_IPV4_POOLS = (
@@ -26,6 +28,37 @@ NETWORK_FORMAT = (
     '"project":{{json (index .Labels "com.docker.compose.project")}},'
     '"key":{{json (index .Labels "com.docker.compose.network")}}}'
 )
+
+
+PORT_FORMAT = (
+    '{"project":{{json (index .Config.Labels "com.docker.compose.project")}},'
+    '"service":{{json (index .Config.Labels "com.docker.compose.service")}},'
+    '"oneoff":{{json (index .Config.Labels "com.docker.compose.oneoff")}},'
+    '"configured":{{json .HostConfig.PortBindings}},'
+    '"published":{{json .NetworkSettings.Ports}}}'
+)
+HOST_FAMILIES = {"-4": "0.0.0.0", "-6": "::"}
+
+
+@dataclass(frozen=True)
+class PublishedPort:
+    """固定するホスト側の割当と対応するコンテナ側のポート。"""
+
+    address: IPv4Address | IPv6Address | None
+    port: int
+    protocol: str
+    target: int
+
+
+@dataclass(frozen=True)
+class DockerPort:
+    """Dockerが実際に割り当てたソケットと再配備判定用の情報。"""
+
+    binding: PublishedPort
+    project: str
+    service: str
+    oneoff: bool
+    configured: frozenset[PublishedPort]
 
 
 class ReadError(Exception):
@@ -173,6 +206,237 @@ def active_networks(docker):
         except ValueError:
             raise ReadError from None
     return networks
+
+
+def port_number(value):
+    """任意割当と範囲は単一のポート番号に変換しない。"""
+    digits = str(value)
+    if digits.isascii() and digits.isdigit() and len(digits) <= 5:
+        number = int(digits)
+        if 1 <= number <= 65535:
+            return number
+    return None
+
+
+def bind_address(value):
+    """IPv4射影アドレスを、同じ割当として照合できる形式にそろえる。"""
+    if not value:
+        return None
+    address = ip_address(value.removeprefix("[").removesuffix("]"))
+    if isinstance(address, IPv6Address) and address.ipv4_mapped is not None:
+        return address.ipv4_mapped
+    return address
+
+
+def planned_ports(model):
+    """有効なComposeサービスだけから、確認できる固定割当を取得する。"""
+    bindings = defaultdict(set)
+    unchecked = 0
+    for service, spec in model["services"].items():
+        for item in spec.get("ports") or []:
+            if (
+                not isinstance(item, dict)
+                or spec.get("network_mode") == "host"
+            ):
+                unchecked += 1
+                continue
+            protocol = item.get("protocol", "tcp")
+            port = port_number(item.get("published"))
+            target = port_number(item.get("target"))
+            if (
+                protocol not in ("tcp", "udp")
+                or port is None
+                or target is None
+            ):
+                unchecked += 1
+                continue
+            try:
+                address = bind_address(item.get("host_ip"))
+            except (ValueError, AttributeError):
+                unchecked += 1
+            else:
+                bindings[(protocol, port)].add(
+                    (service, PublishedPort(address, port, protocol, target))
+                )
+    return bindings, unchecked
+
+
+def docker_bindings(mappings):
+    """Engineの公開情報から、実際にホストポートを使うTCP/UDPを拾う。"""
+    for container_spec, allocations in (mappings or {}).items():
+        target_text, _, protocol = container_spec.partition("/")
+        target = port_number(target_text)
+        if target is None or protocol not in ("tcp", "udp"):
+            continue
+        for entry in allocations or []:
+            port = port_number(entry.get("HostPort"))
+            if port is not None:
+                yield PublishedPort(
+                    bind_address(entry.get("HostIp")), port, protocol, target
+                )
+
+
+def docker_ports(docker):
+    """稼働中コンテナの情報を、秘密を含む環境や引数を取得せずに読む。"""
+    ids = read([*docker, "ps", "--quiet", "--no-trunc"]).splitlines()
+    active = defaultdict(list)
+    for start in range(0, len(ids), 100):
+        end = start + 100
+        raw = read(
+            [
+                *docker,
+                "inspect",
+                "--type",
+                "container",
+                "--format",
+                PORT_FORMAT,
+                *ids[start:end],
+            ]
+        )
+        try:
+            for line in raw.splitlines():
+                row = json.loads(line)
+                configured = frozenset(docker_bindings(row["configured"]))
+                for binding in docker_bindings(row["published"]):
+                    active[(binding.protocol, binding.port)].append(
+                        DockerPort(
+                            binding,
+                            row["project"],
+                            row["service"],
+                            str(row.get("oneoff") or "").lower() == "true",
+                            configured,
+                        )
+                    )
+        except (ValueError, TypeError, KeyError, AttributeError):
+            raise ReadError from None
+    return active
+
+
+def listener_ports():
+    """名前解決やプロセス表示を使わず、IPv4・IPv6の待受だけを照合する。"""
+    listeners = defaultdict(set)
+    for family, wildcard in HOST_FAMILIES.items():
+        raw = read(["ss", "-H", "-l", "-n", "-t", "-u", family])
+        for line in raw.splitlines():
+            fields = line.split()
+            if len(fields) < 6 or fields[0] not in ("tcp", "udp"):
+                raise ReadError
+            address, _, port_text = fields[4].rpartition(":")
+            port = port_number(port_text)
+            if port is None or not address:
+                raise ReadError
+            try:
+                ip = bind_address(wildcard if address == "*" else address)
+            except ValueError:
+                raise ReadError from None
+            listeners[(fields[0], port)].add(ip)
+    return listeners
+
+
+def overlap_kind(left, right):
+    """候補を確実な重複、実装依存の重複、別の割当に分ける。"""
+    if left is None or right is None:
+        # 省略時のバインド先はEngineやネットワークの設定で変わり得る。
+        return "possible"
+    if left.version != right.version:
+        # IPv6ワイルドカードがIPv4を受けるかはsocket設定に依存する。
+        if IPv6Address("::") in (left, right):
+            return "possible"
+        return None
+    if left == right or left.is_unspecified or right.is_unspecified:
+        return "certain"
+    return None
+
+
+def docker_collision(wanted, service, project, active):
+    """同じサービスの同一割当を除き、他の所有者との重複を分類する。"""
+    hits = set()
+    for record in active:
+        relation = overlap_kind(wanted.address, record.binding.address)
+        if relation is None:
+            continue
+        if record.project == project and not record.oneoff:
+            if record.service == service and (
+                wanted in record.configured or wanted == record.binding
+            ):
+                continue
+            # 同じApp Nameの別割当は、再作成・撤去予定に依存する。
+            hits.add("recreate_review")
+        elif relation == "certain":
+            hits.add("docker_conflicts")
+        else:
+            hits.add("possible")
+    return hits
+
+
+def ports_finding(docker, model, *, local, rootless):
+    """公開値を出さずに固定ポートの衝突または確認残りの件数を返す。"""
+    if not local:
+        return finding(
+            "PORTS", "SKIP", "配備VMのローカルEngineで公開ポートを検査します。"
+        )
+    try:
+        planned, unchecked = planned_ports(model)
+    except (AttributeError, TypeError):
+        return finding(
+            "PORTS", "WARN", "公開ポートのCompose出力形式を確認できません。"
+        )
+    counts = dict.fromkeys(
+        (
+            "config_conflicts",
+            "docker_conflicts",
+            "possible",
+            "recreate_review",
+            "host_review",
+            "docker_unreadable",
+            "host_unreadable",
+        ),
+        0,
+    )
+    if planned:
+        active, listeners = {}, {}
+        try:
+            active = docker_ports(docker)
+        except ReadError:
+            counts["docker_unreadable"] += 1
+        if rootless:
+            counts["host_unreadable"] += 1
+        else:
+            try:
+                listeners = listener_ports()
+            except ReadError:
+                counts["host_unreadable"] += 1
+        for socket, wanted in planned.items():
+            records = active.get(socket, [])
+            known_hosts = {record.binding.address for record in records}
+            for (_, left), (_, right) in combinations(wanted, 2):
+                relation = overlap_kind(left.address, right.address)
+                if relation == "certain":
+                    counts["config_conflicts"] += 1
+                elif relation == "possible":
+                    counts["possible"] += 1
+            for service, binding in wanted:
+                for hit in docker_collision(
+                    binding, service, model.get("name"), records
+                ):
+                    counts[hit] += 1
+                # Dockerがすでに報告した待受は2重に数えず、他は警告に留める。
+                for address in listeners.get(socket, set()) - known_hosts:
+                    if overlap_kind(address, binding.address):
+                        counts["host_review"] += 1
+                        break
+    if counts["config_conflicts"] or counts["docker_conflicts"]:
+        level = "FAIL"
+    else:
+        level = "WARN" if unchecked or any(counts.values()) else "PASS"
+    return finding(
+        "PORTS",
+        level,
+        "固定の公開ポートと既存の割当を確認しました。",
+        fixed=sum(len(bindings) for bindings in planned.values()),
+        unchecked=unchecked,
+        **counts,
+    )
 
 
 def routes():
@@ -500,6 +764,9 @@ def checks(args):
                 "既存ネットワークを読み取れません。Dockerの読取権限を確認してください。",
             )
         )
+        report.append(
+            ports_finding(docker, model, local=local, rootless=rootless)
+        )
         return report
     counts, reserved, required = bridge_plan(model, current, direct | other)
     status = (
@@ -533,6 +800,7 @@ def checks(args):
         )
     else:
         report.append(pool_finding(docker, reserved, direct, required))
+    report.append(ports_finding(docker, model, local=local, rootless=rootless))
     return report
 
 
