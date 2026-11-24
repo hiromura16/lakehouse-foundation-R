@@ -94,6 +94,14 @@ docker compose -p "$project" --env-file "$site" -f compose.yaml -f compose.gui.y
 
 Lakekeeperには `LAKEHOUSE_CATALOG_URL` と同じホスト名・ポートから接続します。配置設定でポートを変更した場合は、ブラウザー向けURLも併せて更新します。Streamlitからは内部APIへ読取トークンだけを渡します。Lakekeeper UIがPOSTで要求するAPI統計は読取操作なので、ゲートウェイで該当パスだけ中継します。[Lakekeeper管理APIの仕様](https://docs.lakekeeper.io/docs/latest/api/management/)。S3、PostgreSQL、Blackboxの接続情報は [稼働監視](MONITORING.md) とCompose定義で管理します。
 
+配布版Lakekeeper 0.15.1では、追加Composeでブラウザーのアンケートを
+無効にします。カタログの閲覧ゲートは `connect-src 'self'` を返し、
+テーブル一覧や統計の通信先を同じ公開元に制限します。更新通知の取得は
+この入口の外部通信許可に含めません。カタログのIPが変わる更新後は、
+`ops-proxy` を再起動して上流の名前を解決し直します。
+[Lakekeeper 0.15.1の設定実装](https://github.com/lakekeeper/lakekeeper/blob/v0.15.1/crates/lakekeeper-bin/src/ui.rs)
+· [ブラウザー通信先の指定](https://developer.mozilla.org/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/connect-src)
+
 [Streamlit公式の表表示](https://docs.streamlit.io/develop/api-reference/data/st.dataframe) · [NGINXのBasic認証](https://nginx.org/en/docs/http/ngx_http_auth_basic_module.html)
 
 

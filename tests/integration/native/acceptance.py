@@ -583,6 +583,9 @@ def check_gui(args):
         request = Request(url, headers={"Authorization": auth})
         with urlopen(request, timeout=5) as response:
             assert response.status == 200, port
+            if port == args.catalog_port:
+                policy = response.headers["Content-Security-Policy"]
+                assert policy == "connect-src 'self'", policy
 
     try:
         fetch(

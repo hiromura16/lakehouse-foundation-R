@@ -3,6 +3,8 @@ services:
   catalog:
     environment:
       LAKEKEEPER__UI__LAKEKEEPER_URL: ${LAKEHOUSE_CATALOG_URL:-http://localhost:18504}
+      # 0.15.1の配布バイナリーが読むキー。閲覧画面の外部アンケートを無効にする。
+      LAKEKEEPER__UI__ENABLE_SURVEYS: 'false'
 
   data-browser:
     networks:
