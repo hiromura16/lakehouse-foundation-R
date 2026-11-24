@@ -1,0 +1,32 @@
+# 合成エンドポイント1台で、プローブ応答と通知受信を再現する。
+services:
+  alert-fixture:
+    image: docker.io/library/python:3.14-slim@sha256:ac25e5afbfdb4a94ff99cc24b0345719210133144481480bcba6085efa36a341
+    command: [python, /fixture/endpoint.py]
+    user: "65534:65534"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 48m
+    cpus: 0.20
+    labels:
+      traefik.enable: 'false'
+    tmpfs: ["/tmp:size=1048576,mode=1777"]
+    volumes:
+      - type: bind
+        source: ${ALERTING_FIXTURE_DIR:?合成通知試験の一時領域が必要です}/endpoint.py
+        target: /fixture/endpoint.py
+        read_only: true
+        bind:
+          create_host_path: false
+    networks:
+      probes: {}
+      alert_delivery: {}
+  prometheus:
+    volumes:
+      - type: bind
+        source: ${ALERTING_FIXTURE_DIR:?合成通知試験の一時領域が必要です}/target.yml
+        target: /etc/prometheus/targets/alert-fixture.yml
+        read_only: true
+        bind:
+          create_host_path: false

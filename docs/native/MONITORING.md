@@ -130,5 +130,10 @@ amtool check-config /etc/alertmanager/alertmanager.yml
 amtool --alertmanager.url=http://127.0.0.1:9093 alert
 ```
 
+[専用のGitHub Actions](../../.github/workflows/alerting.yml) では、Prometheus、
+Blackbox、Alertmanager、合成受信サービスだけで、宛先なし、発報、HTTP 503からの再送、
+復旧通知を検査します。手元で再現する場合は使い捨てのDocker環境に移り、
+リポジトリのルートで `python3 tests/integration/alerting/acceptance.py` を実行します。
+
 [Alertmanager公式の設定](https://prometheus.io/docs/alerting/latest/configuration/) ·
 [Prometheusからの送信先設定](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#alertmanager_config)

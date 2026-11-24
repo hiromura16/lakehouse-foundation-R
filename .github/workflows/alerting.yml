@@ -1,0 +1,35 @@
+name: Alertmanagerの通知・復旧受入検査
+
+on:  # yamllint disable-line rule:truthy
+  push:
+    paths: &alerting_paths
+      - .github/workflows/alerting.yml
+      - compose.yaml
+      - compose.alerting.yaml
+      - native/Dockerfile.configured
+      - native/monitoring/**
+      - native/setup.py
+      - native/tools/targets.yml
+      - tests/integration/alerting/**
+  pull_request:
+    paths: *alerting_paths
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  notifications:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: 合成ヘルス障害とWebhookの再送・復旧を検査
+        timeout-minutes: 10
+        run: python3 tests/integration/alerting/acceptance.py
