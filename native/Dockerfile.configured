@@ -31,7 +31,7 @@ COPY --chmod=644 native/monitoring/prometheus.yml native/monitoring/alerts.yml /
 FROM prom/blackbox-exporter:v0.29.1@sha256:ea1c7aa3ef3f307cd03e85f34abb604478ccb90b567fc690da0cd9776da76b13 AS blackbox
 COPY --chmod=644 native/monitoring/blackbox.yml /etc/blackbox/blackbox.yml
 
-FROM grafana/grafana:13.3.0@sha256:6e5d306338670f381a942f1c50d3c266bf71531e5ddd9ee4fc1a133dac5ce63d AS grafana
+FROM grafana/grafana:13.3.2@sha256:81556409ba48b2b922e0adb69a2511337d8ba7578f11962eefa6149a2d815101 AS grafana
 USER 0
 COPY --chmod=644 native/monitoring/provisioning/datasources/*.yml /etc/grafana/provisioning/datasources/
 COPY --chmod=644 native/monitoring/provisioning/dashboards/*.yml /etc/grafana/provisioning/dashboards/

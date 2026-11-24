@@ -1,4 +1,4 @@
-FROM docker.io/library/python:3.14-slim@sha256:ac25e5afbfdb4a94ff99cc24b0345719210133144481480bcba6085efa36a341 AS build
+FROM docker.io/library/python:3.14-slim@sha256:22eafb370920ad8b429e0aec3fff433e0669968519f5d60469d83729c138b28b AS build
 COPY --from=ghcr.io/astral-sh/uv:0.13.7@sha256:96f40d3904aad8d0bd010539001d36c8e2188b981e1334471a90c4a1d93bb490 /uv /usr/local/bin/uv
 
 # 変換ワーカーと同じ公開CAの受け渡しを使い、依存をハッシュで検証する。
@@ -15,7 +15,10 @@ RUN --mount=type=secret,id=corporate-ca,required=false \
         --expected-sha256 "${CORPORATE_CA_SHA256}" \
     && python /tmp/uv_sync.py /tmp/requirements.lock /opt/venv
 
-FROM docker.io/library/python:3.14-slim@sha256:ac25e5afbfdb4a94ff99cc24b0345719210133144481480bcba6085efa36a341
+FROM docker.io/library/python:3.14-slim@sha256:22eafb370920ad8b429e0aec3fff433e0669968519f5d60469d83729c138b28b
+# 実行時の依存はビルドで確定済み。標準環境のpipと同梱wheelを除いておく。
+RUN --network=none python -m pip --disable-pip-version-check uninstall --yes pip \
+    && rm -rf /usr/local/lib/python3.14/ensurepip
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=build /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH" \

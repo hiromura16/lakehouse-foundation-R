@@ -35,7 +35,7 @@ CORE_IMAGES = {
 }
 PYTHON = (
     "docker.io/library/python:3.14-slim@sha256:"
-    "ac25e5afbfdb4a94ff99cc24b0345719210133144481480bcba6085efa36a341"
+    "22eafb370920ad8b429e0aec3fff433e0669968519f5d60469d83729c138b28b"
 )
 CORE_PGDATA = "/var/lib/postgresql/18/docker"
 CORE_MOUNTS = {"catalog-db": "/var/lib/postgresql", "storage": "/data"}
