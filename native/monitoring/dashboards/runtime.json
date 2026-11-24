@@ -17,13 +17,13 @@
     {
       "id": 1,
       "type": "stat",
-      "title": "現在の稼働状態",
-      "description": "Composeネットワークからの稼働確認。プローブまたは監視データの取得に失敗すると赤で表示します。",
+      "title": "サービスの状態",
+      "description": "✓ 正常、× 異常。Composeネットワークからの疎通とプローブ結果の取得を確認します。",
       "gridPos": {
         "x": 0,
         "y": 0,
         "w": 24,
-        "h": 6
+        "h": 4
       },
       "datasource": {
         "type": "prometheus",
@@ -46,11 +46,11 @@
               "type": "value",
               "options": {
                 "0": {
-                  "text": "停止・障害",
+                  "text": "×",
                   "color": "red"
                 },
                 "1": {
-                  "text": "稼働",
+                  "text": "✓",
                   "color": "green"
                 }
               }
@@ -73,9 +73,13 @@
         "overrides": []
       },
       "options": {
-        "colorMode": "background",
+        "colorMode": "value",
         "graphMode": "none",
         "textMode": "value_and_name",
+        "text": {
+          "titleSize": 14,
+          "valueSize": 28
+        },
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -86,11 +90,11 @@
     {
       "id": 2,
       "type": "state-timeline",
-      "title": "稼働履歴",
-      "description": "HTTPは正常なステータス応答、TCPはポートへの到達を確認します。",
+      "title": "ヘルスチェック履歴",
+      "description": "緑は正常、赤は異常。区間にカーソルを合わせると状態を確認できます。HTTPは応答、TCPはポートへの到達を確認します。",
       "gridPos": {
         "x": 0,
-        "y": 6,
+        "y": 4,
         "w": 24,
         "h": 10
       },
@@ -115,11 +119,11 @@
               "type": "value",
               "options": {
                 "0": {
-                  "text": "停止・障害",
+                  "text": "異常",
                   "color": "red"
                 },
                 "1": {
-                  "text": "稼働",
+                  "text": "正常",
                   "color": "green"
                 }
               }
@@ -142,7 +146,7 @@
         "overrides": []
       },
       "options": {
-        "showValue": "auto",
+        "showValue": "never",
         "mergeValues": true
       }
     },
@@ -153,7 +157,7 @@
       "description": "監視先への接続にかかった時間を表示します。HTTPの場合は応答時間も含みます。",
       "gridPos": {
         "x": 0,
-        "y": 16,
+        "y": 14,
         "w": 12,
         "h": 8
       },
@@ -181,10 +185,10 @@
       "id": 4,
       "type": "timeseries",
       "title": "取込・変換ジョブ",
-      "description": "カウンターはワーカーの再起動時にリセットされます。",
+      "description": "成功と失敗の累計を別々に表示します。ワーカーの再起動時に0へ戻ります。",
       "gridPos": {
         "x": 12,
-        "y": 16,
+        "y": 14,
         "w": 12,
         "h": 8
       },
@@ -195,8 +199,14 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "lakehouse_successful_runs or lakehouse_failed_runs",
-          "legendFormat": "{{__name__}}",
+          "expr": "lakehouse_successful_runs",
+          "legendFormat": "成功",
+          "instant": false
+        },
+        {
+          "refId": "B",
+          "expr": "lakehouse_failed_runs",
+          "legendFormat": "失敗",
           "instant": false
         }
       ],
@@ -212,10 +222,10 @@
       "id": 5,
       "type": "stat",
       "title": "最終ジョブ成功からの経過時間",
-      "description": "ワーカー起動後に成功したジョブがない間は値を表示しません。",
+      "description": "ワーカー起動後に成功したジョブがない間は値を表示しません。取得間隔のしきい値は設定していません。",
       "gridPos": {
         "x": 0,
-        "y": 24,
+        "y": 22,
         "w": 12,
         "h": 5
       },
@@ -238,9 +248,9 @@
         "overrides": []
       },
       "options": {
-        "colorMode": "background",
+        "colorMode": "none",
         "graphMode": "none",
-        "textMode": "value_and_name",
+        "textMode": "value",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -252,10 +262,10 @@
       "id": 6,
       "type": "stat",
       "title": "プロセス監視",
-      "description": "監視データの取得状況を併せて確認し、監視側とアプリ側の障害を見分けます。",
+      "description": "✓ 取得成功、× 取得失敗。監視データの取得状況から監視側とアプリ側の障害を見分けます。",
       "gridPos": {
         "x": 12,
-        "y": 24,
+        "y": 22,
         "w": 12,
         "h": 5
       },
@@ -280,11 +290,11 @@
               "type": "value",
               "options": {
                 "0": {
-                  "text": "停止・障害",
+                  "text": "×",
                   "color": "red"
                 },
                 "1": {
-                  "text": "稼働",
+                  "text": "✓",
                   "color": "green"
                 }
               }
@@ -307,9 +317,13 @@
         "overrides": []
       },
       "options": {
-        "colorMode": "background",
+        "colorMode": "value",
         "graphMode": "none",
         "textMode": "value_and_name",
+        "text": {
+          "titleSize": 14,
+          "valueSize": 28
+        },
         "reduceOptions": {
           "calcs": [
             "lastNotNull"

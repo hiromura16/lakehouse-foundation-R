@@ -24,7 +24,11 @@ from xml.etree import ElementTree
 from svg_primitives import ATTRIBUTED_LOGOS
 
 ROOT = Path(__file__).resolve().parents[1]
-REPORTS = ROOT / "docs/reports"
+REPORTS = ROOT / "docs/compatibility/reports"
+REPO_LINK_PREFIX = "../" * len(REPORTS.relative_to(ROOT).parts)
+PUBLIC_SOURCE = (
+    "https://github.com/hiromura16/lakehouse-foundation-R/blob/main/"
+)
 PROJECT = "Lakehouse Foundation"
 # PDF uses points (72 points/inch); SVG/PNG dimensions use pixels.
 A3_LANDSCAPE_POINTS = (1190.55, 841.89)
@@ -257,10 +261,7 @@ def portable_markdown(content: str, source: Path) -> str:
         if resolved.is_relative_to(REPORTS):
             relative = resolved.relative_to(REPORTS).as_posix()
         elif resolved.is_relative_to(ROOT):
-            relative = (
-                "https://github.com/hiromura16/lakehouse-foundation/blob/main/"
-                + resolved.relative_to(ROOT).as_posix()
-            )
+            relative = PUBLIC_SOURCE + resolved.relative_to(ROOT).as_posix()
         else:
             raise ValueError("Report link escapes the public repository.")
         destination = relative + separator + anchor
@@ -376,8 +377,8 @@ def copy_portable_documents(data, outputs, target):
     ):
         shutil.copyfile(REPORTS / name, target / name)
     html = outputs[REPORTS / "gallery.html"].replace(
-        'href="../../',
-        'href="https://github.com/hiromura16/lakehouse-foundation/blob/main/',
+        f'href="{REPO_LINK_PREFIX}',
+        f'href="{PUBLIC_SOURCE}',
     )
     (target / "gallery.html").write_text(html, encoding="utf-8")
     # gallery links retain their checkout-relative destinations. A standalone
@@ -463,7 +464,8 @@ def export_bundle(
         from pptx import Presentation
     except ImportError:
         raise ValueError(
-            "Install docs/reports/requirements-export.lock with uv first."
+            "Install docs/compatibility/reports/requirements-export.lock "
+            "with uv first."
         ) from None
     require_japanese_font()
     svgs = {

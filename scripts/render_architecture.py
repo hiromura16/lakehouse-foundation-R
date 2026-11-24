@@ -13,7 +13,7 @@ from pathlib import Path
 from svg_primitives import COLORS, svg_rectangle, svg_text
 
 ROOT = Path(__file__).resolve().parents[1]
-ASSETS = ROOT / "docs/assets"
+ASSETS = ROOT / "docs/compatibility/assets"
 FONT = "Noto Sans CJK JP, Hiragino Sans, Yu Gothic, sans-serif"
 INK = COLORS["architecture_ink"]
 BLUE = COLORS["architecture_blue"]
@@ -191,7 +191,7 @@ def platform():
         text(
             1030,
             982,
-            "実装・実機検証の範囲は docs/VALIDATION.md",
+            "実装・実機検証の範囲は docs/compatibility/VALIDATION.md",
             15,
             "#54677e",
         ),
@@ -284,7 +284,7 @@ def main():
         ("ai-cloudflare.svg", hybrid),
     ]:
         (ASSETS / filename).write_text(renderer() + "\n", encoding="utf-8")
-        print("Rendered docs/assets/" + filename)
+        print("Rendered docs/compatibility/assets/" + filename)
 
 
 if __name__ == "__main__":

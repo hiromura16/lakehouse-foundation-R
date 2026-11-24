@@ -24,5 +24,7 @@ ENV PATH="/opt/venv/bin:$PATH" \
     STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
 WORKDIR /opt/lakehouse-view
 COPY --chmod=644 native/gui/app.py ./app.py
+COPY --chmod=644 native/gui/theme.toml ./.streamlit/config.toml
+RUN chmod 755 .streamlit
 USER 10001:10001
 CMD ["sh", "-c", "exec streamlit run app.py --browser.serverAddress \"$LAKEHOUSE_BROWSER_HOST\""]

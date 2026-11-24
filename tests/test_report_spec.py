@@ -206,7 +206,7 @@ class ReportSpecificationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             checkout = Path(directory) / "checkout"
             scripts = checkout / "scripts"
-            reports = checkout / "docs/reports"
+            reports = checkout / "docs/compatibility/reports"
             scripts.mkdir(parents=True)
             reports.mkdir(parents=True)
             # Include the renderer's public purpose API dependency too. Invalid

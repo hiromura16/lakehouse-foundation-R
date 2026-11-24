@@ -16,6 +16,7 @@ import duckdb
 import pyarrow as pa
 
 from native import sensor
+from scripts.sql_batch_worker import with_sql_provenance
 
 ROOT = Path(__file__).resolve().parents[1]
 SQL_ROOT = ROOT / "medallion"
@@ -215,7 +216,7 @@ def medallion(core, prefix=""):
         recipe_hash.update(source)
         query = source.decode()
         if prefix in {"sql_", "sqlcdc_"}:
-            query = core.with_sql_provenance(query)
+            query = with_sql_provenance(query)
         statements.extend(
             part.strip()
             for part in sql_for_duckdb(query).split(";")

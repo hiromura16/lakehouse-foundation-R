@@ -9,7 +9,7 @@
 >
 > **前提となる資料:** なし。必要な用語は本文で確認します。
 >
-> **次に読む資料:** [レイクハウスの設計思想](<DESIGN.md>) / [SQL Server・Kafka・データ投入アプリとの接続](<SOURCES.md>)
+> **次に読む資料:** [レイクハウスの設計思想](<DESIGN.md>) / [ファイル・SQL Server・Kafkaの入力契約](<SOURCES.md>)
 >
 > **文書一覧:** [目的・読者から探す文書マニフェスト](<../DOCUMENTATION-MANIFEST.md>)
 <!-- doc-purpose:end -->
@@ -120,13 +120,15 @@ sequenceDiagram
 
 標準構成の機能数は既存Foundationの全プロファイルより少なく、JVMなしで配備できる変換・閲覧の経路と設備時系列の扱いが増えています。
 
-## 既存機能の入口
+## 実装の責務と入口
 
-| 機能 | 起動する構成 |
+| 責務 | 変更箇所 |
 | --- | --- |
-| S3、Iceberg、メダリオン、SQLバッチ、設備時系列、稼働監視、Gold API、LangChain | RのルートCompose |
-| KafkaイベントのRawとCurrent State | ルートComposeと `compose.cdc.yaml` |
-| Trino、Spark、Superset、Jupyter、Airflow、n8n、Qdrant、Marquez、MCP、従来GUI、Samba、詳細ログ監視、Sail比較 | [Foundation互換構成](../../FOUNDATION.md) |
-| SQL ServerのDebezium登録、固定CDCのRaw再構築 | [FoundationのCDC](../CDC.md)。Kafka Connect / DebeziumはJVMで稼働 |
+| 定型HTTP、トークン、ジョブ実行 | [native/api.py](../../native/api.py) |
+| 原本、完了印、Bronze | [native/landing.py](../../native/landing.py) |
+| S3、カタログ、契約表 | [native/storage.py](../../native/storage.py) |
+| DuckDB、設備の集計、Gold公開世代 | [native/engine.py](../../native/engine.py) · [native/sensor.py](../../native/sensor.py) |
+| 合成入力と独立期待値の照合 | [native/verification.py](../../native/verification.py) |
+| 外部Kafkaとの接続と再開位置 | [native/cdc.py](../../native/cdc.py) · [CDC状態の実装](../../infra/cdc/state.py) |
 
-互換構成は元と同じ入口を保ち、JVMサービスを必要に応じて別プロジェクトで起動できます。互換構成の既存手順のclone先は元のFoundationです。同じコードをRのcheckoutで動かす場合は、専用のprivate設定とプロジェクト名を使います。Rから元の本番namespace・topic・offsetへ切り替えるマイグレーションは実施していません。
+既存の分散SQL、BI、オーケストレーション、Debezium登録が必要な場合は、[旧Foundationとの互換性](COMPATIBILITY.md) から専用の構成を選びます。

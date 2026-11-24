@@ -24,12 +24,15 @@ MAX_TEXT_BYTES = 8 * 1024 * 1024
 REVIEWED_PNG_SHA256 = {
     "docs/native/images/foundation-r-overview.png": {
         "2bf660d2a198b42ecf4f246d8e58dab0ac60edb33c1d05f364b3a4cd1f178f27",
+        "58507200eb6f419fd7147520287f951c980702ec423cad8e1588d1eca8cf91aa",
     },
     "docs/native/images/data-browser-demo.png": {
         "17311468366dcb3ddc4964e1fc1c8a00603a1b174ad05c31c36e11047bcfe338",
+        "e5a2f3d37f2857efc41da18dc0510fe865992757d7bc74d0d39acb4349828e2c",
     },
     "docs/native/images/runtime-demo.png": {
         "7db25e0b7cc1c46713bd4ae0d4908425fad04caf099b88458fff2478a4af1d7a",
+        "6adf680ec34e760609cdaf494d2d7a20041b43c92df497ba2be5fe11565835f2",
     },
     "docs/native/images/iceberg-metadata.png": {
         "2081bca6c5b85bdb6710fc764b7f9ecff60cd3c87e30dd78665e530928443c10",

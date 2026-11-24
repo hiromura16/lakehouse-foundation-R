@@ -9,7 +9,7 @@
 >
 > **前提となる資料:** なし。必要な用語は本文で確認します。
 >
-> **次に読む資料:** [公式リファレンスと採用バージョン](<REFERENCES.md>)
+> **次に読む資料:** [会社VMの受入手順と合格条件](<ACCEPTANCE.md>) / [公式リファレンスと採用バージョン](<REFERENCES.md>)
 >
 > **文書一覧:** [目的・読者から探す文書マニフェスト](<../DOCUMENTATION-MANIFEST.md>)
 <!-- doc-purpose:end -->
@@ -23,11 +23,11 @@
 
 | 症状 | 確認すること |
 | --- | --- |
-| GitHub cloneが403 | GitHub Appまたは端末credentialに対象private repoの読取権限があるか |
+| GitHub cloneが403 | 同じHTTPS URLで `git ls-remote` を試し、会社のproxy・許可リストを確認。DokployでGitHub Appを使用している場合は連携対象も確認 |
 | pull/buildがTLSエラー | ホスト、Docker daemon、BuildKitのどの層で失敗したか。 [企業設定](COMPANY.md) |
 | bind mountのpermission denied | landing作成者と環境設定のUID/GID、ディレクトリ階層の権限 |
 | Grafanaが開けるがダッシュボードがない | provisioningのread権限とGrafanaログ。 [設定ファイル](MONITORING.md) |
-| Goldが404 | `medallion` の成功、ソース別のパス、指定releaseが保持されているか |
+| Goldが404 | `medallion` の成功、ファイル・SQL・CDCに合うAPIパス、指定世代の保持を確認。閲覧画面では「最新版を読み込む」で再確認 |
 | CDCが停止 | broker接続、保有topic、stateの所有者、保持期限がcheckpointを超えたか |
 
 ## バックアップと復元

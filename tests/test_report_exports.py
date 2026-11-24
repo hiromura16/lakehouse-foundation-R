@@ -44,7 +44,9 @@ class ReportExportBoundaryTests(unittest.TestCase):
 
     def test_existing_or_repository_destination_is_refused(self):
         with self.assertRaises(ValueError):
-            EXPORT.external_destination(ROOT / "docs/reports/export")
+            EXPORT.external_destination(
+                ROOT / "docs/compatibility/reports/export"
+            )
         with self.assertRaises(ValueError):
             EXPORT.external_destination(Path("relative-export"))
         with tempfile.TemporaryDirectory() as directory:
@@ -70,15 +72,15 @@ class PortableMarkdownTests(unittest.TestCase):
     def test_plain_and_angle_links_are_portable(self):
         content = (
             "[local](./EVIDENCE-MATRIX.md#status)\n"
-            "[guide](<../DOCUMENTATION-MANIFEST.md>)\n"
-            "[spaced](<../example guide.md#section>)\n"
+            "[guide](<../../DOCUMENTATION-MANIFEST.md>)\n"
+            "[spaced](<../../example guide.md#section>)\n"
             "[web](<https://example.invalid/a b>) [anchor](#local)\n"
         )
         result = EXPORT.portable_markdown(
             content, EXPORT.REPORTS / "README.md"
         )
         public = (
-            "https://github.com/hiromura16/lakehouse-foundation/blob/main/"
+            "https://github.com/hiromura16/lakehouse-foundation-R/blob/main/"
         )
         self.assertEqual(
             result,

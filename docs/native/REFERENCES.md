@@ -30,4 +30,4 @@
 | Streamlit、NGINX | 1.67.0、1.30.8 | [Streamlitの表](https://docs.streamlit.io/develop/api-reference/data/st.dataframe) · [NGINXのBasic認証](https://nginx.org/en/docs/http/ngx_http_auth_basic_module.html) · [WebSocket中継](https://nginx.org/en/docs/http/websocket.html) |
 | LangChain Core | 1.7.6 | [Tools](https://docs.langchain.com/oss/python/langchain/tools) |
 
-既存互換構成の採用版・仕様は [Foundationの公式リファレンス一覧](../REFERENCES.md) にあります。更新時は依存の版とhash、イメージdigest、入力契約の参照commit、受入試験結果を同じ差分で確認します。
+更新時は依存の版とhash、イメージdigest、入力契約の参照commit、受入試験結果を同じ差分で確認します。既存の別構成を使う場合は、[旧Foundationとの互換性](COMPATIBILITY.md) から各構成の固定版を参照します。

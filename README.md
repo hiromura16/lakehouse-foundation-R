@@ -9,41 +9,18 @@
 >
 > **前提となる資料:** なし。必要な用語は本文で確認します。
 >
-> **次に読む資料:** [Foundation Rの初回導入と操作](<docs/native/START.md>)
+> **次に読む資料:** [Foundation Rの初回導入と操作](<docs/native/START.md>) / [会社VMの受入手順と合格条件](<docs/native/ACCEPTANCE.md>)
 >
 > **文書一覧:** [目的・読者から探す文書マニフェスト](<docs/DOCUMENTATION-MANIFEST.md>)
 <!-- doc-purpose:end -->
 
-MES・ERPのファイルとSQL Server由来のイベントを取り込み、Apache Icebergへ保存する単一ホストのデータレイクハウスです。標準起動はJVMなしで動きます。既存Foundationの機能は [互換構成ガイド](FOUNDATION.md) にあります。
+MES・ERP・設備の入力原本を保管し、工場別の日次生産、出荷の充足状況、設備の最新値と1分集計を提供するデータレイクハウスです。標準構成は、JVMを使わずに1台のLinux VMで動きます。
 
-## 全体構成
+![Foundation Rの入力、処理・保存、閲覧・連携と運用監視の構成](docs/native/images/foundation-r-overview.png)
 
-```mermaid
-flowchart LR
-  SRC["投入アプリ<br/>SQL Server"] --> L["受け渡し<br/>完了印"]
-  L --> W["DuckDB<br/>型変換と集計"]
-  W --> I["PyIceberg<br/>Lakekeeper"]
-  I --> S["SeaweedFS S3<br/>原本と表の実体"]
-  I --> A["読取API<br/>公開世代付き"]
-  A --> U["データ閲覧<br/>LangChain"]
-  P["Prometheus<br/>Blackbox"] --> G["Grafana<br/>稼働監視"]
-```
+[プレゼン用PNG（2400×1350）](docs/native/images/foundation-r-overview.png) · [構成図の編集用HTML](docs/native/images/foundation-r-overview.html) · [技術の役割と採用理由](docs/native/ARCHITECTURE.md)
 
-[全体構成図をPNGで開く](docs/native/images/foundation-r-overview.png)
-
-DuckDBはワーカーに組み込む分析用SQLエンジンです。1台のVMで受注・出荷の結合や工場の日次集計を行い、PyIcebergが結果を保存します。コンポーネント別の役割、採用理由、Sparkを使う場面は [詳細構成](docs/native/ARCHITECTURE.md) にあります。
-
-| 必要な機能 | Foundation Rの入口 |
-| --- | --- |
-| 原本、CSV・JSONL・画像の取り込み | SeaweedFS S3、SHA-256完了印、Icebergの取込台帳 |
-| Silver・Quarantine・Gold | DuckDB、PyIceberg、Lakekeeper。既存6ソースの業務SQLと期待値を使用 |
-| SQL ServerとKafka | 固定SQLバッチ再生、外部Kafka互換ブローカーからの任意CDC |
-| 設備時系列 | CSV等と同じlandingからJSONLを受け、履歴・最新値・1分窓をIcebergへ保存 |
-| Web閲覧・AI連携 | StreamlitのGold閲覧、Lakekeeper・Prometheusの管理画面、読取API、LangChainツール |
-| アプリ稼働監視 | Prometheus、Blackbox Exporter、Grafana。監視先とパネルは設定ファイル |
-| Superset、JupyterLab、MCP、Spark、Airflowなど | 既存の別Compose構成と既存手順 |
-
-## 最初に起動する
+## 会社VMで最初に試す
 
 公開リポジトリなので、HTTPSでのcloneにGitHubアカウントは不要です。企業ネットワークからは先に [プロキシとCA](docs/native/COMPANY.md) を確認してください。
 
@@ -60,13 +37,27 @@ docker compose --env-file "$site" up -d --build --wait --wait-timeout 180
 docker compose --env-file "$site" exec -T lakehouse python -m native.api verify
 ```
 
-`verify` は専用の一時Iceberg namespaceで、元の6ソースの合成データと期待値を照合します。実際にlandingへファイルを置いてGoldを作る手順は [初回導入と操作](docs/native/START.md) にあります。Dokployを使う場合は [Dokployと企業ネットワーク](docs/native/COMPANY.md) を参照してください。
+`verify` が `ok: true` を返せば、ファイル受け渡し、保存、変換、再実行の11項目を検証できています。次に [初回導入](docs/native/START.md) の合成データを受け渡し先へ置き、Goldを公開して日次生産の結果を確認します。
 
-- [設計、データ契約、元のFoundationとの比較](docs/native/ARCHITECTURE.md)
-- [レイクハウスの設計思想と参考書籍](docs/native/DESIGN.md)
-- [データ閲覧・管理画面を追加する（実画面付き）](docs/native/GUI.md)
-- [設定ファイルで変更する稼働監視（実画面付き）](docs/native/MONITORING.md)
-- [Kafka / SQL Server / データ投入アプリ](docs/native/SOURCES.md)
-- [APIとLangChain](docs/native/API.md)
-- [バックアップ、障害対応、検証](docs/native/OPERATIONS.md)
-- [公式リファレンスと採用バージョン](docs/native/REFERENCES.md)
+## やりたいことから探す
+
+| やりたいこと | 手順 |
+| --- | --- |
+| GUIから配備する、会社のプロキシ・CAを設定する | [Dokployと企業ネットワーク](docs/native/COMPANY.md) |
+| ブラウザーで公開した集計を確認する | [集計結果の確認と接続先一覧](docs/native/GUI.md) |
+| アプリの状態を見る、ダッシュボードを変更する | [Grafana運用監視](docs/native/MONITORING.md) |
+| ファイル、SQL Server、外部Kafkaを接続する | [入出力契約と接続方法](docs/native/SOURCES.md) |
+| GoldをアプリやLangChainから参照する | [APIとLangChain](docs/native/API.md) |
+| 障害を切り分ける、会社VMで受入試験を行う | [運用とバックアップ](docs/native/OPERATIONS.md) · [受入手順と合格条件](docs/native/ACCEPTANCE.md) |
+| 設計判断を確認する、旧構成の機能を使う | [構成と採用理由](docs/native/ARCHITECTURE.md) · [レイクハウスの設計思想](docs/native/DESIGN.md) · [旧Foundationとの互換性](docs/native/COMPATIBILITY.md) |
+
+## リポジトリの構成
+
+| 場所 | 内容 |
+| --- | --- |
+| `native/` | API、取込、S3とカタログの接続、DuckDBの変換、任意の閲覧UI、監視設定 |
+| `medallion/` と `contracts/` | 取り込めるファイル、業務SQL、期待値、引き継いだ契約の出典とハッシュ |
+| `infra/` | CDCの状態管理、SQL Serverの接続例、ビルドで使うCA処理 |
+| `scripts/` と `tests/` | 合成データ、ホスト側の抽出・検査、単体とComposeの受入試験 |
+
+[変更と検証の手順](CONTRIBUTING.md) · [公式リファレンスと採用バージョン](docs/native/REFERENCES.md)

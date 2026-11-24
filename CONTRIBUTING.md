@@ -7,15 +7,15 @@
 >
 > **読むタイミング:** コードや文書を変更する前と、差分をレビューに出す前。
 >
-> **前提となる資料:** [ファイルの場所と変更のしかた](<docs/DIRECTORY-GUIDE.md>)
+> **前提となる資料:** [ファイルの場所と変更のしかた](<docs/compatibility/DIRECTORY-GUIDE.md>)
 >
-> **次に読む資料:** [レビュー指摘を改善へ取り込む](<docs/REVIEW-WORKFLOW.md>) / [図と出力スクリプトを変更する人へ](<docs/reports/EDITING-GUIDE.md>)
+> **次に読む資料:** [レビュー指摘を改善へ取り込む](<docs/compatibility/REVIEW-WORKFLOW.md>) / [図と出力スクリプトを変更する人へ](<docs/compatibility/reports/EDITING-GUIDE.md>)
 >
 > **文書一覧:** [目的・読者から探す文書マニフェスト](<docs/DOCUMENTATION-MANIFEST.md>)
 <!-- doc-purpose:end -->
 
 <!-- shell-usage:start -->
-**コマンドのシェル:** 「Bash / Zsh共通」は同じ内容を使い、専用例は自分のシェルを選びます。[詳しい使い分け](docs/SHELLS.md)。
+**コマンドのシェル:** 「Bash / Zsh共通」は同じ内容を使い、専用例は自分のシェルを選びます。[詳しい使い分け](docs/compatibility/SHELLS.md)。
 
 Zshの対話端末では、コメント付きの例を貼る前に一度だけ次を実行します。Bashでは不要です。
 
@@ -26,7 +26,7 @@ setopt INTERACTIVE_COMMENTS
 ```
 <!-- shell-usage:end -->
 
-初回構築は [START-HERE](docs/START-HERE.md)、レビューの取り込みは [REVIEW-WORKFLOW](docs/REVIEW-WORKFLOW.md)、図とexportの編集は [EDITING-GUIDE](docs/reports/EDITING-GUIDE.md) を参照します。実接続先・秘密値・企業CA・実データはGit外に保持します。
+初回構築は [START-HERE](docs/compatibility/START-HERE.md)、レビューの取り込みは [REVIEW-WORKFLOW](docs/compatibility/REVIEW-WORKFLOW.md)、図とexportの編集は [EDITING-GUIDE](docs/compatibility/reports/EDITING-GUIDE.md) を参照します。実接続先・秘密値・企業CA・実データはGit外に保持します。
 
 ## コードを読む人へ必要な情報を残す
 
@@ -81,7 +81,7 @@ git diff --check
 
 CIの公開検査には会社の実秘密値はありません。公開前にはGit外の既知情報リストと秘密値照合も別途行います。ドキュメントのPNGは表示内容とメタデータを確認し、`scripts/check-source.py` に画像のSHA-256を追加します。差し替え時はGit履歴の検査用に既存の承認済みハッシュも残します。第三者の画像には出典と利用条件を添えます。
 
-図・説明を変更した場合は、[生成・出力・確認手順](docs/reports/EDITING-GUIDE.md) を使います。データ処理や版を変えた場合は、関連する互換性・機能・再実行試験を追加します。合成機能試験、会社での受入、性能・復元・モデル推論の確認は、対象と成功条件を分けて記録します。
+図・説明を変更した場合は、[生成・出力・確認手順](docs/compatibility/reports/EDITING-GUIDE.md) を使います。データ処理や版を変えた場合は、関連する互換性・機能・再実行試験を追加します。合成機能試験、会社での受入、性能・復元・モデル推論の確認は、対象と成功条件を分けて記録します。
 
 ## 初めて変更する場合
 
@@ -102,7 +102,7 @@ MDを追加・改名する場合は [documentation-manifest.json](docs/documenta
 | バージョン | image digest、Python lock、Spark/Scala/Java/Iceberg、Airflow constraints |
 | 図・報告 | 根拠commit、既存試験と現地受入の区別、未評価、再生成とリンク |
 
-失敗を広い例外処理で隠したり、検査をskipへ変えて通したりせず、再現する境界をテストします。必要な依存が本当に未導入の場合と、導入済み環境の破損は区別します。詳細な拡張例は [CUSTOMIZATION](docs/CUSTOMIZATION.md)、レビューの記録方法は [REVIEW-WORKFLOW](docs/REVIEW-WORKFLOW.md) を参照してください。
+失敗を広い例外処理で隠したり、検査をskipへ変えて通したりせず、再現する境界をテストします。必要な依存が本当に未導入の場合と、導入済み環境の破損は区別します。詳細な拡張例は [CUSTOMIZATION](docs/compatibility/CUSTOMIZATION.md)、レビューの記録方法は [REVIEW-WORKFLOW](docs/compatibility/REVIEW-WORKFLOW.md) を参照してください。
 
 ## YAML・shell・秘密値の追加検査
 

@@ -328,7 +328,9 @@ def portal_router(
                     "slug": key,
                     "title": item[0],
                     "description": item[2],
-                    "available": (ROOT / "docs" / item[1]).is_file(),
+                    "available": (
+                        ROOT / "docs/compatibility" / item[1]
+                    ).is_file(),
                 }
                 for key, item in HELP_DOCUMENTS.items()
             ],
@@ -336,7 +338,9 @@ def portal_router(
                 {
                     "id": key,
                     "title": item[0],
-                    "available": (ROOT / "docs/assets" / item[1]).is_file(),
+                    "available": (
+                        ROOT / "docs/compatibility/assets" / item[1]
+                    ).is_file(),
                 }
                 for key, item in HELP_ASSETS.items()
             ],
@@ -349,7 +353,9 @@ def portal_router(
             reject(404, "HELP_NOT_FOUND", "指定した図が見つかりません。")
         title, filename = HELP_ASSETS[identifier]
         try:
-            content = public_file(ROOT / "docs/assets" / filename, 512 * 1024)
+            content = public_file(
+                ROOT / "docs/compatibility/assets" / filename, 512 * 1024
+            )
             return {"id": identifier, "title": title, "content": content}
         except (OSError, ValueError):
             reject(
@@ -365,7 +371,9 @@ def portal_router(
             reject(404, "HELP_NOT_FOUND", "指定した文書が見つかりません。")
         title, filename, _ = HELP_DOCUMENTS[slug]
         try:
-            content = public_file(ROOT / "docs" / filename, 256 * 1024)
+            content = public_file(
+                ROOT / "docs/compatibility" / filename, 256 * 1024
+            )
             return {"slug": slug, "title": title, "markdown": content}
         except (OSError, ValueError):
             reject(

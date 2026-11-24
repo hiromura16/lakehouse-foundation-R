@@ -47,3 +47,10 @@ services:
         read_only: true
         bind:
           create_host_path: false
+      # 専用の信頼CAを使う場合にだけ、Kafka設定からこの固定パスを参照する。
+      - type: bind
+        source: ${CDC_BROKER_CA_FILE:-./infra/proxy/empty-ca.pem}
+        target: /run/cdc/broker-ca.pem
+        read_only: true
+        bind:
+          create_host_path: false

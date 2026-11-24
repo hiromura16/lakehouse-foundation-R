@@ -65,7 +65,7 @@ CORPORATE_CA_FILE=/absolute/path/to/company-public-chain.pem
 git ls-remote --exit-code https://github.com/hiromura16/lakehouse-foundation-R.git refs/heads/main
 ```
 
-Dockerが取得する固定イメージの起点は Docker Hub、Quay、GHCR です。Python依存は通常 PyPI と files.pythonhosted.org から取得します。会社ミラーへ切り替える場合は、ミラーのCAと同じ配布物のハッシュを確認してください。CIや管理者が `config --quiet` を使うのは、展開済みの設定には秘密値が含まれるためです。既存Foundation構成のProxy Doctorと追加の診断は [旧構成の会社プロキシガイド](../COMPANY-PROXY.md) にあります。
+Dockerが取得する固定イメージの起点は Docker Hub、Quay、GHCR です。Python依存は通常 PyPI と files.pythonhosted.org から取得します。会社ミラーへ切り替える場合は、ミラーのCAと同じ配布物のハッシュを確認してください。CIや管理者が `config --quiet` を使うのは、展開済みの設定には秘密値が含まれるためです。導入先で実測する項目は [受入手順](ACCEPTANCE.md) にあります。
 
 ## DokployのGUIから配置する
 

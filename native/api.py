@@ -12,8 +12,9 @@ import traceback
 from datetime import date, datetime
 from decimal import Decimal
 from functools import partial
-from http.server import ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from types import SimpleNamespace
 from urllib.parse import parse_qs, urlsplit
 from urllib.request import Request, urlopen
 
@@ -21,10 +22,10 @@ from native import engine
 
 
 def core_module():
-    """検証済みの環境設定で、共有の保存・取込アダプターを読み込む。"""
-    import admin
+    """実行環境の資格情報を使うストレージを、起動時に読み込む。"""
+    from native import storage
 
-    return admin
+    return storage
 
 
 def json_value(value):
@@ -42,7 +43,9 @@ def run_job(core, action, body):
         return None
     try:
         if action == "verify":
-            result = core.verify(
+            from native.verification import verify
+
+            result = verify(
                 transform=lambda prefix: engine.medallion(core, prefix),
                 run_query=lambda sql, prefix: engine.verify_query(
                     core, sql, prefix
@@ -51,11 +54,20 @@ def run_job(core, action, body):
         elif action == "sql-load":
             from scripts.sql_batch_worker import load
 
-            adapter = core.sql_worker_context()
-            adapter.medallion = partial(engine.medallion, core)
+            adapter = SimpleNamespace(
+                pa=core.pa,
+                CONTRACT=core.CONTRACT,
+                catalog=core.catalog,
+                ensure_tables=core.ensure_tables,
+                medallion=partial(engine.medallion, core),
+                S3=core.S3,
+                os=os,
+            )
             result = load(adapter, body["batch_id"], body["observed_at"])
         else:
-            result = core.ingest()
+            from native.landing import ingest
+
+            result = ingest()
             if action == "medallion":
                 result.update(engine.medallion(core))
         core.STATE["successful_runs"] += 1
@@ -86,15 +98,18 @@ def report_error(error):
 
 
 def handler(core):
-    """共有ストレージの状態を、機能を限定した既存のHTTP処理に渡す。"""
+    """ランタイム状態を使うHTTPハンドラークラスを組み立てる。"""
 
-    class Handler(core.Handler):
+    class Handler(BaseHTTPRequestHandler):
         """稼働確認、メトリクス、定型ジョブ、スナップショット参照を提供する。"""
 
         def setup(self):
-            """親クラスがHTTPを読み始める前に、待機時間の上限を設ける。"""
+            """HTTPの要求を読み始める前に、接続の待機時間を制限する。"""
             self.request.settimeout(10)
             super().setup()
+
+        def log_message(self, *_):
+            """資格情報や要求行を含めないよう、既定のアクセスログを抑止する。"""
 
         def authorized(self, setting):
             """用途別のトークンを一定時間で比較する。"""
@@ -103,10 +118,42 @@ def handler(core):
             return secrets.compare_digest(supplied, expected)
 
         def respond(self, status, value, content_type="application/json"):
-            """共通の応答処理へ渡す日付・日時・小数を直列化する。"""
-            if content_type == "application/json":
-                value = json.loads(json.dumps(value, default=json_value))
-            return super().respond(status, value, content_type)
+            """応答を1回だけ直列化し、業務データを共有キャッシュに残さない。"""
+            content = (
+                json.dumps(value, default=json_value)
+                if content_type == "application/json"
+                else value
+            )
+            body = content.encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+
+        def monitoring(self):
+            """業務行を含まない疎通・ジョブの集計値を返す。"""
+            if self.path == "/health":
+                blocked = core.STATE["blocked"]
+                ready = core.STATE["ready"] and not blocked
+                return self.respond(
+                    200 if ready else 503,
+                    {
+                        "ready": ready,
+                        "blocked": blocked,
+                        "busy": core.LOCK.locked(),
+                    },
+                )
+            if self.path == "/metrics":
+                samples = []
+                for key, value in core.STATE.copy().items():
+                    metric = int(value) if isinstance(value, bool) else value
+                    samples.append(f"lakehouse_{key} {metric}\n")
+                return self.respond(
+                    200, "".join(samples), "text/plain; version=0.0.4"
+                )
+            return self.respond(404, {"error": "UNKNOWN_RESOURCE"})
 
         def do_GET(self):
             """登録済みのデータだけを、指定された行数の上限まで返す。"""
@@ -115,7 +162,7 @@ def handler(core):
             except ValueError:
                 return self.respond(400, {"error": "INVALID_PATH"})
             if not parsed.path.startswith("/v1/"):
-                return super().do_GET()
+                return self.monitoring()
             if not self.authorized("READER_TOKEN"):
                 return self.respond(401, {"error": "AUTHENTICATION_REQUIRED"})
             if parsed.path == "/v1/releases/latest" and not parsed.query:

@@ -19,7 +19,7 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-OUTPUT = Path("docs/reports/COMPOSE-INVENTORY.json")
+OUTPUT = Path("docs/compatibility/reports/COMPOSE-INVENTORY.json")
 COMPOSE_FILES = tuple(
     f"infra/{name}/compose.yaml"
     for name in (

@@ -4,6 +4,7 @@ import argparse
 import base64
 import hashlib
 import json
+import secrets
 import time
 from pathlib import Path
 from urllib.error import HTTPError
@@ -119,6 +120,38 @@ def load_test_env(path):
     )
 
 
+def reject_bad_header(root, http, writer, reader, release):
+    """列の違う0行CSVを拒否し、直前の公開世代が保持されることを確認する。"""
+    path = root / f"csv/erp_products__{secrets.token_hex(6)}_0001.csv"
+    path.parent.mkdir(exist_ok=True)
+    marker = path.with_suffix(".csv.ready")
+    payload = b"unexpected_column\n"
+    with path.open("xb") as file:
+        file.write(payload)
+    created_marker = False
+    try:
+        with marker.open("x") as file:
+            created_marker = True
+            file.write(hashlib.sha256(payload).hexdigest() + "\n")
+        try:
+            fetch(
+                http + "/run",
+                authorization=writer,
+                body={"action": "medallion"},
+            )
+        except HTTPError as error:
+            assert error.code == 500
+            assert json.load(error) == {"error": "JOB_FAILED"}
+        else:
+            raise AssertionError("契約外のCSVヘッダーを受け入れました。")
+        latest = fetch(http + "/v1/releases/latest", authorization=reader)
+        assert latest["release_snapshot_id"] == release
+    finally:
+        if created_marker:
+            marker.unlink()
+        path.unlink()
+
+
 def check(args, env):
     """トークン分離、再実行、固定したGold、Grafanaの自動設定を確認する。"""
     reader = "Bearer " + env["READER_TOKEN"]
@@ -170,6 +203,7 @@ def check(args, env):
         ]
         == release
     )
+    reject_bad_header(args.landing, http, writer, reader, release)
     verified = fetch(
         http + "/run", authorization=writer, body={"action": "verify"}
     )
@@ -205,8 +239,21 @@ def check(args, env):
         raise AssertionError(
             "Grafanaにダッシュボードが自動設定されませんでした。"
         )
-    assert len(result["dashboard"]["panels"]) >= 6
+    panels = {item["id"]: item for item in result["dashboard"]["panels"]}
+    assert len(panels) == 6
     assert result["meta"]["provisioned"]
+    # 実際にプロビジョニングされたJSONで現在値と履歴の表示意図を検査する。
+    for panel_id in (1, 6):
+        panel = panels[panel_id]
+        mappings = panel["fieldConfig"]["defaults"]["mappings"][0]["options"]
+        assert mappings["0"]["text"] == "×" and mappings["1"]["text"] == "✓"
+        assert panel["options"]["colorMode"] == "value"
+    assert panels[2]["options"]["showValue"] == "never"
+    assert {target["expr"] for target in panels[4]["targets"]} == {
+        "lakehouse_successful_runs",
+        "lakehouse_failed_runs",
+    }
+    assert panels[5]["options"]["colorMode"] == "none"
     print(
         json.dumps(
             {
@@ -215,9 +262,11 @@ def check(args, env):
                 "sensor_count": row["sample_count"],
                 "grafana_panels": len(result["dashboard"]["panels"]),
                 "dashboard_file_provisioned": True,
+                "dashboard_status_symbols": True,
                 "reader_writer_token_isolation": True,
                 "sql_batch_replay": True,
                 "identical_run_kept_release": True,
+                "invalid_header_kept_release": True,
             }
         )
     )
@@ -231,9 +280,9 @@ def check_gui(args):
     ).decode()
     auth = "Basic " + encoded
     checks = (
-        (18503, "/_stcore/health"),
-        (18504, "/ui/"),
-        (18505, "/targets"),
+        (args.browser_port, "/_stcore/health"),
+        (args.catalog_port, "/ui/"),
+        (args.prometheus_port, "/targets"),
     )
     for port, path in checks:
         url = f"http://127.0.0.1:{port}{path}"
@@ -249,7 +298,7 @@ def check_gui(args):
 
     try:
         fetch(
-            "http://127.0.0.1:18504/health",
+            f"http://127.0.0.1:{args.catalog_port}/health",
             authorization=auth,
             body={},
         )
@@ -259,7 +308,7 @@ def check_gui(args):
         raise AssertionError("Lakekeeperへの書込みが可能です。")
 
     query = urlencode({"query": "probe_success"})
-    url = f"http://127.0.0.1:18505/api/v1/query?{query}"
+    url = f"http://127.0.0.1:{args.prometheus_port}/api/v1/query?{query}"
     deadline = time.monotonic() + 65
     while time.monotonic() < deadline:
         result = fetch(url, authorization=auth)["data"]["result"]
@@ -281,6 +330,9 @@ def main():
     parser.add_argument("--api-port", required=True, type=int)
     parser.add_argument("--grafana-port", required=True, type=int)
     parser.add_argument("--gui-env-file", type=Path)
+    parser.add_argument("--browser-port", type=int, default=18503)
+    parser.add_argument("--catalog-port", type=int, default=18504)
+    parser.add_argument("--prometheus-port", type=int, default=18505)
     args = parser.parse_args()
     fixture(args.landing)
     check(args, load_test_env(args.env_file))

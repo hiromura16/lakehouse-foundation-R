@@ -9,7 +9,7 @@
 
 標準の図生成はPython標準ライブラリだけで動作する。設定ファイル、
 DB、稼働サービス、ブラウザー画面を読み取る処理は含めない。
-図の意味とレイアウトの編集方法はdocs/reports/EDITING-GUIDE.mdを参照。
+図とレイアウトの編集方法は互換構成の報告書ガイドを参照。
 """
 
 import argparse
@@ -32,7 +32,8 @@ from svg_primitives import (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
-REPORTS = ROOT / "docs/reports"
+REPORTS = ROOT / "docs/compatibility/reports"
+REPO_LINK_PREFIX = "../" * len(REPORTS.relative_to(ROOT).parts)
 SPEC = REPORTS / "figures.json"
 FONT = "Noto Sans CJK JP, Noto Sans JP, Yu Gothic, sans-serif"
 INK = COLORS["report_ink"]
@@ -539,7 +540,7 @@ def gallery(data, rendered):
         ]
         for source in figure["sources"]:
             parts.append(
-                f'<li><a href="../../{escape(source)}">'
+                f'<li><a href="{REPO_LINK_PREFIX}{escape(source)}">'
                 + escape(source)
                 + "</a></li>"
             )
@@ -557,7 +558,7 @@ def captions(data):
     """
     parts = [
         "# 図キャプションと根拠の台帳\n",
-        purpose_block("docs/reports/CAPTIONS.md") + "\n",
+        purpose_block("docs/compatibility/reports/CAPTIONS.md") + "\n",
         "[図版集の使い方](README.md) / [HTML一覧](gallery.html)\n",
         "照合日: " + data["reviewed_on"] + "。生成元はfigures.jsonです。"
         "図の作成は、同日付で全機能を再試験したことを意味しません。\n",
@@ -591,7 +592,7 @@ def captions(data):
         parts.append(
             "\n**根拠:** "
             + "、".join(
-                f"[{Path(source).name}](../../{source})"
+                f"[{Path(source).name}]({REPO_LINK_PREFIX}{source})"
                 for source in figure["sources"]
             )
             + "\n"
@@ -642,7 +643,7 @@ def main():
             "標準生成は追加依存不要。PNG/PDF/PPTX/ZIPの出力には、"
             "uvでdocs/reports/requirements-export.lockを同期し、"
             "Noto Sans CJK JPを用意してください。編集手順は"
-            "docs/reports/EDITING-GUIDE.mdを参照してください。"
+            "docs/compatibility/reports/EDITING-GUIDE.mdを参照してください。"
         ),
     )
     parser.add_argument(

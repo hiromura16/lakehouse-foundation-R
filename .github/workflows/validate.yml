@@ -84,7 +84,7 @@ jobs:
       run: |
         ruff check .
         ruff format --check .
-        pycodestyle --max-line-length=79 scripts tests infra
+        pycodestyle --max-line-length=79 native scripts tests infra
     - name: Check installer and Python syntax without applying configuration
       run: |
         bash -n infra/dokploy/install.sh

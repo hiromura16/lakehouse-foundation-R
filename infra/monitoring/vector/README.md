@@ -7,9 +7,9 @@
 >
 > **読むタイミング:** ログ収集の設定・合成試験・機密境界を確認するとき。
 >
-> **前提となる資料:** [段階的な監視基盤の配置と受入](<../../../docs/OBSERVABILITY.md>)
+> **前提となる資料:** [段階的な監視基盤の配置と受入](<../../../docs/compatibility/OBSERVABILITY.md>)
 >
-> **次に読む資料:** [症状から確認する](<../../../docs/TROUBLESHOOTING.md>)
+> **次に読む資料:** [症状から確認する](<../../../docs/compatibility/TROUBLESHOOTING.md>)
 >
 > **文書一覧:** [目的・読者から探す文書マニフェスト](<../../../docs/DOCUMENTATION-MANIFEST.md>)
 <!-- doc-purpose:end -->

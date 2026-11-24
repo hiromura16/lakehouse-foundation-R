@@ -29,12 +29,20 @@ ALLOWED_KAFKA = {
 def settings(path):
     """サイズ上限付きでサイト設定を読み、オフセット制御の上書きを防ぐ。"""
     with path.open("rb") as stream:
-        document = json.loads(stream.read(64 * 1024 + 1))
-    if set(document) != {"source", "kafka", "topic_has_database"}:
+        payload = stream.read(64 * 1024 + 1)
+    if len(payload) > 64 * 1024:
+        raise ValueError("NATIVE_CDC_SETTINGS_TOO_LARGE")
+    document = json.loads(payload)
+    if not isinstance(document, dict) or set(document) != {
+        "source",
+        "kafka",
+        "topic_has_database",
+    }:
         raise ValueError("INVALID_NATIVE_CDC_SETTINGS")
     kafka = document["kafka"]
     if (
-        not set(kafka) <= ALLOWED_KAFKA
+        not isinstance(kafka, dict)
+        or not set(kafka) <= ALLOWED_KAFKA
         or not all(
             isinstance(value, str) and value for value in kafka.values()
         )
@@ -60,7 +68,8 @@ def settings(path):
         "CDC_BATCH_SIZE",
     }
     if (
-        not set(source) <= keys
+        not isinstance(source, dict)
+        or not set(source) <= keys
         or not all(isinstance(value, str) for value in source.values())
         or not re.fullmatch(
             r"lakehouse-r-[A-Za-z0-9_-]+", source.get("CDC_GROUP_ID", "")

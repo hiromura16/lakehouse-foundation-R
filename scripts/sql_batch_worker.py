@@ -57,6 +57,28 @@ class SqlBatchError(ValueError):
     """Contain only fixed, public-safe diagnostic text."""
 
 
+def with_sql_provenance(statement):
+    """共通の列選択処理でSQL Serverの観測メタデータを引き継ぐ。"""
+
+    # 型変換と最終出力のSELECTで、SQL由来の列を保持する。
+    # 入力に別名がある場合は同じ修飾子を付ける。
+    def sql_provenance(match):
+        """入力側の別名を維持したまま、SELECTの列を追加する。"""
+        qualifier = match.group("qualifier") or ""
+        return (
+            ", ".join(qualifier + column for column in SQL_SOURCE_COLUMNS)
+            + ", "
+            + qualifier
+            + "_source_file,"
+        )
+
+    return re.sub(
+        r"(?P<qualifier>[A-Za-z_]\w*\.)?_source_file,",
+        sql_provenance,
+        statement,
+    )
+
+
 def timestamp(value):
     """Validate canonical datetime2(7) text without losing its last digit."""
     if not isinstance(value, str) or not UTC_TIMESTAMP.fullmatch(value):

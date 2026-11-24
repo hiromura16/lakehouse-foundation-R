@@ -1,0 +1,11 @@
+# 集計結果と操作を読みやすくするため、画面の基調とツールバーを固定する。
+[theme]
+base = "light"
+primaryColor = "#20736A"
+backgroundColor = "#FBFCFC"
+secondaryBackgroundColor = "#EDF3F3"
+textColor = "#172B36"
+font = "sans serif"
+
+[client]
+toolbarMode = "minimal"
