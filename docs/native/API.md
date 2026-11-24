@@ -44,6 +44,15 @@ UTC日付を使います。絞り込んだ場合は `filters` を返し、`total
 その条件の行数、`truncated` は表示上限で切ったかどうかです。
 複数の集計を同じ世代で読むときは `release` と必要な条件を併用します。
 
+Goldの参照では、固定世代のArrowをバッチ順にDuckDBへ渡し、全件数を
+数えながらキー順の上限行を取得します。公開のスナップショットと
+返却JSONの契約は共通です。1回の参照で処理する範囲は、絞り込み後の
+10万行、Arrow 64 MiBを上限とします。超えた場合は503を返すため、工場、
+設備、受注、日付などデータ製品が許可する条件で絞ります。
+[PyIcebergのバッチ読取](https://py.iceberg.apache.org/reference/pyiceberg/table/#pyiceberg.table.DataScan.to_arrow_batch_reader)
+· [DuckDBでのArrow入力](https://duckdb.org/docs/2.0/clients/python/data_ingestion)
+
+
 ### 取込状態と公開中のデータ
 
 取込状態の `last_attempt` は、APIプロセス上で最後に受理された

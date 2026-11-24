@@ -57,6 +57,7 @@ jobs:
             --landing "$RUNNER_TEMP/native-landing" --api-port 18502 \
             --grafana-port 18501 --gui-env-file "$RUNNER_TEMP/native-operator.env" \
             --schedule-container "$container"
+          docker exec -i "$container" python - < tests/integration/native/gold_stream.py
           docker compose --env-file "$RUNNER_TEMP/native-site.env" -p native-ci \
             exec -T prometheus promtool check config /etc/prometheus/prometheus.yml
           docker compose --env-file "$RUNNER_TEMP/native-site.env" -p native-ci \

@@ -8,6 +8,7 @@
 import json
 import logging
 import re
+from dataclasses import dataclass
 from datetime import date, datetime, time, timezone
 from decimal import Decimal
 from hashlib import sha256
@@ -104,24 +105,40 @@ def sql_for_duckdb(sql):
     return sql.replace("json_extract_scalar(", "json_extract_string(").strip()
 
 
-def bounded_scan(table, snapshot_id, *, row_filter=None):
-    """固定したスナップショットを読み、途中でもサイズ上限の超過を検出する。"""
+@dataclass
+class ScanProgress:
+    """固定スナップショットから渡した行数とArrowのバイト数を集計する。"""
+
+    rows: int = 0
+    bytes: int = 0
+
+    def batches(self, reader):
+        """読んだバッチは保存せず、上限に達するまで順に呼出側へ渡す。"""
+        for batch in reader:
+            self.rows += batch.num_rows
+            self.bytes += batch.nbytes
+            if self.rows > MAX_ROWS or self.bytes > MAX_TABLE_BYTES:
+                raise ValueError("NATIVE_BATCH_LIMIT")
+            yield batch
+
+
+def snapshot_reader(table, snapshot_id, row_filter):
+    """固定のIceberg世代から、明示したフィルターで1回読む。"""
     if snapshot_id is None:
-        return table.schema().as_arrow().empty_table()
-    batches = []
-    row_count = byte_count = 0
-    reader = table.scan(
+        return pa.RecordBatchReader.from_batches(table.schema().as_arrow(), ())
+    return table.scan(
         snapshot_id=snapshot_id,
         limit=MAX_ROWS + 1,
         row_filter=row_filter if row_filter is not None else AlwaysTrue(),
     ).to_arrow_batch_reader()
-    for batch in reader:
-        row_count += batch.num_rows
-        byte_count += batch.nbytes
-        if row_count > MAX_ROWS or byte_count > MAX_TABLE_BYTES:
-            raise ValueError("NATIVE_BATCH_LIMIT")
-        batches.append(batch)
-    return pa.Table.from_batches(batches, schema=reader.schema)
+
+
+def bounded_scan(table, snapshot_id, *, row_filter=None):
+    """業務変換が再参照する入力を、上限内のArrow表として読み取る。"""
+    with snapshot_reader(table, snapshot_id, row_filter) as reader:
+        return pa.Table.from_batches(
+            ScanProgress().batches(reader), schema=reader.schema
+        )
 
 
 def current_id(table):
@@ -496,10 +513,18 @@ def gold_rows(
     snapshot_id = release["outputs"][local]
     identifier = f"{core.schema(prefix, 'gold')}.{name}"
     table = catalog.load_table(identifier)
-    arrow = bounded_scan(table, snapshot_id, row_filter=row_filter)
-    with connect() as db:
-        db.register("gold_data", arrow)
-        sort = ", ".join(GOLD[name])
+    progress = ScanProgress()
+    sort = ", ".join(GOLD[name])
+    # Goldは同じ入力を繰り返し参照しない。途中の全行を保持せず、行数を
+    # 数えながらDuckDBへ渡し、固定キー順の先頭limit行だけを取得する。
+    with (
+        snapshot_reader(table, snapshot_id, row_filter) as source,
+        pa.RecordBatchReader.from_batches(
+            source.schema, progress.batches(source)
+        ) as batches,
+        connect() as db,
+    ):
+        db.register("gold_data", batches)
         records = (
             db.sql(
                 f"SELECT * FROM gold_data ORDER BY {sort} LIMIT ?",
@@ -515,8 +540,8 @@ def gold_rows(
         "released_at": release["released_at"],
         "recipe": release["recipe"],
         "rows": records,
-        "total_rows": arrow.num_rows,
-        "truncated": arrow.num_rows > limit,
+        "total_rows": progress.rows,
+        "truncated": progress.rows > limit,
     }
     if local in sensor.OUTPUTS:
         result["sensor"] = release.get("sensor")

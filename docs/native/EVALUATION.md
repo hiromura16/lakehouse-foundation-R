@@ -239,6 +239,23 @@ DataFusion 105,788–109,212 KiBでした。計測対象はローカルの列指
 実際の列数、圧縮率、並列数、データ分布とネットワークを合わせて再測定します。
 [2回の測定JSON](../../native/evaluation/parquet_benchmark_reference.json) · [Linuxの最大RSSの定義](https://man7.org/linux/man-pages/man2/getrusage.2.html) · [DataFusionの設定](https://datafusion.apache.org/python/user-guide/configuration.html)
 
+## Gold読取のメモリと応答を照合する
+
+BakuのローカルIcebergに合成95,000行、Parquet 25件を作り、固定した
+公開世代から最大200行を参照しました。記録に日本語文字列、小数型と
+NULLを含め、公開を更新せずに物理表へ追記した1行が応答へ混入しないことを
+確認しました。全体、工場で絞った9,500行、該当なしの3パターンで、件数、
+型、順序とレスポンスのSHA-256は前後で一致しています。
+
+2論理CPU、PyIcebergの読取並列数2、各条件と実装を別プロセスで4回、
+起動順を交互にして記録しました。OSページキャッシュは維持しています。
+全体の中央値はArrow表を先に作る経路201.96 ms、バッチ読取175.06 ms。
+プロセス最大RSSは約252〜277 MiBから約228〜237 MiBでした。工場で
+絞った例のRSSには重なりがあり、測定値はネットワーク越しの性能や
+同時アクセスの処理能力を示しません。
+[PyIcebergの並列数](https://py.iceberg.apache.org/configuration/#concurrency)
+· [DuckDBのArrowデータ取込](https://duckdb.org/docs/2.0/clients/python/data_ingestion)
+
 ## 試験の記録と停止
 
 入力バイト数、行数、製品の版、実行ホスト、CPUとメモリ上限、初回・再実行の別、処理時間、出力の一致を同じ記録に残します。分散時は障害で失った作業の範囲と復旧までの操作も加えます。会社データの投入は [受入条件](ACCEPTANCE.md) に沿って設置先で行います。
