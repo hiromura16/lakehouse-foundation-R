@@ -270,10 +270,10 @@ compose -p APP_NAME_FROM_HEADER --env-file .env -f compose.yaml up -d --build --
 
 | 使う構成 | 追加指定 | 常駐サービス / Grafana監視 |
 | --- | --- | --- |
-| 標準 | 追加なし | 9 / 7 |
-| [業務集計の閲覧](GUI.md) | `-f compose.gui.yaml` | 11 / 9 |
-| [運用ツール](TOOLS.md) | `-f compose.tools.yaml` | 15 / 12 |
-| 閲覧と運用ツール | `-f compose.gui.yaml -f compose.tools.yaml` | 17 / 14 |
+| 標準 | 追加なし | 9 / 9 |
+| [業務集計の閲覧](GUI.md) | `-f compose.gui.yaml` | 11 / 11 |
+| [運用ツール](TOOLS.md) | `-f compose.tools.yaml` | 15 / 14 |
+| 閲覧と運用ツール | `-f compose.gui.yaml -f compose.tools.yaml` | 17 / 16 |
 
 追加構成の認証ファイルと環境変数はDeploy前に準備します。OpenObserveへの転送は、[転送用パスコードを作成](TOOLS.md#openobserveに監視メトリクスを送る) してから `--profile tools-metrics` を `up` の前に加えます。常駐サービスは1個増えます。
 [外部Kafka CDC](SOURCES.md#kafka互換ブローカーでcdcを取り込む)、[Cloudflare](CLOUDFLARE.md)、[通知](MONITORING.md#オンプレミスの通知を追加する) は、それぞれの接続設定を済ませてから対応するComposeファイルを追加します。

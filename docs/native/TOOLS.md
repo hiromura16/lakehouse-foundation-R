@@ -66,6 +66,12 @@ docker compose -p "$project" --env-file "$site" --env-file "$tools/tools.env" \
 2. **Execute workflow** を押し、最後のステップで `ready: true` と `blocked: false` を確認します。フローには内部APIのヘルス確認だけが含まれます。
 3. 日程実行を追加する場合は、用途別の認証と権限を決め、試験環境で同じ処理が再実行される場合を確認します。
 
+付属のフローは未公開のまま手動実行できます。HTTPノードは
+`GET /health` として状態を確認します。取込や定期実行、外部通知が
+必要な場合は用途ごとのワークフローを定義します。
+[n8nのファイルインポート](https://docs.n8n.io/build/manage-workflows/export-and-import.md)
+
+
 ## OpenObserveに監視メトリクスを送る
 
 初回のprovisionは転送用パスコードを `observe-passcode` に0600で保存し、[4パネルのダッシュボード](../../native/tools/openobserve-dashboard.json) を登録します。次に転送サービスを起動します。既存の同名ボードは維持します。既存の設定を変更するときは、画面で編集する前にJSONをエクスポートして保存します。リポジトリの設定を別ボードとして試すには、JSONのタイトルを変え、**Dashboards → Import → Custom** から読み込みます。
