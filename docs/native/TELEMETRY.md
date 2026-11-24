@@ -149,10 +149,36 @@ python3 tests/integration/modbus/acceptance.py
 メーカー資料のアドレス表記で40001が保持レジスタの先頭を示す場合でも、
 この試験の設定はフレーム上の番地0です。実機では対応表に記載された機能、
 Unit ID、番地、バイト順・ワード順、倍率を承認済み設定に落とします。
-合成の鮮度判定は検証プログラムで実施しています。RTU、
-時系列DBへの配信や死活通知と、実設備への接続は別の受入項目です。
+合成の鮮度判定は検証プログラムで実施しています。時系列DBへの配信や
+死活通知と、実設備への接続は設置先で別に確認します。
 
 [試験のTelegraf設定](../../tests/integration/modbus/telegraf.toml) · [Modbusの公式仕様](https://www.modbus.org/file/secure/modbusprotocolspecification.pdf) · [TelegrafのModbus入力](https://docs.influxdata.com/telegraf/v1/input-plugins/modbus/)
+
+## Modbus RTUの仮想シリアルで読取を試す
+
+Telegraf 1.40.3を、ホストの機器に接続しない専用コンテナで実行します。
+仮想端末（PTY）を2対作り、実収集器が局番7の読み取りに使うフレームと、
+独立した試験入力に対する合成装置の応答を確認します。Dockerのネットワークと
+ホストのシリアルデバイスを使いません。
+
+**Bash / Zsh共通**
+
+```bash
+python3 tests/integration/modbus/rtu/acceptance.py
+```
+
+| 操作 | 確認した結果 |
+| --- | --- |
+| 19200 baud、8データビット、パリティなし、停止2ビット | 局番7、FC03、番地0〜5。符号付き-123→-12.3、BADCの16bit順、CDABの32bit順と浮動小数23.5が一致 |
+| CRC異常、無応答、欠測コード | TelegrafはCRC不一致を拒否。無応答中は新規点なし、-32768は欠測扱い |
+| 仮想ポートの切断と交換 | TelegrafのPIDを維持したまま再接続し、復帰値24.3を取得 |
+| 別の試験端末から書込み、範囲外、局番違い | FC06/FC16と範囲外を拒否。局番違いは無応答。6レジスタの値と収集器の読取専用動作を照合 |
+
+8E1の設定でも読み取りは確認しました。LinuxのPTYは物理のパリティを
+検証できないため、RS-485配線の方向・終端、パリティ、フレーム間隔は
+承認された実機の受入で確認します。
+[Modbusシリアル公式仕様](https://www.modbus.org/file/secure/modbusoverserial.pdf)
+· [Telegrafのシリアル設定](https://docs.influxdata.com/telegraf/v1/input-plugins/modbus/)
 
 ## 検索用データと長期の原本を分ける
 

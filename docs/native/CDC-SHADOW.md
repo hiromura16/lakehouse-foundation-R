@@ -53,7 +53,10 @@ source = source_from_files(Path("source-only.json"), Path("table-map.json"))
 # approvalのキーは source_sha256、raw_table_uuid、raw_snapshot_id、completed。
 # completedは全購読トピック名と、各partition 0の最終処理済みoffsetの辞書。
 digest = export_bundle(
-    catalog.load_table, source, approval, Path("private-archive/cdc.bundle.json")
+    catalog.load_table,
+    source,
+    approval,
+    Path("private-archive/cdc.bundle.json"),
 )
 ```
 

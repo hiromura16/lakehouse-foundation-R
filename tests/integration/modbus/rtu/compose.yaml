@@ -1,0 +1,18 @@
+# コンテナが自分で生成するPTY以外に接続しない。
+services:
+  fixture:
+    build:
+      context: .
+      dockerfile: rtu.Dockerfile
+    network_mode: none
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    mem_limit: 192m
+    cpus: 0.6
+    pids_limit: 48
+    init: true
+    tmpfs: ["/tmp:size=8388608,mode=1777"]
+    logging:
+      driver: json-file
+      options: {max-size: 1m, max-file: '2'}

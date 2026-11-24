@@ -1,0 +1,4 @@
+*
+!rtu.Dockerfile
+!rtu_fixture.py
+!telegraf-reference.toml
