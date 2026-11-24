@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import os
 import sys
 
 from native.lineage import CHANNELS, SelectionError, select_release
@@ -48,21 +49,43 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--channel", choices=CHANNELS, default="files")
     parser.add_argument("--release", help="照合する公開世代ID。省略で最新")
+    parser.add_argument(
+        "--objects", action="store_true", help="S3の存在とサイズも照合"
+    )
+    parser.add_argument(
+        "--max-objects", type=int, default=2000, help="照合件数の上限"
+    )
     args = parser.parse_args()
+    if not 1 <= args.max_objects <= 20000:
+        parser.error("--max-objects は1〜20000を指定してください。")
     from native.api import core_module, report_error
 
     try:
-        catalog, release = select_release(
-            core_module(), args.channel, args.release
-        )
-        findings = report(catalog, release, CHANNELS[args.channel])
+        core = core_module()
+        catalog, release = select_release(core, args.channel, args.release)
+        prefix = CHANNELS[args.channel]
+        findings = report(catalog, release, prefix)
+        if args.objects:
+            from native.catalog_objects import storage_report
+
+            findings["storage"] = storage_report(
+                catalog,
+                findings,
+                prefix,
+                client=core.S3,
+                bucket=os.environ["S3_BUCKET_WAREHOUSE"],
+                maximum=args.max_objects,
+            )
     except SelectionError as error:
         parser.error(str(error))
     except Exception as error:
         report_error(error, file=sys.stderr)
         return 1
     print(json.dumps(findings, ensure_ascii=False))
-    return 0 if findings["all_metadata_available"] else 1
+    success = findings["all_metadata_available"]
+    if args.objects:
+        success = success and findings["storage"]["all_objects_available"]
+    return 0 if success else 1
 
 
 if __name__ == "__main__":

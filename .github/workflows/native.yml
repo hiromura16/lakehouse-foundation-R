@@ -59,6 +59,7 @@ jobs:
             --schedule-container "$container"
           docker exec -i "$container" python - < tests/integration/native/gold_stream.py
           docker exec -i "$container" python - < tests/integration/native/gold_admission.py
+          docker exec -i "$container" python - < tests/integration/native/catalog_objects.py
           docker compose --env-file "$RUNNER_TEMP/native-site.env" -p native-ci \
             exec -T prometheus promtool check config /etc/prometheus/prometheus.yml
           docker compose --env-file "$RUNNER_TEMP/native-site.env" -p native-ci \

@@ -231,6 +231,35 @@ python -m native.catalog_audit
 - 保持状態のJSONには、指定世代から参照するBronzeと派生表のメタデータが残っているかを出力します。失われた参照があると終了コード1です。データファイルまで照合する際は、復元環境でのハッシュ比較とGold読取も実施します。
 - 複数世代を保持する場合は、業務・設備の公開記録に残る世代ごとに確認します。このコマンドは表やデータファイルを変更しません。外部システムに来歴を保存する場合は、送信先の権限と設置先ID・表名の持ち出し可否を運用者が確認します。
 
+### 公開世代が参照するS3ファイルも調べる
+
+物理復元の照合後やIcebergの履歴整理を検討するときは、
+`--objects` で公開世代の参照先を追加で調べます。
+選択した経路・世代の公開表、入力表、派生表を対象に、S3 HEADで
+Icebergの表メタデータ、マニフェスト一覧、マニフェスト、有効な
+データファイルと削除ファイルの存在を確認します。マニフェストにサイズが
+記録されている項目は、その値とS3のサイズも比較します。
+
+**Bash / Zsh共通**
+
+```bash
+python -m native.catalog_audit --objects --channel files   --release "$release_snapshot_id" --max-objects 2000
+```
+
+`storage.all_objects_available` がtrueで終了値0なら、この照合に成功しました。
+`issue_counts` の `NOT_FOUND` は存在しないと応答された件数、
+`SIZE_MISMATCH` はサイズ不一致です。 `HEAD_FAILED` は権限・疎通を先に
+確認します。上限に達した場合や、32 MiBを超えるマニフェストを検出した場合は、
+`enumeration_complete` がfalseになり、終了値1を返します。出力は表名、数値と
+位置のSHA-256を含みます。原因を調べるときは、管理権限で参照先の位置を同じ
+方法でハッシュ化して照合します。
+
+対象は選択したIceberg世代の参照先です。Raw原本のSHA-256、同じサイズの内容の
+変化、業務集計の正しさは復元手順とGoldの照合で確認します。履歴整理では
+保持する世代をそれぞれ確認し、削除・期限変更の前に別の場所への保全を済ませます。
+[Apache Icebergのテーブル仕様](https://iceberg.apache.org/spec/)
+· [S3 HEADと権限](https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadObject.html)
+
 ## 受入の手順
 
 - `python3 native/check_contracts.py` で業務SQLと契約のhashを照合します。
