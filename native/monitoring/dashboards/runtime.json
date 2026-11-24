@@ -1,6 +1,6 @@
 {
   "uid": "lakehouse-r-runtime",
-  "title": "Lakehouse R 稼働監視",
+  "title": "Foundation R サービス監視",
   "schemaVersion": 41,
   "editable": false,
   "timezone": "browser",
@@ -32,7 +32,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "probe_success or on(app) (0 * up{job=\"app-probes\"})",
+          "expr": "min by (app) (probe_success{job=\"app-probes\"} or on (app, instance) (0 * up{job=\"app-probes\"}))",
           "legendFormat": "{{app}}",
           "instant": true
         }
@@ -105,7 +105,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "probe_success or on(app) (0 * up{job=\"app-probes\"})",
+          "expr": "min by (app) (probe_success{job=\"app-probes\"} or on (app, instance) (0 * up{job=\"app-probes\"}))",
           "legendFormat": "{{app}}",
           "instant": false
         }
@@ -168,7 +168,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "probe_duration_seconds",
+          "expr": "max by (app) (probe_duration_seconds{job=\"app-probes\"})",
           "legendFormat": "{{app}}",
           "instant": false
         }
@@ -228,7 +228,7 @@
       "id": 5,
       "type": "stat",
       "title": "最終ジョブ成功からの経過時間",
-      "description": "ワーカー起動後に成功したジョブがない間は値を表示しません。取得間隔のしきい値は設定していません。",
+      "description": "ワーカーの起動後に成功したジョブがなければ「この起動では未実行」と表示します。メトリクス自体が取得できない場合は値がありません。",
       "gridPos": {
         "x": 0,
         "y": 22,
@@ -242,14 +242,24 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "(time() - lakehouse_last_success) and lakehouse_last_success > 0",
+          "expr": "((time() - lakehouse_last_success) and (lakehouse_last_success > 0)) or ((lakehouse_last_success == 0) - 1)",
           "legendFormat": "最終成功",
           "instant": true
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "s"
+          "unit": "s",
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "-1": {
+                  "text": "この起動では未実行"
+                }
+              }
+            }
+          ]
         },
         "overrides": []
       },

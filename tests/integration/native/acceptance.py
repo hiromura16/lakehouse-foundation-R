@@ -478,12 +478,17 @@ def check(args, env):
         assert mappings["0"]["text"] == "×" and mappings["1"]["text"] == "✓"
         assert panel["options"]["colorMode"] == "value"
     assert panels[2]["options"]["showValue"] == "never"
+    assert panels[1]["targets"][0]["expr"] == panels[2]["targets"][0]["expr"]
+    assert panels[2]["targets"][0]["expr"].startswith("min by (app)")
+    assert panels[3]["targets"][0]["expr"].startswith("max by (app)")
     assert {target["expr"] for target in panels[4]["targets"]} == {
         "lakehouse_successful_runs",
         "lakehouse_failed_runs",
         "lakehouse_partial_runs",
     }
     assert panels[5]["options"]["colorMode"] == "none"
+    no_attempt = panels[5]["fieldConfig"]["defaults"]["mappings"][0]["options"]
+    assert no_attempt["-1"]["text"] == "この起動では未実行"
     assert {target["expr"] for target in panels[7]["targets"]} == {
         "lakehouse_gold_active",
         "lakehouse_gold_limit",
