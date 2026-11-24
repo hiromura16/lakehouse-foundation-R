@@ -1,0 +1,35 @@
+# 実機用設定を読み込まない、読み取り専用収集の合成試験。
+services:
+  simulator:
+    build:
+      context: .
+      dockerfile: simulator.Dockerfile
+    environment:
+      FOUNDATION_MODBUS_FIXTURE_MODE: ${FOUNDATION_MODBUS_FIXTURE_MODE:-normal}
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    read_only: true
+    mem_limit: 128m
+    logging:
+      driver: json-file
+      options: {max-size: 1m, max-file: '2'}
+
+  telegraf:
+    image: telegraf:1.40.3@sha256:695045186c69152ff71827ec0c4f40216fb10491597af71c00195d98be8c39f2
+    command: ["telegraf", "--config", "/etc/telegraf/telegraf.conf"]
+    configs:
+      - source: collector
+        target: /etc/telegraf/telegraf.conf
+    depends_on: [simulator]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 128m
+    logging:
+      driver: json-file
+      options: {max-size: 1m, max-file: '2'}
+
+configs:
+  collector: {file: ./telegraf.toml}
+
+networks:
+  default:
+    internal: true

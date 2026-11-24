@@ -1,0 +1,62 @@
+# 合成装置は毎秒1回収集する。現場では装置の許容周期に合わせて調整する。
+[agent]
+  interval = "1s"
+  flush_interval = "500ms"
+  collection_jitter = "0s"
+  flush_jitter = "0s"
+  omit_hostname = true
+  precision = "1ns"
+  skip_processors_after_aggregators = true
+  metric_batch_size = 50
+  metric_buffer_limit = 200
+
+[[inputs.modbus]]
+  name = "fixture_plc"
+  alias = "fixture_modbus"
+  configuration_type = "metric"
+  controller = "tcp://simulator:1502"
+  transmission_mode = "TCP"
+  timeout = "300ms"
+  busy_retries = 0
+  optimization = "none"
+
+  # PDU番地はゼロ始まり。CDABでは16bitは上位バイト先頭、32bitはワードを入れ替える。
+  [[inputs.modbus.metric]]
+    slave_id = 7
+    measurement = "foundation_modbus"
+    byte_order = "CDAB"
+    fields = [
+      { register = "holding", address = 0, name = "temperature_raw", type = "INT16" },
+      { register = "holding", address = 0, name = "temperature_celsius", type = "INT16", scale = 0.1 },
+      { register = "holding", address = 2, name = "word_pattern", type = "UINT32" },
+      { register = "holding", address = 4, name = "vibration_rms", type = "FLOAT32" },
+    ]
+
+  [[inputs.modbus.metric]]
+    slave_id = 7
+    measurement = "foundation_modbus_bytes"
+    byte_order = "BADC"
+    fields = [
+      { register = "holding", address = 1, name = "byte_pattern", type = "UINT16" },
+    ]
+
+[[inputs.internal]]
+  collect_memstats = false
+  namepass = ["internal_gather"]
+
+[[processors.starlark]]
+  namepass = ["foundation_modbus"]
+  source = '''
+def apply(metric):
+    # 欠測を表すビット列を工学値として出さない。原値と有効フラグは残す。
+    raw = metric.fields.get("temperature_raw")
+    valid = raw != None and raw != -32768
+    metric.fields["temperature_valid"] = 1 if valid else 0
+    if not valid and "temperature_celsius" in metric.fields:
+        metric.fields.pop("temperature_celsius")
+    return metric
+'''
+
+[[outputs.file]]
+  files = ["stdout"]
+  data_format = "influx"

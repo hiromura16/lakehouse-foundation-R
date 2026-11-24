@@ -1,4 +1,4 @@
-name: 工場MQTT・OPC UAの隔離受入
+name: 工場MQTT・OPC UA・Modbusの隔離受入
 
 on:  # yamllint disable-line rule:truthy
   push:
@@ -7,6 +7,7 @@ on:  # yamllint disable-line rule:truthy
       - compose.telemetry.yaml
       - native/telemetry/**
       - tests/integration/telemetry/**
+      - tests/integration/modbus/**
       - .github/workflows/telemetry.yml
   pull_request:
     paths:
@@ -14,6 +15,7 @@ on:  # yamllint disable-line rule:truthy
       - compose.telemetry.yaml
       - native/telemetry/**
       - tests/integration/telemetry/**
+      - tests/integration/modbus/**
       - .github/workflows/telemetry.yml
   workflow_dispatch:
 
@@ -32,3 +34,5 @@ jobs:
         run: python3 tests/integration/telemetry/acceptance.py
       - name: OPC UA暗号化と読取権限・時刻・品質の検査
         run: python3 tests/integration/telemetry/acceptance.py --opcua
+      - name: Modbus保持レジスタの読取専用と欠測・鮮度の検査
+        run: python3 tests/integration/modbus/acceptance.py

@@ -106,6 +106,34 @@ python3 tests/integration/telemetry/acceptance.py --opcua
 Discovery通信を含む信頼要件は設置先で別に照合します。
 [設定の例](../../native/telemetry/opcua.toml) · [Telegrafの購読設定](https://docs.influxdata.com/telegraf/v1/input-plugins/opcua_listener/) · [asyncuaの固定版](https://github.com/FreeOpcUa/opcua-asyncio/tree/v2.1.0)
 
+## Modbus TCPの読取、倍率、欠測を試す
+
+Pymodbus 3.16.2の模擬PLCから、Telegrafが保持レジスタだけを読みます。
+Composeは外部経路のない内部ネットワークを作り、PLCにもテスト結果にも
+ホストのポートを割り当てません。合成設定のUnit IDは7です。
+
+**Bash / Zsh共通**
+
+```bash
+python3 tests/integration/modbus/acceptance.py
+```
+
+| 対象 | 合成データで確認した結果 |
+| --- | --- |
+| 送信機能とアドレス | 収集器はPDU番地0〜5のFC03のみ。独立した試験クライアントのFC06・FC16と範囲外読取は例外2 |
+| 16bit符号と倍率 | `0xFF85` は符号付き-123で、倍率0.1を適用すると-12.3 |
+| 16bitのバイト順 | `BADC` で `0x3412` を `0x1234` と解釈し、4660 |
+| 32bitのワード順 | `CDAB` で `0x5678, 0x1234` を `0x12345678` と解釈し、305419896。浮動小数では23.5 |
+| 切断・復帰 | 合成判定の4秒で鮮度切れとし、値はnull。再開時の欠測コード-32768は無効で工学値を除き、正常復帰した24.3を新しい値として表示 |
+
+メーカー資料のアドレス表記で40001が保持レジスタの先頭を示す場合でも、
+この試験の設定はフレーム上の番地0です。実機では対応表に記載された機能、
+Unit ID、番地、バイト順・ワード順、倍率を承認済み設定に落とします。
+合成の鮮度判定は検証プログラムで実施しています。RTU、
+時系列DBへの配信や死活通知と、実設備への接続は別の受入項目です。
+
+[試験のTelegraf設定](../../tests/integration/modbus/telegraf.toml) · [Modbusの公式仕様](https://www.modbus.org/modbus-specifications) · [TelegrafのModbus入力](https://docs.influxdata.com/telegraf/v1/input-plugins/modbus/)
+
 ## 設備導入で決める条件
 
 - 送信者と発行トピックを紐づけ、工場内のTLS証明書または認証基盤、
