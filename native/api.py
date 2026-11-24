@@ -456,6 +456,7 @@ def serve():
         re.fullmatch(r"[a-f0-9]{64}", token) for token in (worker, reader)
     ):
         raise ValueError("64文字の異なるトークンを生成してください。")
+    archive.configured_limit(os.environ)
     readers = os.environ.get("LAKEHOUSE_GOLD_MAX_CONCURRENT", "2")
     if not re.fullmatch(r"[1-8]", readers):
         raise ValueError("Goldの同時実行数は1〜8を指定してください。")

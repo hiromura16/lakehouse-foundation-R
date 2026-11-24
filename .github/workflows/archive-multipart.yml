@@ -1,0 +1,84 @@
+name: 257 MiBのマルチパート原本保全
+
+on:  # yamllint disable-line rule:truthy
+  push:
+    paths:
+      - compose.yaml
+      - compose.storage.rustfs.yaml
+      - native/**
+      - tests/integration/native/*archive*
+      - .github/workflows/archive-multipart.yml
+  pull_request:
+    paths:
+      - compose.yaml
+      - compose.storage.rustfs.yaml
+      - native/**
+      - tests/integration/native/*archive*
+      - .github/workflows/archive-multipart.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        storage: [seaweedfs, rustfs]
+    env:
+      LAKEHOUSE_ARCHIVE_MAX_MIB: '257'
+      ARCHIVE_TEST_STORAGE: ${{ matrix.storage }}
+      RUSTFS_TEST_LAKEHOUSE_IMAGE: native-archive-multipart-lakehouse
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: 専用Composeで保存・再起動・再送を照合
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          project=native-archive-multipart
+          stage="$RUNNER_TEMP/archive-multipart"
+          site="$stage/site.env"
+          python3 native/setup.py --output "$site" --landing "$stage/landing"
+          base=(docker compose -p "$project" --env-file "$site" -f compose.yaml)
+          "${base[@]}" build lakehouse
+          dc=("${base[@]}")
+          if [[ "$ARCHIVE_TEST_STORAGE" == rustfs ]]; then
+            dc+=(-f compose.storage.rustfs.yaml)
+          fi
+          dc+=(-f tests/integration/native/compose.archive-multipart.yaml)
+          "${dc[@]}" config --quiet
+          "${dc[@]}" pull storage catalog-db catalog catalog-migrate
+          "${dc[@]}" up -d --wait --wait-timeout 180 --no-build --pull never lakehouse
+          "${dc[@]}" exec -T lakehouse python - -v \
+            < tests/integration/native/archive_multipart_unit.py
+          python3 tests/integration/native/rustfs_archive.py --multipart seed "$stage/landing"
+          "${dc[@]}" exec -T lakehouse python - --multipart before \
+            < tests/integration/native/rustfs_archive.py > "$stage/before.json"
+          "${dc[@]}" down --timeout 30
+          "${dc[@]}" up -d --wait --wait-timeout 180 --no-build --pull never lakehouse
+          "${dc[@]}" exec -T lakehouse python - --multipart after \
+            < tests/integration/native/rustfs_archive.py > "$stage/after.json"
+          cmp "$stage/before.json" "$stage/after.json"
+          cat "$stage/after.json"
+      - name: 失敗箇所を記録して専用資源を破棄
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          site="$RUNNER_TEMP/archive-multipart/site.env"
+          if [[ ! -f "$site" ]]; then
+            exit 0
+          fi
+          dc=(docker compose -p native-archive-multipart --env-file "$site" -f compose.yaml)
+          if [[ "$ARCHIVE_TEST_STORAGE" == rustfs ]]; then
+            dc+=(-f compose.storage.rustfs.yaml)
+          fi
+          dc+=(-f tests/integration/native/compose.archive-multipart.yaml)
+          "${dc[@]}" logs --no-log-prefix lakehouse \
+            | grep -F '"event": "native.operation_failed"' || true
+          "${dc[@]}" down --volumes --remove-orphans

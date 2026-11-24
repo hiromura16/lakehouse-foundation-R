@@ -63,7 +63,7 @@ PNG、JPEG、WebPは32メガピクセル以下で先頭画像を展開できる�
 ## 大容量の原本を保全する
 
 通常取込の上限を超える検査素材、ログ圧縮ファイル、CADの書き出しなどは、
-`large-raw/` で別に受け取れます。上限は1ファイル256 MiBです。ファイル名は
+`large-raw/` で別に受け取れます。既定の上限は1ファイル256 MiBです。ファイル名は
 英数字で始まる英数字・ピリオド・下線・ハイフン127文字以内にし、接尾辞に
 `.sealed` や `.ready` を使用しません。
 
@@ -79,7 +79,7 @@ PNG、JPEG、WebPは32メガピクセル以下で先頭画像を展開できる�
 python -m native.api archive inspection-0001.bin
 ```
 
-原本を最大1MiBずつ読み、完了印と一致するSHA-256を検証します。
+既定設定では原本を最大1 MiBずつ読み、完了印と一致するSHA-256を検証します。
 S3の条件付き作成で既存原本を保護し、保存先が報告するSHA-256とサイズを照合
 してから `bronze.files` に登録します。応答の `object_created` はS3への新規作成、
 `registered` は台帳上の現在版の更新です。再送では両方false、更新版ではSHA-256
@@ -87,6 +87,30 @@ S3の条件付き作成で既存原本を保護し、保存先が報告するSHA
 自動処理しません。業務表への変換、圧縮の展開、外部公開には別の承認を使います。
 [条件付き書込](https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-writes.html)
 · [S3のオブジェクト照合](https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadObject.html)
+
+Dokployの環境変数またはローカルComposeの `site.env` で
+`LAKEHOUSE_ARCHIVE_MAX_MIB` を1〜2048の整数に設定できます。値はMiB単位で、
+変更後に `lakehouse` を再作成します。256 MiB以下の原本には単一の `PutObject`
+を使い、256 MiBを超える原本は明示した上限以内で固定16 MiBのS3パートへ分けます。
+末尾のパートだけは短くなります。原本全体のSHA-256を完了印と照合し、各パートは
+送信時に再ハッシュします。完了時は `If-None-Match: *` を付け、保存後のHEADで
+サイズとS3の複合SHA-256を照合してから、同じ `bronze.files` の台帳に登録します。
+
+中断や競合では、その要求で取得したupload IDのパートだけを中断します。競合の
+412では、既に存在する原本のサイズと複合SHA-256が一致した場合だけ再送として
+扱います。応答を失った場合は、稼働中のジョブが終わってから同じ原本を再送します。
+保存済みならHEAD照合後に台帳を整え、未完了で見えなければ新しく送信します。
+プロセスの強制終了や初回応答の消失時には、中断対象のIDを取得できない場合が
+あります。保存先の対応を確認し、未完了マルチパートを期限付きで回収します。
+支給するS3権限には対象バケットでの条件付き作成・HEAD・当該upload IDの中断が
+必要です。複合SHA-256を返さない保存先では台帳を確定しません。2 GiBは設定の上限で、
+隔離CIの入力は257 MiBです。採用する最大サイズで転送時間と
+プロキシ・クライアントの待機時間を照合してください。コンテナ内の操作CLIは
+最長600秒待機します。CLIが先に時間切れになっても、処理が完了している場合が
+あります。ヘルスAPIの `busy` がfalseになってから、同じ完了印と原本で再実行します。
+停止・再配備では先に新規投入を止め、実行中の保全ジョブが終了したことを
+確認してください。Composeの停止猶予は2分です。
+[S3のチェックサム方式](https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity-upload.html) · [マルチパートの確定](https://docs.aws.amazon.com/AmazonS3/latest/API/API_CompleteMultipartUpload.html) · [マルチパートの中断](https://docs.aws.amazon.com/AmazonS3/latest/API/API_AbortMultipartUpload.html) · [257 MiBの隔離受入](../../.github/workflows/archive-multipart.yml)
 
 ## 設備時系列JSONL
 

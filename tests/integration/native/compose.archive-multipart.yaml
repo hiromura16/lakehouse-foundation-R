@@ -1,0 +1,9 @@
+# 上限を引き上げる受入専用。標準の倉庫・バケット・公開ポートを使わない。
+services:
+  lakehouse:
+    pull_policy: never
+    ports: !reset []
+    environment:
+      S3_BUCKET_RAW: foundation-archive-multipart-raw
+      S3_BUCKET_WAREHOUSE: foundation-archive-multipart-warehouse
+      WAREHOUSE_NAME: foundation-archive-multipart
