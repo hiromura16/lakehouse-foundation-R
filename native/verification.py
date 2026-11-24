@@ -13,8 +13,11 @@ from urllib.parse import urlsplit
 
 from PIL import Image
 
+from native.catalog_schema import schema
 from native.landing import ingest
-from native.storage import ROOT, S3, catalog, schema
+from native.storage import S3, catalog
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def image_fixture(path, data):

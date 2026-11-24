@@ -64,6 +64,16 @@ jobs:
             < tests/integration/native/snapshot_evidence.py > "$stage/after.json"
           cmp "$stage/before.json" "$stage/after.json"
           cat "$stage/after.json"
+      - name: 失敗したジョブの分類と発生箇所を記録
+        if: failure()
+        shell: bash
+        run: |
+          site="$RUNNER_TEMP/rustfs/site.env"
+          if test -f "$site"; then
+            docker compose -p native-rustfs-ci --env-file "$site" \
+              -f compose.yaml -f compose.storage.rustfs.yaml logs --no-log-prefix lakehouse \
+              | grep -F '"event": "native.operation_failed"' || true
+          fi
       - name: 試験用のDocker資源を破棄
         if: always()
         run: |

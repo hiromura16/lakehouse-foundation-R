@@ -120,6 +120,16 @@ jobs:
           if python3 scripts/backup-native.py verify "$proof"; then
             exit 1
           fi
+      - name: 失敗したジョブの分類と発生箇所を記録
+        if: failure()
+        shell: bash
+        run: |
+          site="$RUNNER_TEMP/native-site.env"
+          if test -f "$site"; then
+            docker compose -p native-ci --env-file "$site" \
+              -f compose.yaml logs --no-log-prefix lakehouse \
+              | grep -F '"event": "native.operation_failed"' || true
+          fi
       - name: 試験プロジェクトと合成データを破棄
         if: always()
         run: |
