@@ -21,7 +21,10 @@ def tests(app):
 
     page.segmented_control[0].set_value("sql").run()
     assert not page.exception and not page.error
-    assert page.selectbox(key="dataset-sql").options == ["日次生産", "受注・出荷"]
+    assert page.selectbox(key="dataset-sql").options == [
+        "日次生産",
+        "受注・出荷",
+    ]
     page.selectbox(key="dataset-sql").set_value("sales_fulfillment").run()
     assert not page.exception and not page.error
     (sql_table, sql, _) = [element.value for element in page.code]
