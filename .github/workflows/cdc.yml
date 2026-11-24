@@ -58,6 +58,13 @@ jobs:
           "${suite[@]}" restart native-cdc
           "${suite[@]}" exec -T lakehouse python - resume < tests/integration/native/cdc_acceptance.py
           python3 tests/integration/native/cdc_checkpoint.py "$stage/state/state.sqlite3" 8
+          "${suite[@]}" exec -T lakehouse python - business < tests/integration/native/cdc_acceptance.py
+          # 合成Rawと比較用情報を、同じ隔離試験にだけ渡す。
+          umask 077
+          "${suite[@]}" exec -T native-cdc python - \
+            < tests/integration/native/cdc_replay_parity.py > "$stage/parity.json"
+          PYTHONPATH="$PWD" "$RUNNER_TEMP/cdc-shadow/bin/python" \
+            tests/integration/native/cdc_replay_parity.py "$stage"
       - name: 試験用のDocker資源を破棄
         if: always()
         shell: bash
