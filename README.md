@@ -20,16 +20,18 @@ MES・ERPのファイルとSQL Server由来のイベントを取り込み、Apac
 
 ```mermaid
 flowchart LR
-  SRC["データ投入アプリ・SQL Server"] --> L["受け渡し・完了印"]
-  L --> W["Lakehouse ワーカー<br/>DuckDBで型変換・集計"]
-  W --> I["PyIceberg・Lakekeeper<br/>Icebergへ保存"]
-  I --> S["SeaweedFS S3<br/>原本・テーブル実体"]
-  I --> A["公開世代付きの読取API"]
-  A --> U["データ閲覧画面・LangChain"]
-  P["Prometheus・Blackbox"] --> G["Grafana 稼働監視"]
+  SRC["投入アプリ<br/>SQL Server"] --> L["受け渡し<br/>完了印"]
+  L --> W["DuckDB<br/>型変換と集計"]
+  W --> I["PyIceberg<br/>Lakekeeper"]
+  I --> S["SeaweedFS S3<br/>原本と表の実体"]
+  I --> A["読取API<br/>公開世代付き"]
+  A --> U["データ閲覧<br/>LangChain"]
+  P["Prometheus<br/>Blackbox"] --> G["Grafana<br/>稼働監視"]
 ```
 
-DuckDBはワーカーに組み込む分析用SQLエンジンです。変換時にメモリ上で起動し、PyIcebergが結果を保存します。製品ごとの責務やCDCの経路は [詳細構成](docs/native/ARCHITECTURE.md) にあります。
+[全体構成図をPNGで開く](docs/native/images/foundation-r-overview.png)
+
+DuckDBはワーカーに組み込む分析用SQLエンジンです。1台のVMで受注・出荷の結合や工場の日次集計を行い、PyIcebergが結果を保存します。コンポーネント別の役割、採用理由、Sparkを使う場面は [詳細構成](docs/native/ARCHITECTURE.md) にあります。
 
 | 必要な機能 | Foundation Rの入口 |
 | --- | --- |
@@ -43,7 +45,7 @@ DuckDBはワーカーに組み込む分析用SQLエンジンです。変換時�
 
 ## 最初に起動する
 
-企業ネットワークからは先に [プロキシとCA](docs/native/COMPANY.md) を確認してください。GitHubでは、この非公開リポジトリを読めるアカウントで認証します。
+公開リポジトリなので、HTTPSでのcloneにGitHubアカウントは不要です。企業ネットワークからは先に [プロキシとCA](docs/native/COMPANY.md) を確認してください。
 
 **Bash / Zsh共通**
 
@@ -61,8 +63,9 @@ docker compose --env-file "$site" exec -T lakehouse python -m native.api verify
 `verify` は専用の一時Iceberg namespaceで、元の6ソースの合成データと期待値を照合します。実際にlandingへファイルを置いてGoldを作る手順は [初回導入と操作](docs/native/START.md) にあります。Dokployを使う場合は [Dokployと企業ネットワーク](docs/native/COMPANY.md) を参照してください。
 
 - [設計、データ契約、元のFoundationとの比較](docs/native/ARCHITECTURE.md)
-- [データ閲覧・管理画面を追加する](docs/native/GUI.md)
-- [設定ファイルで変更する稼働監視](docs/native/MONITORING.md)
+- [レイクハウスの設計思想と参考書籍](docs/native/DESIGN.md)
+- [データ閲覧・管理画面を追加する（実画面付き）](docs/native/GUI.md)
+- [設定ファイルで変更する稼働監視（実画面付き）](docs/native/MONITORING.md)
 - [Kafka / SQL Server / データ投入アプリ](docs/native/SOURCES.md)
 - [APIとLangChain](docs/native/API.md)
 - [バックアップ、障害対応、検証](docs/native/OPERATIONS.md)

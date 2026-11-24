@@ -44,6 +44,17 @@ PythonはPEP8と79文字の規約、Ruff・pycodestyleを使います。SQLはCT
 
 説明だけの変更では、フラグ名、既定値、validation、実行順序を混ぜて変更しません。必要な動作修正は理由・影響・検証を別に示します。パスや設定は変数で指定し、特定の配置先の値を例として埋め込みません。
 
+### Python、API、シェル、SQLのレビュー
+
+| 対象 | Foundation Rで確認すること | 参照した資料 |
+| --- | --- | --- |
+| Python | 名前から入力・結果を想像できるか。再試行の順序や権限など理由が必要な箇所を日本語で説明しているか。依存をハッシュ付きで固定し、テストと静的解析を同じ環境で再現できるか | [リーダブルコード](https://www.oreilly.co.jp/books/9784873115658/) · [ハイパーモダンPython](https://www.oreilly.co.jp/books/9784814400928/) |
+| HTTP API | 読取とジョブ実行の権限、固定の操作名、入力上限、エラー時の挙動をコマンドとテストで確認できるか。合成データで検証し、ログやエラーに資格情報や業務行を含めていないか | [マスタリングAPIアーキテクチャ](https://www.oreilly.co.jp/books/9784814400898/) · [責任あるソフトウェアエンジニアリング](https://www.oreilly.co.jp/books/9784814401581/) |
+| シェル | コマンドを小さくつなぎ、パスを引用し、期待する失敗と異常終了を扱えているか。設定ファイルの所有者・権限と終了状態を確認できるか。シェル固有機能のある例はBash用と明記する | [Efficient Linuxコマンドライン](https://www.oreilly.co.jp/books/9784814400485/) · [入門 モダンLinux](https://www.oreilly.co.jp/books/9784814400218/) · [マスタリングLinuxシェルスクリプト 第2版](https://www.oreilly.co.jp/books/9784814400119/) |
+| SQL | CTEごとの1行の意味、結合の多重度、NULL、集計の母数と窓の順序が明確か。多対多になりうる事実表は目的の粒度へ集計してから結合する。遅延到着や部分出荷を合成データで確認する | [SQLクックブック 第2版](https://www.oreilly.co.jp/books/9784873119779/) · [初めてのSQL 第3版](https://www.oreilly.co.jp/books/9784873119588/) |
+
+例として、[Gold SQL](medallion/03_gold.sql) の日次生産集計は指図・実績・停止を工場×日まで先に集約します。[結合で計画値が増えないことを確認するSQL](medallion/checks/04-factory-daily-measures-avoid-join-multiplication.sql) と [部分出荷・遅延出荷を確認するSQL](medallion/checks/05-sales-partial-and-late-deliveries.sql) を併せて読みます。
+
 ## 専用uv環境で検査する
 
 リポジトリルートから、通常ユーザーで実行します。
@@ -68,7 +79,7 @@ uv pip sync --python "$QUALITY_VENV/bin/python" \
 git diff --check
 ```
 
-CIの公開検査には会社の実秘密値はありません。公開前にはGit外の既知情報リストと秘密値照合も別途行います。文字列検査だけで画像・PDF・Notebookが公開可能と判断せず、実出力とmetadataも確認します。
+CIの公開検査には会社の実秘密値はありません。公開前にはGit外の既知情報リストと秘密値照合も別途行います。ドキュメントのPNGは表示内容とメタデータを確認し、`scripts/check-source.py` に画像のSHA-256を追加します。差し替え時はGit履歴の検査用に既存の承認済みハッシュも残します。第三者の画像には出典と利用条件を添えます。
 
 図・説明を変更した場合は、[生成・出力・確認手順](docs/reports/EDITING-GUIDE.md) を使います。データ処理や版を変えた場合は、関連する互換性・機能・再実行試験を追加します。合成機能試験、会社での受入、性能・復元・モデル推論の確認は、対象と成功条件を分けて記録します。
 

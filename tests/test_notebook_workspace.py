@@ -401,7 +401,9 @@ class DisposableLinuxWorkspaceTests(unittest.TestCase):
         self.assertFalse((self.directory / "a").exists())
 
     def test_workspace_replacement_after_open_prevents_metadata_mutation(self):
-        self.target.mkdir(mode=0o755)
+        self.target.mkdir()
+        # ホストのumaskに関係なく、置換前後で異なる権限を再現する。
+        self.target.chmod(0o755)
         original_open = MODULE.os.open
         moved = self.directory / "previous"
         replaced = False

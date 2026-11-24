@@ -24,6 +24,12 @@
 | `http://127.0.0.1:18501/d/lakehouse-r-runtime` | Grafana | 稼働監視のダッシュボード |
 | `http://127.0.0.1:18502/health` | Lakehouse HTTP API | ワーカー状態。業務データのGETは読取トークンを要求 |
 
+## Gold閲覧画面の例
+
+![合成データを使った工場別日次生産の閲覧画面](images/data-browser-demo.png)
+
+[初回導入](START.md) の合成データを投入すると「工場別の日次生産」を選べます。表の下にある「データの出所」を開くと、Icebergの表と公開世代を確認できます。
+
 ## 起動と接続
 
 1. [初回導入](START.md) に従って、checkout外に `site.env` と受け渡し先を作ります。

@@ -1,7 +1,7 @@
 # アーキテクチャと業務契約
 
 <!-- doc-purpose:start -->
-> **役割:** 責務、元の業務契約、公開世代、既存機能の関係を確認します。
+> **役割:** コンポーネントの役割と採用理由、業務契約、公開世代、元のFoundationとの違いを確認します。
 >
 > **対象読者:** 初めて使う人 / 基盤構築担当
 >
@@ -9,7 +9,7 @@
 >
 > **前提となる資料:** なし。必要な用語は本文で確認します。
 >
-> **次に読む資料:** [SQL Server・Kafka・データ投入アプリとの接続](<SOURCES.md>)
+> **次に読む資料:** [レイクハウスの設計思想](<DESIGN.md>) / [SQL Server・Kafka・データ投入アプリとの接続](<SOURCES.md>)
 >
 > **文書一覧:** [目的・読者から探す文書マニフェスト](<../DOCUMENTATION-MANIFEST.md>)
 <!-- doc-purpose:end -->
@@ -37,18 +37,27 @@ flowchart LR
   P[PrometheusとBlackbox] --> O[Grafana 稼働監視]
 ```
 
-## DuckDBとは
+## 何を使い、なぜ選んだか
 
-DuckDBは分析用のSQLエンジンです。Pythonのワーカーに組み込み、列指向のArrowデータをSQLで集計できます。Foundation Rでは1台のホスト上で、受注・出荷の結合、工場ごとの日次集計、設備の1分窓集計などを担当します。
+「受注の一部が出荷された」という行を例にすると、原本をSeaweedFSに保管し、Icebergで表の版を管理し、DuckDBで受注と出荷を結合します。利用者はGoldの集計をWeb画面やAPIで読みます。これらの役割を分けると、同じ原本から集計を作り直したり、計算方式を変えてもテーブルの保存形式を維持したりできます。[設計思想と運用への当てはめ](DESIGN.md)
 
-| 役割 | 製品 | 受け持つ処理 |
+| コンポーネント | Foundation Rでの役割 | 採用理由 |
 | --- | --- | --- |
-| 計算 | DuckDB | Arrowを入力に、業務SQLの型変換・検査・集計を実行 |
-| テーブルの読み書き | PyIceberg | Icebergの行をArrowで読み、変換結果を書き込み、スナップショットを確定 |
-| カタログ | LakekeeperとPostgreSQL | 名前空間・表・メタデータの位置とカタログの永続状態を管理 |
-| 保存 | SeaweedFS S3 | 原本とIcebergのデータファイルを永続化 |
+| DuckDB | 受注・出荷の結合、工場別日次集計、設備の1分窓など、Pythonワーカーの中でSQLを実行 | 分析処理を1台に収め、別のSQLサーバーやJVMの管理を省ける。既存業務SQLの結果を合成データで照合できる。[DuckDBの設計](https://duckdb.org/why_duckdb) |
+| Apache Arrow / PyArrow | DuckDBとPyIcebergの間で、列ごとの型を持つデータを受け渡す | 一時CSVを作る工程を省ける。日時や数値型を明示して渡せる。[Arrowの仕様](https://arrow.apache.org/docs/format/Columnar.html) |
+| Parquet / Apache Iceberg | Parquetが行の実体を保存し、Icebergがその表の列、ファイル一覧、履歴を管理 | 開いた仕様で保存し、スナップショットIDで参照する表の版を特定できる。[Parquet](https://parquet.apache.org/docs/) · [Iceberg仕様](https://iceberg.apache.org/spec/) |
+| PyIceberg | PythonでIceberg表を読み書きし、表のスナップショットを確定 | ArrowとRESTカタログを使って、書き込みまでPythonワーカーで完結できる。[PyIceberg](https://py.iceberg.apache.org/) |
+| Lakekeeper | 表の所在と名前空間をIceberg REST Catalogとして提供 | Rust製のカタログで、JVMなしの標準構成からIcebergのRESTインターフェースを使える。[Lakekeeper](https://github.com/lakekeeper/lakekeeper) |
+| PostgreSQL | Lakekeeperの表登録や倉庫設定など、カタログ状態を永続化 | Lakekeeperが採用する永続バックエンドをそのまま使える。移行ジョブを通常の起動から切り分けられる。[Lakekeeperの構成](https://docs.lakekeeper.io/) |
+| SeaweedFS | S3互換の入口で原本とIcebergのデータ・メタデータファイルを保管 | Pythonとカタログから共通のS3インターフェースで使え、試験用の単一VMに配置できる。[SeaweedFS](https://github.com/seaweedfs/seaweedfs) |
+| Pythonのワーカー、HTTP API、CLI | 取込、業務変換、公開、Gold読取を定義済みの操作として提供 | 各操作をテストやCLIから同じ入口で実行できる。処理の実行権限と閲覧権限を分けられる。[APIの利用方法](API.md) |
+| Prometheus / Blackbox Exporter / Grafana | Prometheusがメトリクスを貯め、BlackboxがHTTP・TCPを確認し、Grafanaが表示 | アプリへの追加実装が少ない疎通確認と、業務ジョブのメトリクスを併用できる。監視対象と画面をファイルで管理できる。[監視設定](MONITORING.md) |
+| Streamlit / NGINX | 任意構成でGoldの表をブラウザー表示し、NGINXが閲覧画面と運用画面の認証付き窓口になる | Pythonで合成データの結果を確認でき、読取APIと認証境界を共有できる。[データ閲覧](GUI.md) |
+| Kafka互換ブローカー / confluent-kafka | 任意のCDCで外部ブローカーからDBの変更イベントを受信 | 既存イベント契約を利用し、必須のComposeサービスを増やさずにファイル取込と併用できる。[入力経路](SOURCES.md) |
+| LangChain Core | AIワークフローから、固定されたGoldデータセットを読取ツールとして利用 | データセット名や行数を制約し、表の版と公開世代を回答の根拠として渡せる。[LangChainのTools](https://docs.langchain.com/oss/python/langchain/tools) |
+| Docker Compose / Dokploy | 同じサービス定義をCLIとDokployから配置 | セットアップ、ヘルスチェック、追加GUIを共通化し、配置先ごとのプロキシやCAを外部設定に置ける。[会社VMでの配置](COMPANY.md) |
 
-処理上限は下記の単一ホスト構成に合わせて設定しています。複数ホストでの分散実行や既存PySparkジョブは互換構成のSparkを使います。
+1台のVMで業務SQLを実行する用途では、Sparkの代わりにDuckDBを使います。Icebergへの保存と表の版管理はPyIcebergが担当します。単一ホスト構成の処理上限は下記を参照してください。複数ホストでの分散実行や既存PySparkジョブには互換構成のSparkが使えます。[採用バージョンと公式リファレンス](REFERENCES.md)
 
 ## UNIXの責務分離とDDD
 

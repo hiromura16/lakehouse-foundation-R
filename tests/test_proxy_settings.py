@@ -46,10 +46,19 @@ class ProxySettingsTests(unittest.TestCase):
         self.source.parent.mkdir(mode=0o700)
         self.source.write_text(TEMPLATE)
         self.source.chmod(0o600)
-        # Simulated apply must never reach a host configuration write.
-        self.writer_patch = mock.patch.object(PROXY, "atomic_write")
-        self.writer = self.writer_patch.start()
-        self.addCleanup(self.writer_patch.stop)
+        # applyは書き込みを模擬し、実ホストの/etcのリンク情報も使わない。
+        self.writer = self.enterContext(
+            mock.patch.object(PROXY, "atomic_write")
+        )
+        is_symlink = Path.is_symlink
+
+        def simulated_is_symlink(path):
+            """一時設定のリンク判定だけ、実際のファイルで行う。"""
+            return not path.is_relative_to("/etc") and is_symlink(path)
+
+        self.enterContext(
+            mock.patch.object(Path, "is_symlink", simulated_is_symlink)
+        )
 
     def assert_refused(self, text=None):
         """Expect validation failure with no destination writes."""

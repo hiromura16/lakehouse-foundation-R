@@ -458,6 +458,20 @@ class PublicationChecks(unittest.TestCase):
             result = self.inspect(root, "--allow-png", "fixture.png")
             self.assertEqual(result.returncode, 0)
 
+    def test_reviewed_png_rejects_same_path_replacement(self):
+        """確認済みPNGは、同名で差し替えても署名だけでは通過しない。"""
+        path = "docs/native/images/data-browser-demo.png"
+        reviewed = (ROOT / path).read_bytes()
+        self.assertEqual(
+            MODULE.scan_blob(path, reviewed, set(), set(), set()), []
+        )
+        changed = MODULE.scan_blob(
+            path, reviewed + b"changed", {path}, set(), set()
+        )
+        self.assertEqual(
+            [finding.rule for finding in changed], ["reviewed-png-changed"]
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

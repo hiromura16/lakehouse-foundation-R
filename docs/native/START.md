@@ -31,6 +31,8 @@ Docker Engineに接続できない場合は、管理者に接続方法を確認�
 
 ## 2. Cloneして秘密設定を作る
 
+HTTPSでのcloneにGitHubアカウントは不要です。VMのGitの疎通やCAを確認する手順は [会社ネットワークの準備](COMPANY.md) にあります。
+
 **Bash / Zsh共通**
 
 ```bash
@@ -69,7 +71,7 @@ docker compose --env-file "$site" exec -T lakehouse \
   python -m native.api gold factory_daily_production --limit 5
 ```
 
-`imported` は今回保存した入力ファイル数です。再実行で `imported: 0` と `unchanged: true` が返れば、入力のスナップショットと変換版が一致しています。Goldの `snapshot_id` はその表の版、`release_snapshot_id` は公開世代の版です。画面からの確認は [監視](MONITORING.md)、別アプリからの取込は [入力経路](SOURCES.md) を参照します。
+`imported` は今回保存した入力ファイル数です。この手順では `imported: 6` と `sql_statements: 14` が得られ、日次生産は全14行のうち先頭5行が返ります。再実行で `imported: 0` と `unchanged: true` が返れば、入力のスナップショットと変換版が一致しています。Goldの `snapshot_id` はその表の版、`release_snapshot_id` は公開世代の版です。[データ閲覧の実画面](GUI.md) と [稼働監視の実画面](MONITORING.md) でも確認できます。別アプリからの取込は [入力経路](SOURCES.md) を参照します。
 
 ## 5. 停止と再開
 

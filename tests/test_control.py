@@ -523,7 +523,9 @@ class MonitoringSpoolTests(ControlFixture, unittest.TestCase):
         cases["dangling-link"] = dangling
         cases["ancestor-link"] = link / "spool"
         unsafe = base / "unsafe"
-        unsafe.mkdir(mode=0o755)
+        unsafe.mkdir()
+        # 厳しいumaskでも、他のユーザーが読める検査用ディレクトリを作る。
+        unsafe.chmod(0o755)
         cases["unsafe-mode"] = unsafe
         for name, spool in cases.items():
             self.configure_monitoring(spool)

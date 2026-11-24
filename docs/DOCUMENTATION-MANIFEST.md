@@ -31,8 +31,9 @@
 | [BashとZshの両方で手順を実行する](<SHELLS.md>) | 会社VMのZshとBashでコマンドを使い分け、対話入力・コメント・shebang・引用の違いを確認する。 | Zsh端末で初回構築や運用のコマンドを貼る前、シェル例を追加・変更するとき。 | active |
 | [初めて構築する人の一本道ガイド](<START-HERE.md>) | 新規Linux環境の準備からcore配置と合成データ検証までを順に進める。 | 初めてこのリポジトリを配置し、段階ごとの成功条件を確認するとき。 | active |
 | [認証付きAPIとLangChain](<native/API.md>) | 固定API操作とスナップショットを根拠にしたLangChain利用を確認します。 | 分析やAIのツールを実装するとき。 | active |
-| [アーキテクチャと業務契約](<native/ARCHITECTURE.md>) | 責務、元の業務契約、公開世代、既存機能の関係を確認します。 | 実装を理解・変更するとき。 | active |
+| [アーキテクチャと業務契約](<native/ARCHITECTURE.md>) | コンポーネントの役割と採用理由、業務契約、公開世代、元のFoundationとの違いを確認します。 | 実装を理解・変更するとき。 | active |
 | [Dokployと企業ネットワーク](<native/COMPANY.md>) | Git・Docker・BuildKitの通信を準備し、Dokployで配備します。 | 会社環境の準備と配置時。 | active |
+| [レイクハウスの設計思想](<native/DESIGN.md>) | データの保存、品質、所有、AI利用の考え方をFoundation Rの実装と照らし合わせます。 | 設計判断を理解するときや、用途に合わせて構成を変更するとき。 | active |
 | [データ閲覧と管理画面を追加する](<native/GUI.md>) | Gold・Lakekeeper・Prometheusの認証付き閲覧画面を用意します。 | ブラウザーで実データと運用状態を確認するとき。 | active |
 | [Grafanaの稼働監視を設定ファイルで管理する](<native/MONITORING.md>) | PrometheusとGrafanaの監視対象・パネルを変更します。 | 起動確認や監視対象の変更時。 | active |
 | [運用、バックアップ、受入試験](<native/OPERATIONS.md>) | 障害対応、状態の保全と合成データでの受入を行います。 | 導入先で検証・運用するとき。 | active |
@@ -180,8 +181,9 @@
 | [BashとZshの両方で手順を実行する](<SHELLS.md>) | 会社VMのZshとBashでコマンドを使い分け、対話入力・コメント・shebang・引用の違いを確認する。 |
 | [初めて構築する人の一本道ガイド](<START-HERE.md>) | 新規Linux環境の準備からcore配置と合成データ検証までを順に進める。 |
 | [認証付きAPIとLangChain](<native/API.md>) | 固定API操作とスナップショットを根拠にしたLangChain利用を確認します。 |
-| [アーキテクチャと業務契約](<native/ARCHITECTURE.md>) | 責務、元の業務契約、公開世代、既存機能の関係を確認します。 |
+| [アーキテクチャと業務契約](<native/ARCHITECTURE.md>) | コンポーネントの役割と採用理由、業務契約、公開世代、元のFoundationとの違いを確認します。 |
 | [Dokployと企業ネットワーク](<native/COMPANY.md>) | Git・Docker・BuildKitの通信を準備し、Dokployで配備します。 |
+| [レイクハウスの設計思想](<native/DESIGN.md>) | データの保存、品質、所有、AI利用の考え方をFoundation Rの実装と照らし合わせます。 |
 | [データ閲覧と管理画面を追加する](<native/GUI.md>) | Gold・Lakekeeper・Prometheusの認証付き閲覧画面を用意します。 |
 | [Grafanaの稼働監視を設定ファイルで管理する](<native/MONITORING.md>) | PrometheusとGrafanaの監視対象・パネルを変更します。 |
 | [運用、バックアップ、受入試験](<native/OPERATIONS.md>) | 障害対応、状態の保全と合成データでの受入を行います。 |
@@ -228,8 +230,9 @@
 | [症状から確認する](<TROUBLESHOOTING.md>) | 観測した症状から設定・起動・通信・job・データの失敗箇所を絞り込む。 |
 | [Vectorによる対象ログの整形と秘匿化](<VECTOR.md>) | 対象projectの有限capture・VRL重大度・秘匿化・有界配送と未検証項目を確認する。 |
 | [認証付きAPIとLangChain](<native/API.md>) | 固定API操作とスナップショットを根拠にしたLangChain利用を確認します。 |
-| [アーキテクチャと業務契約](<native/ARCHITECTURE.md>) | 責務、元の業務契約、公開世代、既存機能の関係を確認します。 |
+| [アーキテクチャと業務契約](<native/ARCHITECTURE.md>) | コンポーネントの役割と採用理由、業務契約、公開世代、元のFoundationとの違いを確認します。 |
 | [Dokployと企業ネットワーク](<native/COMPANY.md>) | Git・Docker・BuildKitの通信を準備し、Dokployで配備します。 |
+| [レイクハウスの設計思想](<native/DESIGN.md>) | データの保存、品質、所有、AI利用の考え方をFoundation Rの実装と照らし合わせます。 |
 | [データ閲覧と管理画面を追加する](<native/GUI.md>) | Gold・Lakekeeper・Prometheusの認証付き閲覧画面を用意します。 |
 | [Grafanaの稼働監視を設定ファイルで管理する](<native/MONITORING.md>) | PrometheusとGrafanaの監視対象・パネルを変更します。 |
 | [運用、バックアップ、受入試験](<native/OPERATIONS.md>) | 障害対応、状態の保全と合成データでの受入を行います。 |

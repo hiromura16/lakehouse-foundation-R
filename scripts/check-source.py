@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Inspect public source and optional Git history without root or network I/O.
+"""公開ソースとGit履歴を、特権やネットワークなしで検査する。
 
-Private deny terms and credential values are read only from external inputs.
-Reports contain rule names and source locations, never the matching contents.
+機密語と実際の資格情報は指定されたGit外の入力から照合する。
+結果に出すのはルールと位置だけで、照合した内容は表示しない。
 """
 
 import argparse
+import hashlib
 import ipaddress
 import json
 import os
@@ -18,6 +19,22 @@ from xml.parsers import expat
 
 ROOT = Path(__file__).resolve().parents[1]
 MAX_TEXT_BYTES = 8 * 1024 * 1024
+# 目視とメタデータを確認した画像だけ、SHA-256で検査対象を固定する。
+# 差し替え時は内容を確認してハッシュを追加し、履歴用に既存の値も残す。
+REVIEWED_PNG_SHA256 = {
+    "docs/native/images/foundation-r-overview.png": {
+        "2bf660d2a198b42ecf4f246d8e58dab0ac60edb33c1d05f364b3a4cd1f178f27",
+    },
+    "docs/native/images/data-browser-demo.png": {
+        "17311468366dcb3ddc4964e1fc1c8a00603a1b174ad05c31c36e11047bcfe338",
+    },
+    "docs/native/images/runtime-demo.png": {
+        "7db25e0b7cc1c46713bd4ae0d4908425fad04caf099b88458fff2478a4af1d7a",
+    },
+    "docs/native/images/iceberg-metadata.png": {
+        "2081bca6c5b85bdb6710fc764b7f9ecff60cd3c87e30dd78665e530928443c10",
+    },
+}
 # The CA placeholder must stay empty in worktree, index and history blobs.
 EMPTY_CA_SOURCE = "infra/proxy/empty-ca.pem"
 PRIVATE_NETWORKS = tuple(
@@ -451,18 +468,27 @@ def scan_text(name, text, terms, secrets):
 
 
 def scan_blob(name, content, allowed_png, terms, secrets):
-    """Scan a text source or explicitly allowlisted synthetic PNG."""
+    """UTF-8のソースと、個別に確認したPNGを検査する。
+
+    同じパスをCLIで許可しても、確認済み画像のハッシュ検査は適用する。
+    検出結果には画像のバイト列もハッシュも含めない。
+    """
     findings = []
     rule = path_rule(name)
     if rule and not (name == EMPTY_CA_SOURCE and content == b""):
         findings.append(Finding(name, 0, rule))
     for finding in scan_text(name, name, terms, secrets):
         findings.append(Finding(name, 0, finding.rule + "-in-path"))
-    if name in allowed_png:
+    reviewed_digests = REVIEWED_PNG_SHA256.get(name)
+    if reviewed_digests or name in allowed_png:
         if not name.endswith(".png") or not content.startswith(
             b"\x89PNG\r\n\x1a\n"
         ):
             findings.append(Finding(name, 0, "invalid-allowed-png"))
+        elif reviewed_digests and (
+            hashlib.sha256(content).hexdigest() not in reviewed_digests
+        ):
+            findings.append(Finding(name, 0, "reviewed-png-changed"))
         return findings
     if len(content) > MAX_TEXT_BYTES:
         return findings + [Finding(name, 0, "source-too-large-to-scan")]

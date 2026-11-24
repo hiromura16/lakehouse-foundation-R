@@ -16,6 +16,10 @@
 
 標準起動で `Lakehouse R 稼働監視` がGrafanaに自動作成されます。サーバー自身から `http://localhost:18501/d/lakehouse-r-runtime` を開き、ユーザー名 `admin` とprivate `site.env` の `GRAFANA_ADMIN_PASSWORD` で入ります。初回パスワードはGrafanaデータvolumeが空のときに適用されます。
 
+![合成環境で各サービスの稼働状態と履歴を表示したGrafana](images/runtime-demo.png)
+
+画像は [閲覧画面を追加](GUI.md) した構成です。標準構成は7対象、閲覧画面を追加すると9対象が表示されます。下段の「取込・変換ジョブ」で合成データの処理結果も確認できます。
+
 | ファイル | 変更する内容 |
 | --- | --- |
 | [core.yml](../../native/monitoring/targets/core.yml) | PostgreSQL、SeaweedFS、Lakekeeper、Lakehouse、Prometheus、Grafana、Blackboxの監視先 |

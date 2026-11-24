@@ -1369,7 +1369,7 @@
     {
       "path": "docs/native/ARCHITECTURE.md",
       "title": "アーキテクチャと業務契約",
-      "purpose": "責務、元の業務契約、公開世代、既存機能の関係を確認します。",
+      "purpose": "コンポーネントの役割と採用理由、業務契約、公開世代、元のFoundationとの違いを確認します。",
       "audience": [
         "初めて使う人",
         "基盤構築担当"
@@ -1378,7 +1378,24 @@
       "category": "01 入口・学習",
       "prerequisites": [],
       "next": [
+        "docs/native/DESIGN.md",
         "docs/native/SOURCES.md"
+      ],
+      "status": "active"
+    },
+    {
+      "path": "docs/native/DESIGN.md",
+      "title": "レイクハウスの設計思想",
+      "purpose": "データの保存、品質、所有、AI利用の考え方をFoundation Rの実装と照らし合わせます。",
+      "audience": [
+        "初めて使う人",
+        "基盤構築担当"
+      ],
+      "when_to_use": "設計判断を理解するときや、用途に合わせて構成を変更するとき。",
+      "category": "01 入口・学習",
+      "prerequisites": [],
+      "next": [
+        "docs/native/ARCHITECTURE.md"
       ],
       "status": "active"
     },
