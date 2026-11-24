@@ -59,6 +59,36 @@ APIが409を返し、CLIは終了1になります。入力修正後に再実行�
 基に実行間隔を選びます。トークンはコンテナの既存環境から渡され、Command
 には書きません。[取込状態と認証](API.md#取込状態と公開中のデータ)
 
+## 保全先のマルチパート一覧を調べる
+
+容量を調査するときは、Dokployの `lakehouse` Terminalから、原本バケットの
+予約prefix `archive/` に残るマルチパートを読み取れます。
+一覧には現在送信中の要求も含まれます。
+
+**Bash / Zsh共通**
+
+```bash
+python -m native.archive_uploads --before 2026-11-20 --max-pages 4
+```
+
+`before` はUTC午前0時です。その日時より前に開始した件数を
+`initiated_before_cutoff` に、読んだ範囲の全件数を `uploads_seen` に返します。
+1ページは最大250件、ページ上限は既定4、最大20です。
+`has_next_page` が `true` の場合、件数と `inventory_sha256` は取得済みページの
+範囲を表します。出力に個別のキーやupload IDは含みません。送信中の一覧は走査中に
+変わるため、比較する場合は新規送信を止めてから読み直します。
+[S3の一覧と2種類のマーカー](https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListMultipartUploads.html) · [SeaweedFS 4.53の一覧実装](https://github.com/seaweedfs/seaweedfs/blob/4.53/weed/s3api/filer_multipart.go)
+
+回収する場合は、対象バケットへの送信を行う全writerで新規受付を停止し、処理中の
+要求が終了したことを確認します。単一PUTの終了は操作APIの応答と原本台帳で
+確認します。承認済みの保守アカウントから対象の
+バケット・キー・upload IDを照合し、放棄されたことを確認したIDのみ
+`AbortMultipartUpload` で中断します。完了済みのオブジェクトは保全対象です。
+中断後は権限を持つ管理者が `ListParts` または一覧を取り直して確認します。
+標準のSeaweedFS構成でライフサイクルによる自動回収を採用する場合は、対象の
+ルールと専用workerを隔離環境で動かし、期限到達後の回収まで受入します。
+[S3のマルチパート中断](https://docs.aws.amazon.com/AmazonS3/latest/API/API_AbortMultipartUpload.html) · [SeaweedFSのライフサイクル運用](https://github.com/seaweedfs/seaweedfs/wiki/S3-Lifecycle-Operator-Guide)
+
 ## バックアップと復元
 
 保全対象はカタログDB、S3のSeaweedFSデータと設定、landing原本、private `site.env` と暗号鍵、Grafana volumeと設定ファイル、必要に応じてPrometheusデータ、CDC SQLiteのディレクトリ全体とその運用設定です。追加構成ではn8n専用DBと暗号鍵、OpenObserve、InfluxDB、Explorerのデータと資格情報も対象にします。DokployのVolume Backupsを使う場合、名前付きvolumeに加えてホストのlandingとCAを別途保全します。
