@@ -4,6 +4,7 @@ import importlib.util
 import io
 import json
 import os
+import stat
 import sys
 import tarfile
 import unittest
@@ -21,14 +22,16 @@ with patch.object(sys, "path", [str(SCRIPTS), *sys.path]):
     SPEC.loader.exec_module(backup)
 
 
-def archive(*entries):
+def archive(*entries, permissions=None):
     """ファイル名・形式・内容を指定して、入力用の非圧縮tarを作る。"""
     memory = io.BytesIO()
     with tarfile.open(mode="w", fileobj=memory) as output:
         for name, kind, data in entries:
             member = tarfile.TarInfo(name)
             member.type = kind
-            member.mode = 0o700 if kind == tarfile.DIRTYPE else 0o600
+            member.mode = (permissions or {}).get(
+                name, 0o700 if kind == tarfile.DIRTYPE else 0o600
+            )
             member.uid = os.getuid()
             member.gid = os.getgid()
             member.size = len(data)
@@ -52,6 +55,33 @@ class TarTest(unittest.TestCase):
             self.assertEqual(restored.read_bytes(), b"1")
             self.assertEqual(restored.stat().st_mode & 0o777, 0o600)
             self.assertEqual(restored.stat().st_uid, os.getuid())
+
+    def test_postgres_sticky_directory_keeps_original_mode(self):
+        """PostgreSQL 18公式イメージの01777のルートを展開する。"""
+        data = archive(
+            (".", tarfile.DIRTYPE, b""),
+            ("config", tarfile.REGTYPE, b"data"),
+            permissions={".": 0o1777},
+        )
+        backup.audit_archive(io.BytesIO(data))
+        with TemporaryDirectory() as staging:
+            backup.audit_archive(io.BytesIO(data), Path(staging))
+            self.assertEqual(
+                stat.S_IMODE(Path(staging).stat().st_mode), 0o1777
+            )
+
+    def test_special_permissions_for_non_directories_are_rejected(self):
+        """通常ファイルのsticky、setuid、setgidは引き続き拒否する。"""
+        for mode in (0o1600, 0o2600, 0o4600):
+            data = archive(
+                ("sample", tarfile.REGTYPE, b"data"),
+                permissions={"sample": mode},
+            )
+            with (
+                self.subTest(mode=mode),
+                self.assertRaises(backup.RestoreTarError),
+            ):
+                backup.audit_archive(io.BytesIO(data))
 
     def test_unsupported_paths_are_rejected(self):
         """リンク、特殊ファイル、相対パスの越境、重複、親の変更を拒否する。"""

@@ -34,7 +34,9 @@ def check_member(member, paths):
         or member.issparse()
         or member.size < 0
         or (member.isdir() and member.size)
-        or member.mode & (stat.S_ISUID | stat.S_ISGID | stat.S_ISVTX)
+        or member.mode & (stat.S_ISUID | stat.S_ISGID)
+        # PostgreSQL 18公式イメージのボリューム直下は01777。
+        or (not member.isdir() and member.mode & stat.S_ISVTX)
         or not all(0 <= value < 2**31 for value in (member.uid, member.gid))
     ):
         raise RestoreTarError("tarに展開できない項目があります。")
