@@ -38,7 +38,7 @@ services:
       DB_POSTGRESDB_PASSWORD: ${TOOLS_DB_PASSWORD:?追加ツールの専用設定を生成してください}
       N8N_ENCRYPTION_KEY: ${TOOLS_N8N_KEY:?追加ツールの専用設定を生成してください}
       N8N_EDITOR_BASE_URL: ${TOOLS_N8N_URL:-http://localhost:18507/}
-      WEBHOOK_URL: ${TOOLS_N8N_URL:-http://localhost:18507/}
+      N8N_WEBHOOK_URL: ${TOOLS_N8N_URL:-http://localhost:18507/}
       N8N_PROXY_HOPS: ${TOOLS_N8N_PROXY_HOPS:-1}
       N8N_SECURE_COOKIE: ${TOOLS_SECURE_COOKIES:-false}
       N8N_DIAGNOSTICS_ENABLED: 'false'

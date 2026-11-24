@@ -152,7 +152,7 @@ Unit ID、番地、バイト順・ワード順、倍率を承認済み設定に�
 合成の鮮度判定は検証プログラムで実施しています。RTU、
 時系列DBへの配信や死活通知と、実設備への接続は別の受入項目です。
 
-[試験のTelegraf設定](../../tests/integration/modbus/telegraf.toml) · [Modbusの公式仕様](https://www.modbus.org/modbus-specifications) · [TelegrafのModbus入力](https://docs.influxdata.com/telegraf/v1/input-plugins/modbus/)
+[試験のTelegraf設定](../../tests/integration/modbus/telegraf.toml) · [Modbusの公式仕様](https://www.modbus.org/file/secure/modbusprotocolspecification.pdf) · [TelegrafのModbus入力](https://docs.influxdata.com/telegraf/v1/input-plugins/modbus/)
 
 ## 設備導入で決める条件
 

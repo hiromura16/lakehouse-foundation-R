@@ -29,8 +29,8 @@
 | Debezium、Redpanda | 外部Debeziumは設置先の採用版。Redpanda 26.3.1は隔離試験のみ | [SQL Server connector](https://debezium.io/documentation/reference/stable/connectors/sqlserver.html) · [Redpanda単一broker](https://docs.redpanda.com/labs/docker-compose/single-broker/) · [Redpanda 26.3のライセンス](https://docs.redpanda.com/streaming/current/get-started/licensing/overview/) |
 | Streamlit、NGINX | 1.67.0、1.30.8 | [Streamlitの表](https://docs.streamlit.io/develop/api-reference/data/st.dataframe) · [NGINXのBasic認証](https://nginx.org/en/docs/http/ngx_http_auth_basic_module.html) · [WebSocket中継](https://nginx.org/en/docs/http/websocket.html) |
 | LangChain Core | 1.7.6 | [Tools](https://docs.langchain.com/oss/python/langchain/tools) |
-| n8n | 2.49.5 | [Docker Compose](https://docs.n8n.io/hosting/installation/server-setups/docker-compose/) · [SSRF保護](https://docs.n8n.io/hosting/securing/ssrf-protection/) · [Sustainable Use License](https://docs.n8n.io/n8n-community-license) · [2.49.5の変更](https://github.com/n8n-io/n8n/releases/tag/n8n%402.49.5) |
-| OpenObserve | 1.1.2 | [Prometheus remote write](https://openobserve.ai/docs/ingestion/metrics/prometheus/) · [ダッシュボード](https://openobserve.ai/docs/user-guide/dashboards/) |
+| n8n | 2.49.5 | [Docker Compose](https://docs.n8n.io/deploy/host-n8n/install-options/use-a-cloud-provider/use-docker-compose) · [SSRF保護](https://docs.n8n.io/deploy/host-n8n/configure-n8n/security/enable-ssrf-protection) · [Sustainable Use License](https://docs.n8n.io/n8n-community-license) · [2.49.5の変更](https://github.com/n8n-io/n8n/releases/tag/n8n%402.49.5) |
+| OpenObserve | 1.1.2 | [Prometheus remote write](https://openobserve.ai/docs/ingestion/metrics/prometheus/) · [ダッシュボード](https://openobserve.ai/docs/user-guide/analytics/dashboards/) |
 | InfluxDB 3 Core、Explorer | 3 Coreはdigest固定、Explorer 1.11.2 | [管理用トークン](https://docs.influxdata.com/influxdb3/core/admin/tokens/admin/preconfigured/) · [SQL API](https://docs.influxdata.com/influxdb3/core/query-data/execute-queries/) · [Explorer](https://docs.influxdata.com/influxdb3/explorer/) |
 
 ## 追加機能の配布条件

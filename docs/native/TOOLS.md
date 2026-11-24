@@ -47,7 +47,7 @@ docker compose --env-file "$site" --env-file "$tools/tools.env" \
 
 ポータルは `http://localhost:18506/` です。`operator.json` に記録された専用アカウントを使います。n8nとExplorerの入口でも同じ認証が必要です。n8nの初回画面で管理者を登録します。OpenObserveは `tools.env` の `TOOLS_OBSERVE_USER` と `TOOLS_OBSERVE_PASSWORD` を使います。
 
-ホストのポートは `TOOLS_PORT`、`TOOLS_N8N_PORT`、`TOOLS_OBSERVE_PORT`、`TOOLS_EXPLORER_PORT`、`TOOLS_INFLUX_PORT` で変更できます。ポータルの接続先URLは、開いているホスト名と構成で指定したポートを使います。n8nをHTTPSで使う場合は `TOOLS_N8N_URL` を実際のHTTPS URLへ設定し、`TOOLS_SECURE_COOKIES=true` にします。リバースプロキシの段数は `TOOLS_N8N_PROXY_HOPS` で指定します。[Dokployの配置手順](COMPANY.md) · [n8nのリバースプロキシ](https://docs.n8n.io/hosting/configuration/configuration-examples/webhook-url/)
+ホストのポートは `TOOLS_PORT`、`TOOLS_N8N_PORT`、`TOOLS_OBSERVE_PORT`、`TOOLS_EXPLORER_PORT`、`TOOLS_INFLUX_PORT` で変更できます。ポータルの接続先URLは、開いているホスト名と構成で指定したポートを使います。n8nをHTTPSで使う場合は `TOOLS_N8N_URL` を実際のHTTPS URLへ設定し、`TOOLS_SECURE_COOKIES=true` にします。リバースプロキシの段数は `TOOLS_N8N_PROXY_HOPS` で指定します。[Dokployの配置手順](COMPANY.md) · [n8nのリバースプロキシ](https://docs.n8n.io/deploy/host-n8n/configure-n8n/basic-configuration/configuration-examples/configure-webhook-urls-with-reverse-proxy)
 
 ## ワークフローを手動実行する
 
@@ -75,7 +75,7 @@ docker compose --env-file "$site" --env-file "$tools/tools.env" \
 python3 -m native.tools.observe verify --directory "$tools"
 ```
 
-採取対象は [targets.yml](../../native/tools/targets.yml) を編集します。Grafana側の編集は [監視設定](MONITORING.md) を参照してください。[Prometheus remote write](https://openobserve.ai/docs/ingestion/metrics/prometheus/) · [OpenObserveダッシュボード](https://openobserve.ai/docs/user-guide/dashboards/)
+採取対象は [targets.yml](../../native/tools/targets.yml) を編集します。Grafana側の編集は [監視設定](MONITORING.md) を参照してください。[Prometheus remote write](https://openobserve.ai/docs/ingestion/metrics/prometheus/) · [OpenObserveダッシュボード](https://openobserve.ai/docs/user-guide/analytics/dashboards/)
 
 ## 設備の合成測定点を確認する
 
