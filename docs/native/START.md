@@ -46,7 +46,7 @@ landing="$HOME/.config/lakehouse-foundation-r/landing"
 3. **Environment** を開いて `site.env` の内容を登録します。**Create Environment File**（`.env` を作成） を有効にして **Save** します。プロジェクトと環境の共通設定に同じ名前がある場合は、対象サービスの値を確認します。企業CAやビルド用のプロキシが必要な場合は、[企業ネットワークの設定](COMPANY.md) もここで登録します。
 4. 画面上部の **App Name** を控え、配備先VMで [Deploy前の診断](COMPANY.md#初回deployの前に配備先vmを診断する) を実行します。ファイル・ネットワーク・ポートの診断を、Deployと同じ設定で確認します。
 5. **General → Deploy** を選び、**Deployments** の最新ログを開きます。初回はイメージと依存のダウンロードに時間がかかります。
-6. **Docker → Containers** で対象サーバーを選びます。対象Composeの `catalog-migrate` は終了コード0、内部の `read-api` と `health-relay` を含む常駐9サービスはhealthyが合格です。Grafanaは標準で7対象を表示します。監視設定はGitの設定ファイルからイメージに組み込まれます。
+6. **Docker → Containers** で対象サーバーを選びます。対象Composeの `catalog-migrate` は終了コード0、内部の `read-api` と `health-relay` を含む常駐9サービスはhealthyが合格です。Grafanaは標準で9対象を表示します。監視設定はGitの設定ファイルからイメージに組み込まれます。
 
 | Generalの項目 | 入力する値 |
 | --- | --- |
@@ -91,7 +91,7 @@ python -m native.api gold factory_daily_production --limit 5
 
 空のlandingでの期待値は `imported: 6`、`sql_statements: 14` です。日次生産14行のうち先頭5行を返します。同じ入力でもう一度実行し、新規0、`unchanged: true` と同じ公開世代を確認します。[会社VMの合格条件](ACCEPTANCE.md)
 
-VMに直接ブラウザーがない場合は、担当者が許可されたSSH転送で [Grafana](http://localhost:18501/d/lakehouse-r-runtime) を開きます。標準の7対象が緑の✓になったことと、初回ジョブの結果を確認します。[GrafanaのログインとSSH転送](MONITORING.md)
+VMに直接ブラウザーがない場合は、担当者が許可されたSSH転送で [Grafana](http://localhost:18501/d/lakehouse-r-runtime) を開きます。標準の9対象が緑の✓になったことと、初回ジョブの結果を確認します。[GrafanaのログインとSSH転送](MONITORING.md)
 
 [業務集計の画面](GUI.md) や [運用ポータル・n8nなど](TOOLS.md) は、Dokployの同じComposeサービスの **Run Command** に追加します。[構成ごとの指定ファイルと合格条件](COMPANY.md#追加のcompose構成を有効にする)
 

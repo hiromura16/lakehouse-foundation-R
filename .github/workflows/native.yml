@@ -70,6 +70,23 @@ jobs:
           docker compose --env-file "$RUNNER_TEMP/native-site.env" -p native-ci \
             exec -T blackbox /bin/blackbox_exporter \
             --config.file=/etc/blackbox/blackbox.yml --config.check
+      - name: 内部サービスの停止と復旧を監視画面の取得値で検査
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          site="$RUNNER_TEMP/native-site.env"
+          dc=(docker compose --env-file "$site" -p native-ci -f compose.yaml -f compose.gui.yaml)
+          probe=(python3 tests/integration/native/monitoring_acceptance.py
+            --gui-env-file "$RUNNER_TEMP/native-operator.env")
+          for service in read-api health-relay; do
+            "${dc[@]}" stop --timeout 5 "$service"
+            result=0
+            "${probe[@]}" --stopped-service "$service" || result=$?
+            # 判定が失敗しても、次の検査に移る前に試験サービスを起動し直す。
+            "${dc[@]}" start "$service"
+            test "$result" -eq 0
+            "${probe[@]}"
+          done
       - name: MCPとLangChainで公開世代と読取制限を確認
         shell: bash
         run: |

@@ -17,3 +17,8 @@
     instance: http://grafana:3000/api/health
 - targets: [blackbox:9115]
   labels: {app: Blackbox, module: tcp_connect}
+# 既存の probes ネットワーク内で、それぞれの固定ヘルス経路だけを確認する。
+- targets: [http://read-api:8080/_gateway-health]
+  labels: {app: 内部読取ゲートウェイ, module: http_ready}
+- targets: [http://health-relay:8120/_relay-health]
+  labels: {app: ヘルスリレー, module: http_ready}

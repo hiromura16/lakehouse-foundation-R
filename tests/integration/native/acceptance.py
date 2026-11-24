@@ -13,6 +13,23 @@ from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
+# 監視の設定ファイルをそのまま期待値にすると、対象が欠けても試験で気付けない。
+GUI_PROBE_APPS = frozenset(
+    {
+        "Blackbox",
+        "Grafana",
+        "Lakehouse",
+        "Lakekeeper",
+        "PostgreSQL",
+        "Prometheus",
+        "SeaweedFS S3",
+        "データ閲覧",
+        "ヘルスリレー",
+        "内部読取ゲートウェイ",
+        "閲覧ゲートウェイ",
+    }
+)
+
 
 def fixture(root):
     """合成したセンサー5行と、隣接する整合性確認用の完了印を配置する。"""
@@ -489,6 +506,9 @@ def check(args, env):
     assert panels[5]["options"]["colorMode"] == "none"
     no_attempt = panels[5]["fieldConfig"]["defaults"]["mappings"][0]["options"]
     assert no_attempt["-1"]["text"] == "この起動では未実行"
+    assert panels[6]["targets"][0]["expr"] == (
+        'up{job=~"native-metrics|alertmanager"}'
+    )
     assert {target["expr"] for target in panels[7]["targets"]} == {
         "lakehouse_gold_active",
         "lakehouse_gold_limit",
@@ -513,13 +533,40 @@ def check(args, env):
     )
 
 
-def check_gui(args):
-    """同じ認証で3画面が開き、カタログの書込みが拒否されることを確認する。"""
-    env = load_test_env(args.gui_env_file)
+def gui_authorization(env_file):
+    """試験用の認証値をHTTPヘッダーとして返し、ログへ出さない。"""
+    env = load_test_env(env_file)
     encoded = base64.b64encode(
         (env["OPS_USER"] + ":" + env["OPS_PASSWORD"]).encode()
     ).decode()
-    auth = "Basic " + encoded
+    return "Basic " + encoded
+
+
+def wait_gui_probes(port, auth, unavailable=frozenset()):
+    """収集周期を待ち、定義された全監視先の状態を1件ずつ照合する。"""
+    expected = {
+        app: "0" if app in unavailable else "1" for app in GUI_PROBE_APPS
+    }
+    query = urlencode({"query": 'probe_success{job="app-probes"}'})
+    url = f"http://127.0.0.1:{port}/api/v1/query?{query}"
+    deadline = time.monotonic() + 65
+    # 同じアプリ名が複数系列に付くと、辞書化だけでは重複を見落とす。
+    while True:
+        result = fetch(url, authorization=auth)["data"]["result"]
+        observed = {item["metric"]["app"]: item["value"][1] for item in result}
+        if len(result) == len(expected) and observed == expected:
+            return
+        if time.monotonic() >= deadline:
+            raise AssertionError(
+                f"監視先が期待した状態になりませんでした。"
+                f"期待値={expected} 実測値={observed} 系列数={len(result)}"
+            )
+        time.sleep(2)
+
+
+def check_gui(args):
+    """同じ認証で3画面が開き、カタログの書込みが拒否されることを確認する。"""
+    auth = gui_authorization(args.gui_env_file)
     checks = (
         (args.browser_port, "/_stcore/health"),
         (args.catalog_port, "/ui/"),
@@ -548,19 +595,11 @@ def check_gui(args):
     else:
         raise AssertionError("Lakekeeperへの書込みが可能です。")
 
-    query = urlencode({"query": "probe_success"})
-    url = f"http://127.0.0.1:{args.prometheus_port}/api/v1/query?{query}"
-    deadline = time.monotonic() + 65
-    while time.monotonic() < deadline:
-        result = fetch(url, authorization=auth)["data"]["result"]
-        probes = {item["metric"]["app"]: item["value"][1] for item in result}
-        if len(probes) == 9 and set(probes.values()) == {"1"}:
-            print(
-                "閲覧3画面の認証、Lakekeeperの書込み拒否、全9監視先を確認しました。"
-            )
-            return
-        time.sleep(2)
-    raise AssertionError(f"監視先の初回取得が完了しませんでした。{probes}")
+    wait_gui_probes(args.prometheus_port, auth)
+    print(
+        "閲覧3画面の認証、Lakekeeperの書込み拒否、"
+        f"全{len(GUI_PROBE_APPS)}監視先を確認しました。"
+    )
 
 
 def main():

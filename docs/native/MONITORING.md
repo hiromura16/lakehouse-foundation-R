@@ -27,9 +27,13 @@ ssh -N -o ExitOnForwardFailure=yes \
 
 [OpenSSHのローカル転送](https://man.openbsd.org/ssh#L)
 
-![合成環境で14アプリの現在値、計画メンテナンスの失敗から回復した履歴とGold参照枠を表示したGrafana](images/runtime-demo.png)
+![合成環境でサービスの現在値、メンテナンス後に回復した履歴とGold参照枠を表示したGrafana](images/runtime-demo.png)
 
-画像は [閲覧画面](GUI.md) と [運用ツール](TOOLS.md) を加えた合成環境です。各アプリの現在値と、計画メンテナンスをまたいだ履歴を表示しています。標準構成は7対象、閲覧画面付きは9対象、運用ツール付きは12対象、両方追加した構成は14対象です。標準の常駐コンテナは、監視対象の7個に内部の `read-api` と `health-relay` を加えた9個です。内部の2個はDockerのヘルスチェックで確認します。「サービスの状態」は緑の✓が正常、赤の×が異常です。履歴は `app` ごとに1行です。対象が応答できない点は赤になり、Prometheusが停止して取得できなかった区間は空白になります。履歴のバーにカーソルを合わせるとその区間の判定が表示されます。「取込・変換ジョブ」は成功と失敗を別の系列で表示します。「最終ジョブ成功からの経過時間」はワーカーの起動後に観測した成功を表示します。成功前は「この起動では未実行」と表示し、メトリクスが取得できない状態と区別します。会社の実行間隔に応じたアラートは別途設定します。
+画像は、[閲覧画面](GUI.md) と [運用ツール](TOOLS.md) を追加して計画メンテナンスを行った合成環境の記録です。撮影時は内部2サービスの追加前で、14対象を表示しています。
+
+現在の「サービスの状態」は、標準構成で9対象、閲覧画面付きで11対象、運用ツール付きで14対象、両方付きで16対象を表示します。標準の9対象には内部読取ゲートウェイ `read-api` とヘルスリレー `health-relay` の固定HTTPヘルス経路を含みます。どちらの判定も、そのプロセスが応答できることを示します。監視リレーが停止すると、リレーの先にあるGrafanaや閲覧UIも疎通失敗として表示されます。「プロセス監視」のGrafanaの値と、Dockerのヘルスチェックを合わせて障害箇所を調べます。
+
+「サービスの状態」は緑の✓が正常、赤の×が異常です。履歴は `app` ごとに1行です。対象に応答がなかった点は赤になり、Prometheusが停止して取得できなかった区間は空白になります。履歴のバーにカーソルを合わせると、その区間の判定が表示されます。「取込・変換ジョブ」は成功と失敗を別系列で表示します。「最終ジョブ成功からの経過時間」はワーカーの起動後に観測した成功を表示します。成功前は「この起動では未実行」と表示し、メトリクスが取得できない状態と区別します。会社の実行間隔に応じたアラートは別途設定します。
 
 「Goldの同時参照件数」は受理済みのクエリと上限を表示します。
 「Goldの混雑による応答」は上限に達してHTTP 503と再試行時間を返した累計です。
@@ -39,7 +43,7 @@ ssh -N -o ExitOnForwardFailure=yes \
 
 | ファイル | 変更する内容 |
 | --- | --- |
-| [core.yml](../../native/monitoring/targets/core.yml) | PostgreSQL、SeaweedFS、Lakekeeper、Lakehouse、Prometheus、Grafana、Blackboxの監視先 |
+| [core.yml](../../native/monitoring/targets/core.yml) | PostgreSQL、SeaweedFS、Lakekeeper、Lakehouse、Prometheus、Grafana、Blackbox、内部読取ゲートウェイ、ヘルスリレーの監視先 |
 | [gui.yml](../../native/monitoring/gui-targets/gui.yml) | 閲覧構成を追加した場合のStreamlitと閲覧ゲートウェイ |
 | [blackbox.yml](../../native/monitoring/blackbox.yml) | HTTPステータスまたはTCP疎通の判定、タイムアウト |
 | [health-relay.conf](../../native/network/health-relay.conf) | Grafanaと任意アプリの固定ヘルス経路 |
@@ -59,7 +63,7 @@ Dockerが `all predefined address pools have been fully subnetted` を返す場�
 
 Blackbox Exporterは書込側の疎通と内部の監視専用ネットワークに置きます。任意アプリのヘルスは固定経路のリレーを経由します。リレーは受信した認証情報やクエリ文字列を上流へ渡さず、設定したHTTP GETだけを実行します。
 
-任意アプリの確認を増やす場合は、リレーに固定のヘルスURLを加えてから、`targets` にそのリレー経路、`app` に重複しない表示名、`module` に `http_ready` を指定します。TCPだけの監視では、専用ネットワーク内の `hostname:port` と `tcp_connect` を使います。別VMや別プロジェクトの監視は、その範囲だけに到達できるプローブを用意します。 [Prometheusのセキュリティモデル](https://prometheus.io/docs/operating/security/) · [Composeのネットワーク](https://docs.docker.com/compose/how-tos/networking/)
+既存のリレーから到達できる任意アプリを確認する場合は、リレーに固定のヘルスURLを加えます。`targets` にそのリレー経路、`app` に重複しない表示名、`module` に `http_ready` を指定します。TCPだけの監視では、専用ネットワーク内の `hostname:port` と `tcp_connect` を使います。リレーが参加していないネットワークや、別VM・別プロジェクトの監視では、その範囲だけに到達できるプローブを用意します。 [Prometheusのセキュリティモデル](https://prometheus.io/docs/operating/security/) · [Composeのネットワーク](https://docs.docker.com/compose/how-tos/networking/)
 
 ```yaml
 - targets: [http://health-relay:8120/injector]
@@ -100,7 +104,8 @@ Go製で、[Apache-2.0](https://github.com/prometheus/alertmanager/blob/v0.35.0/
    閲覧や運用ツールを有効にしているときは、使っている追加ファイルも残します。
 2. 同じComposeを再配備し、`prometheus` と `alertmanager` がhealthyになることを
    **Docker → Containers** から確認します。標準構成の他サービスは同じComposeに残ります。
-3. Grafanaの **Explore** で `up{job="alertmanager"}` が1であることを確認します。
+3. Grafanaの「プロセス監視」にAlertmanagerが表示されることを確認します。
+   **Explore** では `up{job="alertmanager"}` が1であることを確認できます。
    `prometheus_notifications_errors_total` はPrometheusからAlertmanagerへの
    送信エラー、`alertmanager_notifications_failed_total` は受信先への送信エラーです。
    宛先の設定後に、両方の指標と試験通知を確認します。

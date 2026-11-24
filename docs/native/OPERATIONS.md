@@ -16,7 +16,7 @@
 
 ## 毎日の確認
 
-1. Dokployの対象Composeと **Docker → Containers** で状態を確認し、Grafanaの監視先を確認します。標準7件、閲覧付き9件、運用ツール付き12件、両方付き14件です。[監視URLと接続方法](MONITORING.md)
+1. Dokployの対象Composeと **Docker → Containers** で状態を確認し、Grafanaの監視先を確認します。標準9件、閲覧付き11件、運用ツール付き14件、両方付き16件です。[監視URLと接続方法](MONITORING.md)
 2. `catalog-migrate` の終了コード0と、Lakehouseのhealthyを確認します。
 3. 取り込み後は件数とGold公開世代を控えます。 `JOB_FAILED` のときは Dokployの対象コンテナの **View Logs** で例外型・行番号を確認し、完了印、列、空き領域、監視状態を照合します。
 4. 入力修正後に同じジョブを再実行し、アプリが示す公開世代が更新されたことを確認します。古い世代を読む利用者がいる間は、そのIceberg表のスナップショットを失効させないでください。
