@@ -36,7 +36,10 @@ class SourceCursor:
 
     def execute(self, statement):
         self.statements.append(statement)
-        table = re.search(r"FROM \[[^]]+\]\.\[([^]]+)\]", statement)[1]
+        match = re.search(r"FROM \[[^]]+\]\.\[([^]]+)\]", statement)
+        if match is None:
+            return
+        table = match[1]
         columns = next(
             item["columns"] for item in CONTRACTS if item["table"] == table
         )
@@ -128,6 +131,32 @@ class SourceExtractionTests(unittest.TestCase):
         self.assertTrue(arguments["read_only"])
         self.assertTrue(arguments["autocommit"])
         self.assertEqual(arguments["encryption"], "require")
+
+    def test_snapshot_starts_before_first_select_and_ends_before_close(self):
+        connection = SourceConnection(HELPER.build_data())
+        driver = mock.Mock()
+        driver.connect.return_value = connection
+        mapping = {item["target_table"]: item for item in EXAMPLE["tables"]}
+        with mock.patch.dict(sys.modules, {"pymssql": driver}):
+            actual = EXTRACTOR.extract_tables(
+                self.settings(), mapping, CONTRACTS, 100000, snapshot=True
+            )
+        commands = connection.recorder.statements
+        self.assertEqual(set(actual), {item["table"] for item in CONTRACTS})
+        self.assertEqual(
+            commands[:3],
+            [
+                "SET LOCK_TIMEOUT 10000",
+                "SET TRANSACTION ISOLATION LEVEL SNAPSHOT",
+                "BEGIN TRANSACTION",
+            ],
+        )
+        self.assertEqual(len(commands), 10)
+        self.assertTrue(
+            all(sql.startswith("SELECT TOP (") for sql in commands[3:-1])
+        )
+        self.assertEqual(commands[-1], "ROLLBACK TRANSACTION")
+        self.assertTrue(connection.closed)
 
     def test_scalar_datetime_and_decimal_contract(self):
         zone = ZoneInfo("Asia/Tokyo")

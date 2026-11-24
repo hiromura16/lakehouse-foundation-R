@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """対応付け済みのSQL Server表を読み、完了印付きファイルを着地先に公開する。
 
-発行するのは明示的なSELECT文だけ。このスナップショット連携では
-ソースのオブジェクト作成や変更、CDCの有効化、後段処理の起動は行わない。
+許可した表・列だけをSELECTする。選択時は全表を1つのSNAPSHOT
+トランザクションで読み、ソースやCDCの設定を変更せず終了する。
 """
 
 import argparse
@@ -240,9 +240,15 @@ def tls_configuration(values, trust_local_test=False):
 
 
 def extract_tables(
-    values, mapping, contracts, max_rows, trust_local_test=False
+    values,
+    mapping,
+    contracts,
+    max_rows,
+    trust_local_test=False,
+    *,
+    snapshot=False,
 ):
-    """ファイルを公開する前に、全表を取得して検証する。"""
+    """ファイルを公開する前に、必要なら同じ可視性で全表を取得する。"""
     if not 1 <= max_rows <= MAX_ROWS:
         raise ValueError("max-rows must be between 1 and 100000.")
     source_zone = ZoneInfo(
@@ -272,6 +278,12 @@ def extract_tables(
         )
         try:
             cursor = connection.cursor()
+            if snapshot:
+                # autocommitを維持してドライバーの暗黙のBEGINを避け、
+                # 最初の業務SELECTより先に可視性と待機上限を指定する。
+                cursor.execute("SET LOCK_TIMEOUT 10000")
+                cursor.execute("SET TRANSACTION ISOLATION LEVEL SNAPSHOT")
+                cursor.execute("BEGIN TRANSACTION")
             for source in contracts:
                 table = mapping[source["table"]]
                 # 会社側の列を、固定のBronzeの列順序に対応付ける。
@@ -319,7 +331,11 @@ def extract_tables(
                     )
                 )
                 datasets[source["table"]] = rows
+            if snapshot:
+                # 読取だけのトランザクションを、ファイル公開前に終了する。
+                cursor.execute("ROLLBACK TRANSACTION")
         finally:
+            # 途中で例外になった場合も、接続を閉じて未完了の読取を終了する。
             connection.close()
     return datasets
 
@@ -331,7 +347,7 @@ def main(argv=None):
         epilog=(
             "許可された6表/列をSELECTし、CSV/JSON・ready・manifestを保存します。"
             "DB変更、CDC有効化、取り込み・変換は行いません。"
-            "6表のSELECTは同一時点transactionではありません。"
+            "同一時点の読取には --snapshot を指定します。"
         ),
     )
     parser.add_argument(
@@ -357,6 +373,14 @@ def main(argv=None):
         type=int,
         default=MAX_ROWS,
         help="1表の上限行数。1〜100000（既定: 100000）。超過は切捨てず拒否",
+    )
+    parser.add_argument(
+        "--snapshot",
+        action="store_true",
+        help=(
+            "6表を1つのSNAPSHOTトランザクションで取得。"
+            "DBAによる ALLOW_SNAPSHOT_ISOLATION ON が必要"
+        ),
     )
     parser.add_argument(
         "--force",
@@ -394,6 +418,7 @@ def main(argv=None):
         contracts,
         args.max_rows,
         args.test_trust_server_certificate,
+        snapshot=args.snapshot,
     )
     payloads = helper.encoded_sources(datasets)
     # 6件すべての問合せと値の変換が成功した後に、ファイルを公開する。
@@ -408,6 +433,7 @@ def main(argv=None):
         "format_version": 1,
         "extracted_at": datetime.now(timezone.utc).isoformat(),
         "max_rows": args.max_rows,
+        "read_consistency": "snapshot" if args.snapshot else "per-table",
         "sources": [
             {
                 "table": source["table"],

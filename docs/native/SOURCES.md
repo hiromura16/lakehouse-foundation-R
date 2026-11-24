@@ -120,11 +120,30 @@ landing="$HOME/.config/lakehouse-foundation-r/landing"
 site="$HOME/.config/lakehouse-foundation-r/site.env"
 "$HOME/.config/lakehouse-foundation-r/sql-source-venv/bin/python" \
   scripts/extract-sqlserver.py --env-file "$source_env" --table-map "$source_map" \
-  --output "$landing"
+  --output "$landing" --snapshot
 docker compose --env-file "$site" exec -T lakehouse python -m native.api medallion
 ```
 
-抽出は固定列を読むSELECTだけを実行し、landing直下の `csv/`・`json/` と完了印を確定します。6表を同一時点で取得するトランザクションは使いません。会社の証明書検証を有効にし、出力済みの同じパスを置き換える場合は `--force` の対象を確認します。[抽出CLI](../../scripts/extract-sqlserver.py)
+`--snapshot` は、DBAが `ALLOW_SNAPSHOT_ISOLATION ON` を設定済みのソースで使います。
+1つのSQL Server接続でトランザクションを開き、固定6表を同じ時点で読みます。
+抽出CLIはDBの設定を変更しません。設定が未対応ならファイルを一切公開せず、
+終了値1を返します。従来の表単位の読取を選ぶ場合は `--snapshot` を省きます。
+どちらの読み方かは `source-extract.json` の `read_consistency` で確認できます。
+長時間の読取とソース側の行バージョン領域は、DBAと確認してください。
+
+抽出は全表の読取後に `csv/`・`json/` と完了印を1件ずつ確定します。
+読取の同一時点性と、着地ファイルの公開は異なる段階です。
+同じ着地先に定期ジョブがある場合は、別の着地先に抽出して全6表の
+マニフェストを照合し、定期ジョブを止めた状態で受け渡してください。
+出力済みのパスを置き換える場合は `--force` の対象を確認します。
+
+合成SQL Server 2025 CU11で、読取中に別接続が二表を更新した際も、
+抽出は両方の旧値を返し、次の抽出で両方の新値を返すことを照合しています。
+日本語、十進数、時刻、6ファイルのSHA-256、誤ったCA・接続名、書込権限の拒否も
+試験します。[受入ワークフロー](../../.github/workflows/sqlserver.yml) ·
+[抽出CLI](../../scripts/extract-sqlserver.py) ·
+[Microsoftの分離レベル](https://learn.microsoft.com/sql/t-sql/statements/set-transaction-isolation-level-transact-sql) ·
+[FreeTDSのCA・接続名検証](https://www.freetds.org/userguide/freetdsconf.html)
 
 ## PostgreSQLの6表を同じ時点で取得する
 

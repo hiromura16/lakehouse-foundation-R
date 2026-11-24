@@ -1,0 +1,3 @@
+# 合成受入用。CPython 3.14・glibc Linux x86_64向けのPyPI公式wheel。
+pymssql==2.4.6 \
+    --hash=sha256:9a195e7b84ecb9436e5f49e4ad26dd0dd2ed4775512e649762c29fb05ea13da3
