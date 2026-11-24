@@ -218,7 +218,10 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "min": 0
+          "min": 0,
+          "custom": {
+            "axisSoftMax": 5
+          }
         },
         "overrides": []
       },
@@ -271,6 +274,9 @@
           "calcs": [
             "lastNotNull"
           ]
+        },
+        "text": {
+          "valueSize": 32
         }
       }
     },
@@ -411,7 +417,10 @@
       "fieldConfig": {
         "defaults": {
           "min": 0,
-          "decimals": 0
+          "decimals": 0,
+          "custom": {
+            "axisSoftMax": 5
+          }
         },
         "overrides": []
       },
