@@ -24,7 +24,7 @@
 | InfluxDB 3 Explorer | 保存した測定点をSQLで検索し、表やチャートで確認 | 18509 |
 | InfluxDB 3 Core | Rust製の時系列DB。Line Protocolで受信し、DataFusionによるSQLを提供 | 18510 |
 
-n8nの永続状態は専用PostgreSQLに分離します。InfluxDBの測定点は時系列の調査用データです。業務集計の公開範囲と版はIcebergのGoldで管理します。n8nの配布条件は商用再提供の扱いが異なるため、導入形態に応じて公式ライセンスを確認します。[n8n Sustainable Use License](https://docs.n8n.io/sustainable-use-license/) · [InfluxDB 3 Core](https://docs.influxdata.com/influxdb3/core/)
+n8nの永続状態は専用PostgreSQLに分離します。InfluxDBの測定点は時系列の調査用データです。業務集計の公開範囲と版はIcebergのGoldで管理します。n8n CommunityとInfluxDB 3 Explorerは独自の利用条件があるため、会社で有効にする前に採用版の契約を確認します。[各コンポーネントの配布条件](REFERENCES.md#追加機能の配布条件) · [InfluxDB 3 Core](https://docs.influxdata.com/influxdb3/core/)
 
 ![9サービスの応答と作業別ナビゲーションを示す運用ポータルの実画面](images/operations-portal.png)
 

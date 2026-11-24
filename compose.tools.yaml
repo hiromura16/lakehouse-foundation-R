@@ -28,6 +28,8 @@ services:
       context: .
       dockerfile: native/Dockerfile.configured
       target: n8n
+      args:
+        N8N_IMAGE_REPO: ${N8N_IMAGE_REPO:-ghcr.io/n8n-io/n8n}
     environment:
       DB_TYPE: postgresdb
       DB_POSTGRESDB_HOST: tools-db

@@ -1,6 +1,8 @@
 # 公開設定を固定した上流イメージへ組み込む。Git取得時のumaskに依存しない。
 # 非公開設定と永続データは、Composeが実行時に別途渡す。
 
+ARG N8N_IMAGE_REPO=ghcr.io/n8n-io/n8n
+
 FROM prom/prometheus:v3.16.0@sha256:89c1a644817e9ad70fa2af76c84898e327c1de7063735f962e8313b1e28672c3 AS prometheus-inputs
 USER 0
 ARG GUI_TARGETS=0
@@ -46,7 +48,7 @@ COPY --chmod=644 native/tools/portal/index.html native/tools/portal/portal.css n
 COPY --chmod=644 docs/presentation/index.html docs/presentation/slides.css docs/presentation/slides.js /usr/share/nginx/html/slides/
 RUN chmod 755 /usr/share/nginx/html/slides
 
-FROM docker.n8n.io/n8nio/n8n:2.46.7@sha256:6102ca27d9392c7f4778c0a35a80834d6620a365ab4d546a9fdf855a2b52fe4e AS n8n
+FROM ${N8N_IMAGE_REPO}:2.49.5@sha256:c349b24d6e242b4ea14d75e6f1a90c50e348cf4b1c4512b4a0a50219ead6533d AS n8n
 USER 0
 COPY --chmod=644 native/tools/health-workflow.json /opt/foundation/health-workflow.json
 RUN chmod 755 /opt/foundation

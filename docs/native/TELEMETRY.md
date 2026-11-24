@@ -25,7 +25,7 @@
 | --- | --- | --- |
 | Eclipse Mosquitto（C） | 工場側のMQTTを受信。送信と収集を別アカウントに割り当て | 軽量なブローカーでQoS 1と永続購読を試せる |
 | Telegraf（Go） | MQTTからLine Protocolを解析し、Kafka互換ブローカーへ転送 | 機器のプロトコルに対応する入力プラグインが揃う |
-| Redpanda（C++） | Kafka互換ストリームをディスクへ保存 | JVMを起動せずに、独立した合成トピックで転送を確かめられる |
+| Redpanda（C++、隔離試験用） | Kafka互換ストリームをディスクへ保存 | JVMを起動せずに、独立した合成トピックで転送を確かめられる。[配布条件](REFERENCES.md#追加機能の配布条件) |
 | Vector（Rust） | 収集済み計測を読み、ディスクバッファを介して保存先へ転送 | Kafkaによる再取得とGreptimeDB gRPCの両方を扱える |
 | GreptimeDB（Rust） | 同じデバイスの時系列を保存し、SQLで検索 | JVMを使わず時刻とタグで検索できる |
 
