@@ -249,7 +249,7 @@ def business_outputs(core, catalog, prefix, tables, statements):
             local = match[1]
             db.execute(statement)
             arrow = db.sql(f"SELECT * FROM {local}").to_arrow_table()
-            # DuckDBの整数SUMはHUGEINTを返す。Icebergの集計列に合わせて型を揃える。
+            # DuckDBの整数SUMはHUGEINTを返す。
             # 集計した整数を明示的に縮め、小数の列は精度を保つ。
             columns = [
                 pa.field(field.name, pa.int64())
