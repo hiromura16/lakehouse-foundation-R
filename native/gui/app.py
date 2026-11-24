@@ -23,6 +23,8 @@ if not REGISTRY.is_file():
         / "contracts/native/data-products.json"
     )
 DATASETS = json.loads(REGISTRY.read_text(encoding="utf-8"))["datasets"]
+CHANNELS = {"files": "ファイル", "sql": "SQL", "cdc": "CDC"}
+BUSINESS_DATASETS = ("factory_daily_production", "sales_fulfillment")
 API_ORIGIN = "http://lakehouse:8080"
 COLUMN_LABELS = {
     "factory_id": "工場ID",
@@ -74,12 +76,21 @@ class NoRedirect(HTTPRedirectHandler):
         return None
 
 
-def get_dataset(name, limit, release, filters):
-    """内部APIから、指定世代と上限の範囲で集計結果と出所を取得する。"""
+def datasets_for(channel):
+    """業務経路は日次生産と受注・出荷、ファイル経路は設備集計も扱う。"""
+    return list(DATASETS) if channel == "files" else BUSINESS_DATASETS
+
+
+def get_dataset(name, limit, release, filters, *, channel="files"):
+    """許可した取込経路と名前空間で、指定世代の集計を取得する。"""
+    if channel not in CHANNELS or name not in datasets_for(channel):
+        raise ValueError("取込経路または集計が選択範囲にありません。")
+    route = "/v1" if channel == "files" else f"/v1/{channel}"
+    table = f"gold.{name}" if channel == "files" else f"{channel}_gold.{name}"
     parameters = {"limit": limit, **filters}
     if release is not None:
         parameters["release"] = release
-    path = f"/v1/gold/{name}?{urlencode(parameters)}"
+    path = f"{route}/gold/{name}?{urlencode(parameters)}"
     request = Request(
         API_ORIGIN + path,
         headers={"Authorization": f"Bearer {os.environ['READER_TOKEN']}"},
@@ -95,7 +106,8 @@ def get_dataset(name, limit, release, filters):
             or not all(isinstance(row, dict) for row in rows)
             or not isinstance(data["total_rows"], int)
             or not data["release_snapshot_id"].isdigit()
-            or not isinstance(data["table"], str)
+            or data["table"] != table
+            or (release is not None and data["release_snapshot_id"] != release)
             or not (
                 data["snapshot_id"] is None
                 or isinstance(data["snapshot_id"], str)
@@ -119,20 +131,44 @@ def show():
     st.write(
         "投入・変換後の数値を確認し、いつ公開された結果かを追跡できます。"
     )
+    channel = st.segmented_control(
+        "取込経路",
+        list(CHANNELS),
+        format_func=CHANNELS.__getitem__,
+        default="files",
+        required=True,
+        key="intake-channel",
+        help="公開世代と絞り込みは経路ごとに保持します。",
+    )
+    channel_label = CHANNELS[channel]
     selection, count = st.columns([3, 1])
     name = selection.selectbox(
         "確認する集計",
-        list(DATASETS),
+        datasets_for(channel),
         format_func=lambda key: DATASETS[key]["title"],
+        key=f"dataset-{channel}",
+        persist_state="page",
     )
-    limit = count.selectbox("表示上限", [25, 50, 100, 200], index=1)
+    limit = count.selectbox(
+        "表示上限",
+        [25, 50, 100, 200],
+        index=1,
+        key=f"limit-{channel}",
+        persist_state="page",
+    )
     dataset = DATASETS[name]
     st.caption(dataset["description"])
     with st.expander("数値の定義"):
         st.write(dataset["definition"])
         st.caption(f"確認先　{dataset['owner_role']}")
     filters = {}
-    with st.expander("工場・設備・日付で絞り込む"):
+    scope = f"{channel}-{name}"
+    filter_label = "工場・日付で絞り込む"
+    if name == "sales_fulfillment":
+        filter_label = "受注ID・日付で絞り込む"
+    elif name.startswith("sensor_"):
+        filter_label = "工場・設備・日付で絞り込む"
+    with st.expander(filter_label):
         items = (
             [("sales_order_id", "受注ID")]
             if name == "sales_fulfillment"
@@ -142,15 +178,26 @@ def show():
             items.append(("equipment_id", "設備ID"))
         for key, label in items:
             if value := st.text_input(
-                label, max_chars=128, key=f"{name}-{key}"
+                label,
+                max_chars=128,
+                key=f"{scope}-{key}",
+                persist_state="page",
             ).strip():
                 filters[key] = value
         start, end = st.columns(2)
         from_date = start.date_input(
-            "開始日（UTC・当日を含む）", value=None, format="YYYY-MM-DD"
+            "開始日（UTC・当日を含む）",
+            value=None,
+            format="YYYY-MM-DD",
+            key=f"{scope}-date-from",
+            persist_state="page",
         )
         until_date = end.date_input(
-            "終了の境界日（UTC・当日より前）", value=None, format="YYYY-MM-DD"
+            "終了の境界日（UTC・当日より前）",
+            value=None,
+            format="YYYY-MM-DD",
+            key=f"{scope}-date-to",
+            persist_state="page",
         )
         if from_date:
             filters["date_from"] = from_date.isoformat()
@@ -159,21 +206,25 @@ def show():
         if from_date and until_date and from_date >= until_date:
             st.warning("終了の境界日は開始日より後に指定してください。")
             return
-    if st.button(
+    reload_latest = st.button(
         "最新版を読み込む",
-        help="集計を切り替えても、読み込んだ公開世代で比較します。",
-    ):
-        st.session_state.pop("release", None)
-    release = st.session_state.get("release")
+        key=f"reload-{channel}",
+        help="選択中の取込経路の公開世代だけを更新します。",
+    )
+    # 取得に失敗した場合は、選択中の経路も元の確定世代を保持する。
+    release_key = f"release-{channel}"
+    release = None if reload_latest else st.session_state.get(release_key)
     try:
-        data, published_at = get_dataset(name, limit, release, filters)
+        data, published_at = get_dataset(
+            name, limit, release, filters, channel=channel
+        )
     except HTTPError as error:
         if error.code == 400:
-            st.warning("工場・設備・日付の条件を確認してください。")
+            st.warning("入力した絞り込み条件を確認してください。")
         elif error.code == 404:
             st.info(
-                "この集計はまだ表示できません。対応する入力が揃っているか確認し、"
-                "データの変換が終わったら「最新版を読み込む」を押してください。"
+                f"{channel_label}経路では、この集計を表示できる公開世代がありません。"
+                "対応する取込と変換を確認し、「最新版を読み込む」を押してください。"
             )
         elif error.code == 401:
             st.error("運用担当者に読取トークンの設定確認を依頼してください。")
@@ -194,7 +245,7 @@ def show():
         )
         return
 
-    st.session_state["release"] = data["release_snapshot_id"]
+    st.session_state[release_key] = data["release_snapshot_id"]
     rows = data["rows"]
     sensor = data.get("sensor") or {}
     if sensor.get("status") == "retained":
@@ -205,7 +256,8 @@ def show():
             stamp = datetime.fromisoformat(built_at).astimezone(timezone.utc)
             st.caption(f"設備データの確定（UTC） {stamp:%Y-%m-%d %H:%M:%S}")
     st.caption(
-        f"公開時刻（UTC） {published_at:%Y-%m-%d %H:%M:%S} ／ "
+        f"{channel_label}経路 ／ 公開時刻（UTC） "
+        f"{published_at:%Y-%m-%d %H:%M:%S} ／ "
         f"{len(rows)}行を表示（該当{data['total_rows']}行）"
     )
     if rows:

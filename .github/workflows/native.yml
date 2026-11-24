@@ -61,6 +61,9 @@ jobs:
           docker exec -i "$container" python - < tests/integration/native/gold_admission.py
           docker exec -i -e FOUNDATION_R_SYNTHETIC_OBJECT_TEST=1 "$container" python - \
             < tests/integration/native/catalog_objects.py
+          docker compose --env-file "$site" -p native-ci \
+            -f compose.yaml -f compose.gui.yaml exec -T data-browser python - \
+            < tests/integration/native/data_browser.py
           docker compose --env-file "$RUNNER_TEMP/native-site.env" -p native-ci \
             exec -T prometheus promtool check config /etc/prometheus/prometheus.yml
           docker compose --env-file "$RUNNER_TEMP/native-site.env" -p native-ci \
