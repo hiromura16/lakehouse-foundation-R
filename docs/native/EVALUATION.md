@@ -99,6 +99,43 @@ docker compose -f compose.evaluation.yaml --profile accelerator \
 
 Parquetを読み、合計5,050と実行プランのComet演算子を確認します。ビルドでは固定したJARを取得するため、Maven Centralへの到達経路が必要です。[Cometのインストールと対応版](https://datafusion.apache.org/comet/user-guide/)
 
+## 1万・10万・100万行のParquetを測る
+
+DuckDB 2.0.1とDataFusion 55.0.0で、合成設備4列の同じParquetに対して
+フィルター・設備×日集計・並べ替えを実行します。LinuxのCPU割当てを
+同じ2つの論理CPUに固定し、各規模で実行順を入れ替えます。
+各セッションは新しいプロセスの初回1回、同じセッションでの反復3回です。
+測定中にOSページキャッシュを消していません。RSSはエンジン、Python、
+Arrow、結果検証を含むプロセス全体の最大値です。
+
+**Bash / Zsh共通**
+
+```bash
+uv venv --python 3.12 "$HOME/.cache/lakehouse-r-benchmark"
+uv pip sync --python "$HOME/.cache/lakehouse-r-benchmark/bin/python" \
+  --require-hashes native/evaluation/parquet_benchmark.lock
+bench_result=$(mktemp -d)/parquet
+"$HOME/.cache/lakehouse-r-benchmark/bin/python" \
+  native/evaluation/parquet_benchmark.py --output "$bench_result" --threads 2
+```
+
+結果の `report.json` に入力ファイルの行数・サイズ・SHA-256、SQL、
+出力スキーマ、独立集計の結果SHA-256、時間とRSSを記録します。
+Intel Core i9-13900HのLinux x86_64環境で実施し、別ディレクトリへの
+再生成を含めて96クエリで期待値に一致しました。
+
+| 入力行 | 実Parquet合計 | DuckDBの初回／反復中央値（ms） | DataFusionの初回／反復中央値（ms） |
+| ---: | ---: | ---: | ---: |
+| 10,000 | 33,601 B | 8.11–118.59／8.06–14.00 | 8.77–19.10／5.09–10.64 |
+| 100,000 | 286,964 B | 10.57–18.67／8.02–9.62 | 17.36–35.88／9.24–11.09 |
+| 1,000,000 | 2,812,054 B | 27.96–30.37／18.60–18.85 | 45.04–47.92／20.55–26.70 |
+
+100万行の初回計測では、最大RSSがDuckDB 99,528–100,824 KiB、
+DataFusion 105,788–109,212 KiBでした。計測対象はローカルの列指向
+フィルター集計です。少ない入力では初回のばらつきが大きく、エンジン選定時は
+実際の列数、圧縮率、並列数、データ分布とネットワークを合わせて再測定します。
+[2回の測定JSON](../../native/evaluation/parquet_benchmark_reference.json) · [Linuxの最大RSSの定義](https://man7.org/linux/man-pages/man2/getrusage.2.html) · [DataFusionの設定](https://datafusion.apache.org/python/user-guide/configuration.html)
+
 ## 試験の記録と停止
 
 入力バイト数、行数、製品の版、実行ホスト、CPUとメモリ上限、初回・再実行の別、処理時間、出力の一致を同じ記録に残します。分散時は障害で失った作業の範囲と復旧までの操作も加えます。会社データの投入は [受入条件](ACCEPTANCE.md) に沿って設置先で行います。

@@ -1,0 +1,698 @@
+{
+  "first_run": {
+    "python": "3.12.16",
+    "architecture": "x86_64",
+    "cpu_model": "13th Gen Intel(R) Core(TM) i9-13900H",
+    "cpu_affinity": [
+      0,
+      1
+    ],
+    "dependencies": {
+      "duckdb": "2.0.1",
+      "datafusion": "55.0.0",
+      "pyarrow": "26.0.1",
+      "cloudpickle": "3.1.3",
+      "typing-extensions": "4.16.0"
+    },
+    "source_schema": "event_day: int32\nequipment_id: int32\nquality_code: int8\nvalue_milli: int32",
+    "result_schema": "event_day: int32\nequipment_id: int32\nsample_count: int64\nvalue_sum_milli: int64\nvalue_min_milli: int32\nvalue_max_milli: int32",
+    "query": "SELECT event_day, equipment_id,\n       NULLIF(COUNT(*), 0) AS sample_count,\n       CAST(SUM(CAST(value_milli AS BIGINT)) AS BIGINT) AS value_sum_milli,\n       MIN(value_milli) AS value_min_milli,\n       MAX(value_milli) AS value_max_milli\nFROM measurements\nWHERE quality_code = 0 AND equipment_id BETWEEN 0 AND 127\n  AND value_milli BETWEEN 20000 AND 80000\nGROUP BY event_day, equipment_id\nORDER BY event_day, equipment_id",
+    "session_order": [
+      "duckdb",
+      "datafusion",
+      "datafusion",
+      "duckdb"
+    ],
+    "cache": "first query in new process; OS page cache neither cleared nor measured",
+    "elapsed": "SQL parse/plan/execute and Arrow materialization; validation excluded",
+    "peak_rss": "Linux process maximum RSS in KiB; includes imports, engine, Arrow and result validation",
+    "workloads": [
+      {
+        "input_rows": 10000,
+        "fixtures": [
+          {
+            "name": "part-00.parquet",
+            "bytes": 8412,
+            "rows": 2500,
+            "row_groups": 1,
+            "sha256": "c11b0a68aa6af41b6b2c5a5f9b1ca890d9f46a4f8c3d69a41a78f57a856a783a"
+          },
+          {
+            "name": "part-01.parquet",
+            "bytes": 8390,
+            "rows": 2500,
+            "row_groups": 1,
+            "sha256": "07d7a045e1916e39a8722c98cb5a16bc7212b0139547f2770669c85edd338c5b"
+          },
+          {
+            "name": "part-02.parquet",
+            "bytes": 8399,
+            "rows": 2500,
+            "row_groups": 1,
+            "sha256": "b2beb154e80e6a27d07241d5c59652983d5f50f672e855f2e115948cc545b155"
+          },
+          {
+            "name": "part-03.parquet",
+            "bytes": 8400,
+            "rows": 2500,
+            "row_groups": 1,
+            "sha256": "66987acd4de69f0b736c1e94979c47291fdaabcc8daca0fb03be10ba06134d6f"
+          }
+        ],
+        "file_set_sha256": "b91b25359c983bd36bebe40f331bfdf566f1993bf19c3605c4cec05f31839122",
+        "result_rows": 303,
+        "result_sha256": "f0d91ab012531f3bc3bf774e832a68f65c6f6323457bb936df95be30aed291a6",
+        "sessions": [
+          {
+            "engine": "duckdb",
+            "version": "2.0.1",
+            "setup_ms": 349.887406,
+            "first_query_ms": 118.590395,
+            "warm_ms": [
+              20.218569,
+              13.995195,
+              7.719116
+            ],
+            "warm_median_ms": 13.995195,
+            "setup_process_peak_rss_kib": 77028,
+            "process_peak_rss_kib": 88780,
+            "checked_iterations": 4,
+            "result_rows": 303,
+            "result_sha256": "f0d91ab012531f3bc3bf774e832a68f65c6f6323457bb936df95be30aed291a6"
+          },
+          {
+            "engine": "datafusion",
+            "version": "55.0.0",
+            "setup_ms": 78.307227,
+            "first_query_ms": 8.768015,
+            "warm_ms": [
+              6.242936,
+              3.632877,
+              5.093991
+            ],
+            "warm_median_ms": 5.093991,
+            "setup_process_peak_rss_kib": 75012,
+            "process_peak_rss_kib": 97972,
+            "checked_iterations": 4,
+            "result_rows": 303,
+            "result_sha256": "f0d91ab012531f3bc3bf774e832a68f65c6f6323457bb936df95be30aed291a6"
+          },
+          {
+            "engine": "datafusion",
+            "version": "55.0.0",
+            "setup_ms": 160.050558,
+            "first_query_ms": 19.095809,
+            "warm_ms": [
+              16.087536,
+              10.644467,
+              10.203188
+            ],
+            "warm_median_ms": 10.644467,
+            "setup_process_peak_rss_kib": 75008,
+            "process_peak_rss_kib": 97832,
+            "checked_iterations": 4,
+            "result_rows": 303,
+            "result_sha256": "f0d91ab012531f3bc3bf774e832a68f65c6f6323457bb936df95be30aed291a6"
+          },
+          {
+            "engine": "duckdb",
+            "version": "2.0.1",
+            "setup_ms": 82.479574,
+            "first_query_ms": 8.110184,
+            "warm_ms": [
+              8.055683,
+              9.559101,
+              4.514458
+            ],
+            "warm_median_ms": 8.055683,
+            "setup_process_peak_rss_kib": 78752,
+            "process_peak_rss_kib": 89688,
+            "checked_iterations": 4,
+            "result_rows": 303,
+            "result_sha256": "f0d91ab012531f3bc3bf774e832a68f65c6f6323457bb936df95be30aed291a6"
+          }
+        ]
+      },
+      {
+        "input_rows": 100000,
+        "fixtures": [
+          {
+            "name": "part-00.parquet",
+            "bytes": 71724,
+            "rows": 25000,
+            "row_groups": 4,
+            "sha256": "3827e49b157a89453f4548917063effa8faa6b428af9fdd20c2332698cd18fb6"
+          },
+          {
+            "name": "part-01.parquet",
+            "bytes": 71729,
+            "rows": 25000,
+            "row_groups": 4,
+            "sha256": "dba3d29573598f2a9865c82e0425709c7a25cc5bc6313f859ba769b04770fb15"
+          },
+          {
+            "name": "part-02.parquet",
+            "bytes": 71752,
+            "rows": 25000,
+            "row_groups": 4,
+            "sha256": "8d80f361d846eb640689cb52a573e943a4818cad8a2b70145a60fb35c0876c81"
+          },
+          {
+            "name": "part-03.parquet",
+            "bytes": 71759,
+            "rows": 25000,
+            "row_groups": 4,
+            "sha256": "e1428fbbb9e9234bcd449a809ea9e634e65305e2bb35558686738c28766e0f3b"
+          }
+        ],
+        "file_set_sha256": "5bd7977371b584546cb004a85ac4ae2abb48b77aa0de7bbf9f5d3be87917f3d7",
+        "result_rows": 1625,
+        "result_sha256": "9b148586411cc237128bb14e03209f936b8c0e97ad86849cdca0f8c4085f175a",
+        "sessions": [
+          {
+            "engine": "duckdb",
+            "version": "2.0.1",
+            "setup_ms": 536.384124,
+            "first_query_ms": 10.570084,
+            "warm_ms": [
+              12.36929,
+              9.190597,
+              9.61884
+            ],
+            "warm_median_ms": 9.61884,
+            "setup_process_peak_rss_kib": 78552,
+            "process_peak_rss_kib": 93712,
+            "checked_iterations": 4,
+            "result_rows": 1625,
+            "result_sha256": "9b148586411cc237128bb14e03209f936b8c0e97ad86849cdca0f8c4085f175a"
+          },
+          {
+            "engine": "datafusion",
+            "version": "55.0.0",
+            "setup_ms": 60.930054,
+            "first_query_ms": 35.878689,
+            "warm_ms": [
+              8.168797,
+              11.941215,
+              11.087855
+            ],
+            "warm_median_ms": 11.087855,
+            "setup_process_peak_rss_kib": 75000,
+            "process_peak_rss_kib": 101536,
+            "checked_iterations": 4,
+            "result_rows": 1625,
+            "result_sha256": "9b148586411cc237128bb14e03209f936b8c0e97ad86849cdca0f8c4085f175a"
+          },
+          {
+            "engine": "datafusion",
+            "version": "55.0.0",
+            "setup_ms": 54.537546,
+            "first_query_ms": 17.358076,
+            "warm_ms": [
+              9.242226,
+              8.050141,
+              17.057761
+            ],
+            "warm_median_ms": 9.242226,
+            "setup_process_peak_rss_kib": 75400,
+            "process_peak_rss_kib": 101936,
+            "checked_iterations": 4,
+            "result_rows": 1625,
+            "result_sha256": "9b148586411cc237128bb14e03209f936b8c0e97ad86849cdca0f8c4085f175a"
+          },
+          {
+            "engine": "duckdb",
+            "version": "2.0.1",
+            "setup_ms": 82.510428,
+            "first_query_ms": 18.669569,
+            "warm_ms": [
+              9.598248,
+              8.019556,
+              4.476987
+            ],
+            "warm_median_ms": 8.019556,
+            "setup_process_peak_rss_kib": 78360,
+            "process_peak_rss_kib": 94944,
+            "checked_iterations": 4,
+            "result_rows": 1625,
+            "result_sha256": "9b148586411cc237128bb14e03209f936b8c0e97ad86849cdca0f8c4085f175a"
+          }
+        ]
+      },
+      {
+        "input_rows": 1000000,
+        "fixtures": [
+          {
+            "name": "part-00.parquet",
+            "bytes": 702872,
+            "rows": 250000,
+            "row_groups": 31,
+            "sha256": "1f7b30c2acd6fb0e95d89180c42042d66c0c04f4f3b45bfe59b7e18f4b6875bb"
+          },
+          {
+            "name": "part-01.parquet",
+            "bytes": 703070,
+            "rows": 250000,
+            "row_groups": 31,
+            "sha256": "0e5a96c437707f81572c49d4f13d60a8fa09aca1824b9033704c19a63357b2dc"
+          },
+          {
+            "name": "part-02.parquet",
+            "bytes": 703047,
+            "rows": 250000,
+            "row_groups": 31,
+            "sha256": "7947b491e6ae22882add2e650f4f65e15bc196f2a36359ef69c4caa145247ece"
+          },
+          {
+            "name": "part-03.parquet",
+            "bytes": 703065,
+            "rows": 250000,
+            "row_groups": 31,
+            "sha256": "f3c7004166eda98aac1fde9b54d6687752c5ba2a626f46eee48925f13bf7275d"
+          }
+        ],
+        "file_set_sha256": "74baaa9e84cfe38cb4a00b18e694dc43977b9c4f80c01c660cf50a47c45d9a47",
+        "result_rows": 1792,
+        "result_sha256": "60dad250a59fb0d20268eaf87408391e48978e562d8c8310fd8eabefd2fb507e",
+        "sessions": [
+          {
+            "engine": "duckdb",
+            "version": "2.0.1",
+            "setup_ms": 95.25486,
+            "first_query_ms": 27.957808,
+            "warm_ms": [
+              18.849266,
+              17.697846,
+              18.927072
+            ],
+            "warm_median_ms": 18.849266,
+            "setup_process_peak_rss_kib": 78884,
+            "process_peak_rss_kib": 99528,
+            "checked_iterations": 4,
+            "result_rows": 1792,
+            "result_sha256": "60dad250a59fb0d20268eaf87408391e48978e562d8c8310fd8eabefd2fb507e"
+          },
+          {
+            "engine": "datafusion",
+            "version": "55.0.0",
+            "setup_ms": 59.651854,
+            "first_query_ms": 45.043371,
+            "warm_ms": [
+              46.192288,
+              26.698285,
+              23.994675
+            ],
+            "warm_median_ms": 26.698285,
+            "setup_process_peak_rss_kib": 77188,
+            "process_peak_rss_kib": 105788,
+            "checked_iterations": 4,
+            "result_rows": 1792,
+            "result_sha256": "60dad250a59fb0d20268eaf87408391e48978e562d8c8310fd8eabefd2fb507e"
+          },
+          {
+            "engine": "datafusion",
+            "version": "55.0.0",
+            "setup_ms": 48.445454,
+            "first_query_ms": 47.91617,
+            "warm_ms": [
+              22.897542,
+              19.912633,
+              20.553187
+            ],
+            "warm_median_ms": 20.553187,
+            "setup_process_peak_rss_kib": 77028,
+            "process_peak_rss_kib": 109212,
+            "checked_iterations": 4,
+            "result_rows": 1792,
+            "result_sha256": "60dad250a59fb0d20268eaf87408391e48978e562d8c8310fd8eabefd2fb507e"
+          },
+          {
+            "engine": "duckdb",
+            "version": "2.0.1",
+            "setup_ms": 76.392642,
+            "first_query_ms": 30.365282,
+            "warm_ms": [
+              18.517799,
+              18.941537,
+              18.599239
+            ],
+            "warm_median_ms": 18.599239,
+            "setup_process_peak_rss_kib": 78728,
+            "process_peak_rss_kib": 100824,
+            "checked_iterations": 4,
+            "result_rows": 1792,
+            "result_sha256": "60dad250a59fb0d20268eaf87408391e48978e562d8c8310fd8eabefd2fb507e"
+          }
+        ]
+      }
+    ]
+  },
+  "regenerated_run": {
+    "python": "3.12.16",
+    "architecture": "x86_64",
+    "cpu_model": "13th Gen Intel(R) Core(TM) i9-13900H",
+    "cpu_affinity": [
+      0,
+      1
+    ],
+    "dependencies": {
+      "duckdb": "2.0.1",
+      "datafusion": "55.0.0",
+      "pyarrow": "26.0.1",
+      "cloudpickle": "3.1.3",
+      "typing-extensions": "4.16.0"
+    },
+    "source_schema": "event_day: int32\nequipment_id: int32\nquality_code: int8\nvalue_milli: int32",
+    "result_schema": "event_day: int32\nequipment_id: int32\nsample_count: int64\nvalue_sum_milli: int64\nvalue_min_milli: int32\nvalue_max_milli: int32",
+    "query": "SELECT event_day, equipment_id,\n       NULLIF(COUNT(*), 0) AS sample_count,\n       CAST(SUM(CAST(value_milli AS BIGINT)) AS BIGINT) AS value_sum_milli,\n       MIN(value_milli) AS value_min_milli,\n       MAX(value_milli) AS value_max_milli\nFROM measurements\nWHERE quality_code = 0 AND equipment_id BETWEEN 0 AND 127\n  AND value_milli BETWEEN 20000 AND 80000\nGROUP BY event_day, equipment_id\nORDER BY event_day, equipment_id",
+    "session_order": [
+      "duckdb",
+      "datafusion",
+      "datafusion",
+      "duckdb"
+    ],
+    "cache": "first query in new process; OS page cache neither cleared nor measured",
+    "elapsed": "SQL parse/plan/execute and Arrow materialization; validation excluded",
+    "peak_rss": "Linux process maximum RSS in KiB; includes imports, engine, Arrow and result validation",
+    "workloads": [
+      {
+        "input_rows": 10000,
+        "fixtures": [
+          {
+            "name": "part-00.parquet",
+            "bytes": 8412,
+            "rows": 2500,
+            "row_groups": 1,
+            "sha256": "c11b0a68aa6af41b6b2c5a5f9b1ca890d9f46a4f8c3d69a41a78f57a856a783a"
+          },
+          {
+            "name": "part-01.parquet",
+            "bytes": 8390,
+            "rows": 2500,
+            "row_groups": 1,
+            "sha256": "07d7a045e1916e39a8722c98cb5a16bc7212b0139547f2770669c85edd338c5b"
+          },
+          {
+            "name": "part-02.parquet",
+            "bytes": 8399,
+            "rows": 2500,
+            "row_groups": 1,
+            "sha256": "b2beb154e80e6a27d07241d5c59652983d5f50f672e855f2e115948cc545b155"
+          },
+          {
+            "name": "part-03.parquet",
+            "bytes": 8400,
+            "rows": 2500,
+            "row_groups": 1,
+            "sha256": "66987acd4de69f0b736c1e94979c47291fdaabcc8daca0fb03be10ba06134d6f"
+          }
+        ],
+        "file_set_sha256": "b91b25359c983bd36bebe40f331bfdf566f1993bf19c3605c4cec05f31839122",
+        "result_rows": 303,
+        "result_sha256": "f0d91ab012531f3bc3bf774e832a68f65c6f6323457bb936df95be30aed291a6",
+        "sessions": [
+          {
+            "engine": "duckdb",
+            "version": "2.0.1",
+            "setup_ms": 102.83778,
+            "first_query_ms": 29.427788,
+            "warm_ms": [
+              23.051211,
+              11.816594,
+              9.005433
+            ],
+            "warm_median_ms": 11.816594,
+            "setup_process_peak_rss_kib": 78820,
+            "process_peak_rss_kib": 88788,
+            "checked_iterations": 4,
+            "result_rows": 303,
+            "result_sha256": "f0d91ab012531f3bc3bf774e832a68f65c6f6323457bb936df95be30aed291a6"
+          },
+          {
+            "engine": "datafusion",
+            "version": "55.0.0",
+            "setup_ms": 126.304884,
+            "first_query_ms": 28.269387,
+            "warm_ms": [
+              9.128259,
+              11.863609,
+              9.026311
+            ],
+            "warm_median_ms": 9.128259,
+            "setup_process_peak_rss_kib": 86508,
+            "process_peak_rss_kib": 117332,
+            "checked_iterations": 4,
+            "result_rows": 303,
+            "result_sha256": "f0d91ab012531f3bc3bf774e832a68f65c6f6323457bb936df95be30aed291a6"
+          },
+          {
+            "engine": "datafusion",
+            "version": "55.0.0",
+            "setup_ms": 47.493592,
+            "first_query_ms": 7.363773,
+            "warm_ms": [
+              3.61163,
+              3.318051,
+              3.144678
+            ],
+            "warm_median_ms": 3.318051,
+            "setup_process_peak_rss_kib": 90604,
+            "process_peak_rss_kib": 118160,
+            "checked_iterations": 4,
+            "result_rows": 303,
+            "result_sha256": "f0d91ab012531f3bc3bf774e832a68f65c6f6323457bb936df95be30aed291a6"
+          },
+          {
+            "engine": "duckdb",
+            "version": "2.0.1",
+            "setup_ms": 77.040888,
+            "first_query_ms": 6.754388,
+            "warm_ms": [
+              6.827774,
+              4.922457,
+              3.382685
+            ],
+            "warm_median_ms": 4.922457,
+            "setup_process_peak_rss_kib": 78612,
+            "process_peak_rss_kib": 93296,
+            "checked_iterations": 4,
+            "result_rows": 303,
+            "result_sha256": "f0d91ab012531f3bc3bf774e832a68f65c6f6323457bb936df95be30aed291a6"
+          }
+        ]
+      },
+      {
+        "input_rows": 100000,
+        "fixtures": [
+          {
+            "name": "part-00.parquet",
+            "bytes": 71724,
+            "rows": 25000,
+            "row_groups": 4,
+            "sha256": "3827e49b157a89453f4548917063effa8faa6b428af9fdd20c2332698cd18fb6"
+          },
+          {
+            "name": "part-01.parquet",
+            "bytes": 71729,
+            "rows": 25000,
+            "row_groups": 4,
+            "sha256": "dba3d29573598f2a9865c82e0425709c7a25cc5bc6313f859ba769b04770fb15"
+          },
+          {
+            "name": "part-02.parquet",
+            "bytes": 71752,
+            "rows": 25000,
+            "row_groups": 4,
+            "sha256": "8d80f361d846eb640689cb52a573e943a4818cad8a2b70145a60fb35c0876c81"
+          },
+          {
+            "name": "part-03.parquet",
+            "bytes": 71759,
+            "rows": 25000,
+            "row_groups": 4,
+            "sha256": "e1428fbbb9e9234bcd449a809ea9e634e65305e2bb35558686738c28766e0f3b"
+          }
+        ],
+        "file_set_sha256": "5bd7977371b584546cb004a85ac4ae2abb48b77aa0de7bbf9f5d3be87917f3d7",
+        "result_rows": 1625,
+        "result_sha256": "9b148586411cc237128bb14e03209f936b8c0e97ad86849cdca0f8c4085f175a",
+        "sessions": [
+          {
+            "engine": "duckdb",
+            "version": "2.0.1",
+            "setup_ms": 85.40435,
+            "first_query_ms": 9.392673,
+            "warm_ms": [
+              5.385534,
+              5.749654,
+              4.506302
+            ],
+            "warm_median_ms": 5.385534,
+            "setup_process_peak_rss_kib": 78680,
+            "process_peak_rss_kib": 95052,
+            "checked_iterations": 4,
+            "result_rows": 1625,
+            "result_sha256": "9b148586411cc237128bb14e03209f936b8c0e97ad86849cdca0f8c4085f175a"
+          },
+          {
+            "engine": "datafusion",
+            "version": "55.0.0",
+            "setup_ms": 37.68208,
+            "first_query_ms": 13.006858,
+            "warm_ms": [
+              5.972786,
+              7.969739,
+              6.765203
+            ],
+            "warm_median_ms": 6.765203,
+            "setup_process_peak_rss_kib": 86652,
+            "process_peak_rss_kib": 118492,
+            "checked_iterations": 4,
+            "result_rows": 1625,
+            "result_sha256": "9b148586411cc237128bb14e03209f936b8c0e97ad86849cdca0f8c4085f175a"
+          },
+          {
+            "engine": "datafusion",
+            "version": "55.0.0",
+            "setup_ms": 64.582666,
+            "first_query_ms": 88.871819,
+            "warm_ms": [
+              8.149412,
+              6.155418,
+              5.873574
+            ],
+            "warm_median_ms": 6.155418,
+            "setup_process_peak_rss_kib": 88692,
+            "process_peak_rss_kib": 117948,
+            "checked_iterations": 4,
+            "result_rows": 1625,
+            "result_sha256": "9b148586411cc237128bb14e03209f936b8c0e97ad86849cdca0f8c4085f175a"
+          },
+          {
+            "engine": "duckdb",
+            "version": "2.0.1",
+            "setup_ms": 67.838565,
+            "first_query_ms": 7.581421,
+            "warm_ms": [
+              6.119625,
+              5.791295,
+              4.573842
+            ],
+            "warm_median_ms": 5.791295,
+            "setup_process_peak_rss_kib": 78732,
+            "process_peak_rss_kib": 96520,
+            "checked_iterations": 4,
+            "result_rows": 1625,
+            "result_sha256": "9b148586411cc237128bb14e03209f936b8c0e97ad86849cdca0f8c4085f175a"
+          }
+        ]
+      },
+      {
+        "input_rows": 1000000,
+        "fixtures": [
+          {
+            "name": "part-00.parquet",
+            "bytes": 702872,
+            "rows": 250000,
+            "row_groups": 31,
+            "sha256": "1f7b30c2acd6fb0e95d89180c42042d66c0c04f4f3b45bfe59b7e18f4b6875bb"
+          },
+          {
+            "name": "part-01.parquet",
+            "bytes": 703070,
+            "rows": 250000,
+            "row_groups": 31,
+            "sha256": "0e5a96c437707f81572c49d4f13d60a8fa09aca1824b9033704c19a63357b2dc"
+          },
+          {
+            "name": "part-02.parquet",
+            "bytes": 703047,
+            "rows": 250000,
+            "row_groups": 31,
+            "sha256": "7947b491e6ae22882add2e650f4f65e15bc196f2a36359ef69c4caa145247ece"
+          },
+          {
+            "name": "part-03.parquet",
+            "bytes": 703065,
+            "rows": 250000,
+            "row_groups": 31,
+            "sha256": "f3c7004166eda98aac1fde9b54d6687752c5ba2a626f46eee48925f13bf7275d"
+          }
+        ],
+        "file_set_sha256": "74baaa9e84cfe38cb4a00b18e694dc43977b9c4f80c01c660cf50a47c45d9a47",
+        "result_rows": 1792,
+        "result_sha256": "60dad250a59fb0d20268eaf87408391e48978e562d8c8310fd8eabefd2fb507e",
+        "sessions": [
+          {
+            "engine": "duckdb",
+            "version": "2.0.1",
+            "setup_ms": 70.554001,
+            "first_query_ms": 14.674883,
+            "warm_ms": [
+              20.181092,
+              24.30872,
+              21.258051
+            ],
+            "warm_median_ms": 21.258051,
+            "setup_process_peak_rss_kib": 79028,
+            "process_peak_rss_kib": 97772,
+            "checked_iterations": 4,
+            "result_rows": 1792,
+            "result_sha256": "60dad250a59fb0d20268eaf87408391e48978e562d8c8310fd8eabefd2fb507e"
+          },
+          {
+            "engine": "datafusion",
+            "version": "55.0.0",
+            "setup_ms": 47.841105,
+            "first_query_ms": 41.310742,
+            "warm_ms": [
+              29.233861,
+              27.753064,
+              26.548166
+            ],
+            "warm_median_ms": 27.753064,
+            "setup_process_peak_rss_kib": 90640,
+            "process_peak_rss_kib": 120396,
+            "checked_iterations": 4,
+            "result_rows": 1792,
+            "result_sha256": "60dad250a59fb0d20268eaf87408391e48978e562d8c8310fd8eabefd2fb507e"
+          },
+          {
+            "engine": "datafusion",
+            "version": "55.0.0",
+            "setup_ms": 37.684461,
+            "first_query_ms": 39.599331,
+            "warm_ms": [
+              27.12792,
+              28.982105,
+              27.899761
+            ],
+            "warm_median_ms": 27.899761,
+            "setup_process_peak_rss_kib": 88536,
+            "process_peak_rss_kib": 124684,
+            "checked_iterations": 4,
+            "result_rows": 1792,
+            "result_sha256": "60dad250a59fb0d20268eaf87408391e48978e562d8c8310fd8eabefd2fb507e"
+          },
+          {
+            "engine": "duckdb",
+            "version": "2.0.1",
+            "setup_ms": 67.975957,
+            "first_query_ms": 22.768981,
+            "warm_ms": [
+              18.235045,
+              28.919875,
+              19.587015
+            ],
+            "warm_median_ms": 19.587015,
+            "setup_process_peak_rss_kib": 78908,
+            "process_peak_rss_kib": 99224,
+            "checked_iterations": 4,
+            "result_rows": 1792,
+            "result_sha256": "60dad250a59fb0d20268eaf87408391e48978e562d8c8310fd8eabefd2fb507e"
+          }
+        ]
+      }
+    ]
+  }
+}

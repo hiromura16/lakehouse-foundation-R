@@ -21,7 +21,7 @@
 | Silverの再構築 | 標準DuckDBの業務処理。Sail・DataFusionで8件の共通SQL fixtureを照合 | 同じ実契約を全エンジンへ渡し、Icebergの再構築、型・順序、ファイル数とRSSを比較 |
 | Kafkaから現在値を構築 | 基盤のCDCと、RisingWaveによるKafkaの合成作成・訂正・削除を個別に検証 | RisingWaveのIceberg書込、tombstone、再送、オフセット、障害復旧 |
 | 設備時系列の調査 | Icebergの最新値・1分窓、InfluxDBとGreptimeDBのSQL、MQTT→Kafka→GreptimeDBの正常再起動・再送 | OPC UA・Modbus・TLSの現場構成、保持・断電、1万〜100万点の比較 |
-| ローカル変換 | DataFusionのCSV・JSONLの読取とParquet変換 | 企業入力のファイルサイズ、型、ピークメモリを計測 |
+| ローカル変換 | DataFusionのCSV・JSONLとParquet変換、DuckDBとの1万・10万・100万行比較 | 企業入力のファイルサイズ、型、ピークメモリを計測 |
 | 分散SQL | Ballista SchedulerとExecutorの個別起動、分散SQLの合計 | 複数ホスト、停止時の再試行、単一ノードを超える負荷 |
 | Sparkの比較 | Cometを有効にしたSparkのParquet集計と物理プラン | 業務SQLの互換範囲、非対応演算、JVMを含む運用コストの計測 |
 | 自動化と観測 | Grafana、OpenObserve、n8n、運用ポータル、設定ファイルで変更可能なダッシュボード | 運用の権限、通知先、履歴の復旧を設置先で受入 |
