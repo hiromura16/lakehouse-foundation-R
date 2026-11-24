@@ -1,7 +1,7 @@
 # Lakehouse Foundation R
 
 <!-- doc-purpose:start -->
-> **役割:** JVMを使わない標準構成の機能と導入入口を確認します。
+> **役割:** JVMを使わない標準構成と会社VMでのDokploy配備の入口を確認します。
 >
 > **対象読者:** 初めて使う人 / 基盤構築担当
 >
@@ -20,24 +20,11 @@ MES・ERP・設備の入力原本を保管し、工場別の日次生産、出�
 
 [プレゼン用PNG（2400×1350）](docs/native/images/foundation-r-overview.png) · [構成図の編集用HTML](docs/native/images/foundation-r-overview.html) · [技術の役割と採用理由](docs/native/ARCHITECTURE.md)
 
-## 会社VMで最初に試す
+## 会社VMでDokployから配備する
 
-公開リポジトリなので、HTTPSでのcloneにGitHubアカウントは不要です。企業ネットワークからは先に [プロキシとCA](docs/native/COMPANY.md) を確認してください。
+Dokployの **Projects → Create Service → Compose** から、公開GitHubの `main` と `compose.yaml` を指定します。配備先VMで生成した非公開設定を **Environment** へ登録し、**Deploy** を実行します。
 
-**Bash / Zsh共通**
-
-```bash
-git clone https://github.com/hiromura16/lakehouse-foundation-R.git
-cd lakehouse-foundation-R
-python3 native/setup.py
-site="$HOME/.config/lakehouse-foundation-r/site.env"
-chmod -R a+rX native/monitoring
-docker compose --env-file "$site" config --quiet
-docker compose --env-file "$site" up -d --build --wait --wait-timeout 180
-docker compose --env-file "$site" exec -T lakehouse python -m native.api verify
-```
-
-`verify` が `ok: true` を返せば、ファイル受け渡し、保存、変換、再実行の11項目を検証できています。次に [初回導入](docs/native/START.md) の合成データを受け渡し先へ置き、Goldを公開して日次生産の結果を確認します。
+[最初からDokployで配備する手順](docs/native/START.md) · [会社のプロキシ・CA、追加構成](docs/native/COMPANY.md) · [会社VMの受入条件](docs/native/ACCEPTANCE.md)
 
 ## やりたいことから探す
 
@@ -48,7 +35,7 @@ docker compose --env-file "$site" exec -T lakehouse python -m native.api verify
 | アプリの状態を見る、ダッシュボードを変更する | [Grafana運用監視](docs/native/MONITORING.md) |
 | ファイル、SQL Server、外部Kafkaを接続する | [入出力契約と接続方法](docs/native/SOURCES.md) |
 | 自動化・調査・時系列を追加する | [n8n、OpenObserve、InfluxDB、運用ポータル](docs/native/TOOLS.md) |
-| 導入と運用を説明する | [説明スライド10枚](docs/native/PRESENTATION.md) |
+| 導入と運用を説明する | [説明スライドとPowerPoint](docs/native/PRESENTATION.md) |
 | GoldをアプリやLangChainから参照する | [APIとLangChain](docs/native/API.md) |
 | 障害を切り分ける、会社VMで受入試験を行う | [運用とバックアップ](docs/native/OPERATIONS.md) · [受入手順と合格条件](docs/native/ACCEPTANCE.md) |
 | 設計判断と評価状況を確認する | [構成と採用理由](docs/native/ARCHITECTURE.md) · [レイクハウスの設計思想](docs/native/DESIGN.md) · [構想と実装の対応](docs/native/ROADMAP.md) |

@@ -23,7 +23,7 @@
 
 | 文書 | 何のために読むか | 読むタイミング | 区分 |
 | --- | --- | --- | --- |
-| [Lakehouse Foundation R](<../README.md>) | JVMを使わない標準構成の機能と導入入口を確認します。 | 導入の方法を選ぶとき。 | active |
+| [Lakehouse Foundation R](<../README.md>) | JVMを使わない標準構成と会社VMでのDokploy配備の入口を確認します。 | 導入の方法を選ぶとき。 | active |
 | [目的・読者から探す文書マニフェスト](<DOCUMENTATION-MANIFEST.md>) | 公開Markdown全件の固有の目的・読者・読む時点を、目的別と読者別に引く。 | 必要な文書を探すときや、文書の追加・改名時に登録を更新するとき。 | reference |
 | [会社VMの受入手順と合格条件](<native/ACCEPTANCE.md>) | 導入後の検査を観測できる合格条件と照合します。 | 配置前の確認と受入時。 | active |
 | [認証付きAPIとLangChain](<native/API.md>) | 固定API操作とスナップショットを根拠にしたLangChain利用を確認します。 | 分析やAIのツールを実装するとき。 | active |
@@ -36,7 +36,7 @@
 | [説明スライド](<native/PRESENTATION.md>) | 概要、データの流れ、構成と配備を説明する資料です。 | チームへ導入概要を説明するとき。 | active |
 | [公式リファレンスと採用バージョン](<native/REFERENCES.md>) | 固定した版と公式仕様への参照を調べます。 | 採用版の理由や更新差分を調べるとき。 | active |
 | [ファイル・SQL Server・Kafkaの入力契約](<native/SOURCES.md>) | ファイル・SQLバッチ・Kafka・設備の入力契約を確認します。 | 外部ソースを接続するとき。 | active |
-| [Foundation Rの初回導入と操作](<native/START.md>) | Composeで起動し、合成データの結果を確認します。 | 初めて起動するとき。 | active |
+| [Foundation Rの初回導入と操作](<native/START.md>) | 会社VMにDokployで配備し、合成データから業務集計までを確認します。 | 初めて起動するとき。 | active |
 
 ### 02 設計・仕様
 
@@ -75,7 +75,7 @@
 
 | 文書 | 目的 |
 | --- | --- |
-| [Lakehouse Foundation R](<../README.md>) | JVMを使わない標準構成の機能と導入入口を確認します。 |
+| [Lakehouse Foundation R](<../README.md>) | JVMを使わない標準構成と会社VMでのDokploy配備の入口を確認します。 |
 | [目的・読者から探す文書マニフェスト](<DOCUMENTATION-MANIFEST.md>) | 公開Markdown全件の固有の目的・読者・読む時点を、目的別と読者別に引く。 |
 | [会社VMの受入手順と合格条件](<native/ACCEPTANCE.md>) | 導入後の検査を観測できる合格条件と照合します。 |
 | [認証付きAPIとLangChain](<native/API.md>) | 固定API操作とスナップショットを根拠にしたLangChain利用を確認します。 |
@@ -87,14 +87,14 @@
 | [運用、バックアップ、受入試験](<native/OPERATIONS.md>) | 障害対応、状態の保全と合成データでの受入を行います。 |
 | [公式リファレンスと採用バージョン](<native/REFERENCES.md>) | 固定した版と公式仕様への参照を調べます。 |
 | [ファイル・SQL Server・Kafkaの入力契約](<native/SOURCES.md>) | ファイル・SQLバッチ・Kafka・設備の入力契約を確認します。 |
-| [Foundation Rの初回導入と操作](<native/START.md>) | Composeで起動し、合成データの結果を確認します。 |
+| [Foundation Rの初回導入と操作](<native/START.md>) | 会社VMにDokployで配備し、合成データから業務集計までを確認します。 |
 | [合成入力を最初に作る](<../samples/README.md>) | 実データを使わずに最初の6契約素材を生成し、出力と後続処理の境界を確認する。 |
 
 ### 基盤構築担当
 
 | 文書 | 目的 |
 | --- | --- |
-| [Lakehouse Foundation R](<../README.md>) | JVMを使わない標準構成の機能と導入入口を確認します。 |
+| [Lakehouse Foundation R](<../README.md>) | JVMを使わない標準構成と会社VMでのDokploy配備の入口を確認します。 |
 | [目的・読者から探す文書マニフェスト](<DOCUMENTATION-MANIFEST.md>) | 公開Markdown全件の固有の目的・読者・読む時点を、目的別と読者別に引く。 |
 | [会社VMの受入手順と合格条件](<native/ACCEPTANCE.md>) | 導入後の検査を観測できる合格条件と照合します。 |
 | [認証付きAPIとLangChain](<native/API.md>) | 固定API操作とスナップショットを根拠にしたLangChain利用を確認します。 |
@@ -106,7 +106,7 @@
 | [運用、バックアップ、受入試験](<native/OPERATIONS.md>) | 障害対応、状態の保全と合成データでの受入を行います。 |
 | [公式リファレンスと採用バージョン](<native/REFERENCES.md>) | 固定した版と公式仕様への参照を調べます。 |
 | [ファイル・SQL Server・Kafkaの入力契約](<native/SOURCES.md>) | ファイル・SQLバッチ・Kafka・設備の入力契約を確認します。 |
-| [Foundation Rの初回導入と操作](<native/START.md>) | Composeで起動し、合成データの結果を確認します。 |
+| [Foundation Rの初回導入と操作](<native/START.md>) | 会社VMにDokployで配備し、合成データから業務集計までを確認します。 |
 | [運用ポータルと追加ツール](<native/TOOLS.md>) | n8n、OpenObserve、InfluxDBの設置と初回操作を確認します。 |
 
 ### 評価・報告担当

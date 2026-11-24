@@ -67,24 +67,25 @@ git ls-remote --exit-code https://github.com/hiromura16/lakehouse-foundation-R.g
 
 Dockerが取得する固定イメージの起点は Docker Hub、Quay、GHCR です。Python依存は通常 PyPI と files.pythonhosted.org から取得します。会社ミラーへ切り替える場合は、ミラーのCAと同じ配布物のハッシュを確認してください。CIや管理者が `config --quiet` を使うのは、展開済みの設定には秘密値が含まれるためです。導入先で実測する項目は [受入手順](ACCEPTANCE.md) にあります。
 
-## DokployのGUIから配置する
+## Dokployの設定を確認する
 
-1. 導入先ホストで [初回設定の生成](START.md) を実施します。権限は実際にlandingへ書くユーザーに合わせ、ファイルとディレクトリをDokployのcheckout先の外に置きます。
-2. DokployのProjectで `Create Service` → `Compose` を選び、Compose Typeを `Docker Compose` にします。
-3. Providerで `Git` を選び、HTTPS URLに `https://github.com/hiromura16/lakehouse-foundation-R.git`、Branchに `main`、Compose Pathに `compose.yaml` を入力します。GitHub App連携を利用する場合は、アプリに対象リポジトリへのアクセスを許可して `GitHub` を選びます。
-4. 対象ComposeサービスのEnvironmentへ `site.env` の内容を登録し、Environmentファイルを作成する設定を有効にします。プロキシとCAが必要な環境では同じタブで追加します。
-5. Deployします。Logsとサービス一覧に `catalog-migrate` の終了0、Lakehouseのhealthy、Grafanaの起動が出ます。ホストのブラウザーまたはSSH転送からGrafanaへログインして、稼働監視を確認します。
-6. ブラウザーを別端末から使うなら、既存のSSHアカウントと導入先ホストでローカルポート転送を使います。GUIのDomainsでHTTPS化する場合は、Grafanaだけをservice port 3000で公開し、`GRAFANA_ROOT_URL` に公開HTTPS origin、`GRAFANA_COOKIE_SECURE=true` を設定します。Lakekeeper、S3、Prometheus、Blackboxをドメインへ付ける必要はありません。
+[Dokployでの初回配備](START.md) の手順でサービスを作成します。公開GitHubのProviderは **Git** を選択します。GitHub Appによる取得を組織で管理している場合は、対象リポジトリへのアクセスを許可したアプリを使い、Providerを **GitHub** にします。
 
-Dokployの既定コマンドに待機・再生成を追加する場合は、UIに表示される実際のappNameを使ってAdvancedのRun Commandに以下を入力します。コマンド欄には `compose` から入力します。checkout更新で監視設定のマウント先も確実に切り替える場合は `--force-recreate` を付けます。これは対象プロジェクトのサービスを再起動します。
+DokployのEnvironmentはComposeの横に `.env` を生成します。このプロジェクトではComposeが必要な項目を変数展開します。非公開の `site.env`、受け渡しディレクトリ、企業CAは配備先VMの利用者が管理し、DokployがGitを展開し直すディレクトリの外に置きます。正しいファイルがマウントされていることは **Docker → Containers → View Mounts** で確認できます。
+
+ブラウザーはVM上のポート18501のGrafanaへ接続します。別端末からは社内で許可されたSSH転送またはHTTPS経路を利用します。DokployのDomainsでGrafanaをHTTPS化する場合は、service port 3000を指定し、`GRAFANA_ROOT_URL` を実際のHTTPS URL、`GRAFANA_COOKIE_SECURE=true` にします。
+
+## 追加のCompose構成を有効にする
+
+Dokployの既定コマンドに待機・再生成を追加する場合は、UIに表示される実際のappNameを使ってAdvancedのCommand欄に以下を入力します。コマンド欄には `compose` から入力します。checkout更新で監視設定のマウント先も確実に切り替える場合は `--force-recreate` を付けます。これは対象プロジェクトのサービスを再起動します。
 
 ```text
 compose -p APP_NAME_FROM_HEADER --env-file .env -f compose.yaml up -d --build --wait --wait-timeout 180 --remove-orphans
 ```
 
-[任意の閲覧画面](GUI.md) を有効にする場合は、非公開の認証ファイルを準備して、Run Commandに `-f compose.gui.yaml` を追加します。
+[任意の閲覧画面](GUI.md) を有効にする場合は、非公開の認証ファイルを準備して、Command欄に `-f compose.gui.yaml` を追加します。
 
-[運用ツール](TOOLS.md) を有効にする場合は、ホストで追加ツールの秘密ファイルを作成して、`tools.env` の値を同じComposeのEnvironmentにも登録します。秘密ファイルのパスはDockerを実行するホストから参照できる絶対パスを使います。Run Commandに `-f compose.tools.yaml` を加え、n8nをHTTPSで使う場合は公開originとSecure Cookieを設定します。取得先には `docker.n8n.io`、Docker Hub、`public.ecr.aws` が加わります。
+[運用ツール](TOOLS.md) を有効にする場合は、ホストで追加ツールの秘密ファイルを作成して、`tools.env` の値を同じComposeのEnvironmentにも登録します。秘密ファイルのパスはDockerを実行するホストから参照できる絶対パスを使います。Command欄に `-f compose.tools.yaml` を加え、n8nをHTTPSで使う場合は公開originとSecure Cookieを設定します。取得先には `docker.n8n.io`、Docker Hub、`public.ecr.aws` が加わります。
 
 Dokployの再取得後も、名前付きデータvolumeおよびcheckout外のlanding・設定・CAを維持します。同じホストに検証用と本番用を配置する場合は、個別のappName、ポート、landingを割り当てます。標準ポートはAPI 18502、Grafana 18501です。社内の実プロキシ、IdP、証明書とDokployのGUI操作は、導入先で [受入手順](OPERATIONS.md) を実行して確認します。
 

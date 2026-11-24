@@ -21,13 +21,13 @@
 | 段階 | 操作 | 合格条件 | 失敗したときに見る場所 |
 | --- | --- | --- | --- |
 | Git取得 | 会社VMから公開HTTPS URLの `git ls-remote` | `refs/heads/main` とコミットIDが返る | Gitのproxy、許可リスト、OSの信頼CA |
-| 配置 | 標準Composeの `config --quiet` と `up --build --wait` | 7サービス起動、`catalog-migrate` 終了0、Lakehouseがhealthy | Docker daemonとBuildKitの通信、Composeログ |
-| 業務契約 | `python3 native/check_contracts.py`、ワーカーの `verify` | 契約19ファイル一致。画像原本・型検査・集計など11項目。初回7ファイル、再実行0 | 検査名、固定の期待値、カタログとS3 |
+| 配置 | DokployのDeployとDeploymentsログ、対象サービスの状態を照合 | 7サービス起動、`catalog-migrate` 終了0、Lakehouseがhealthy | Docker daemonとBuildKitの通信、Composeログ |
+| 業務契約 | `python3 native/check_contracts.py`、Dokployのコンテナ端末で `verify` | 契約19ファイル一致。画像原本・型検査・集計など11項目。初回7ファイル、再実行0 | 検査名、固定の期待値、カタログとS3 |
 | 業務処理 | 合成ファイルを生成し `medallion`、Gold参照 | 初回6ファイル、SQL14本。日次生産は2工場×7日。上限5で全14行中5行を返す | 完了印、ファイル名・列、Gold公開時刻 |
 | 再実行 | 入力を変えずに `medallion` とGold参照 | 新規0、`unchanged: true`。前回と同じ公開世代 | 入力の変更、変換の版、稼働中のwriter |
 | 画面・監視 | Grafana、任意GUIに接続 | 監視は標準7対象、GUI付き9対象。閲覧は認証が必要。公開した日次集計と公開世代を確認 | 各サービスの状態、ブラウザー接続経路、ゲートウェイ認証 |
 
-[初回導入のコマンド](START.md) · [企業環境の疎通](COMPANY.md) · [障害対応](OPERATIONS.md)
+[Dokployからの初回導入](START.md) · [企業環境の疎通](COMPANY.md) · [障害対応](OPERATIONS.md)
 
 ## 自動試験で確かめる境界
 

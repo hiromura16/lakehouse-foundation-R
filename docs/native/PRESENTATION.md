@@ -26,3 +26,5 @@
 追加構成の運用ポータルから「説明スライド」を開けます。ローカルで編集・閲覧する場合は、checkout内の `docs/presentation/index.html` をブラウザーで開きます。
 
 [スライドのHTML](../presentation/index.html) · [全体構成PNG](images/foundation-r-overview.png) · [運用ポータルの起動](TOOLS.md)
+
+[PowerPoint 11枚をGitHubからダウンロード](https://github.com/hiromura16/lakehouse-foundation-R/releases/download/presentation-2026-11-24/lakehouse-foundation-r.pptx)

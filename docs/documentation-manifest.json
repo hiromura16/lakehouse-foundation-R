@@ -53,7 +53,7 @@
     {
       "path": "README.md",
       "title": "Lakehouse Foundation R",
-      "purpose": "JVMを使わない標準構成の機能と導入入口を確認します。",
+      "purpose": "JVMを使わない標準構成と会社VMでのDokploy配備の入口を確認します。",
       "audience": [
         "初めて使う人",
         "基盤構築担当"
@@ -200,7 +200,7 @@
     {
       "path": "docs/native/START.md",
       "title": "Foundation Rの初回導入と操作",
-      "purpose": "Composeで起動し、合成データの結果を確認します。",
+      "purpose": "会社VMにDokployで配備し、合成データから業務集計までを確認します。",
       "audience": [
         "初めて使う人",
         "基盤構築担当"

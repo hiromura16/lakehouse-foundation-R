@@ -1,7 +1,7 @@
 # Foundation Rの初回導入と操作
 
 <!-- doc-purpose:start -->
-> **役割:** Composeで起動し、合成データの結果を確認します。
+> **役割:** 会社VMにDokployで配備し、合成データから業務集計までを確認します。
 >
 > **対象読者:** 初めて使う人 / 基盤構築担当
 >
@@ -14,24 +14,17 @@
 > **文書一覧:** [目的・読者から探す文書マニフェスト](<../DOCUMENTATION-MANIFEST.md>)
 <!-- doc-purpose:end -->
 
-## 1. 用意するもの
+会社VMへの配備はDokployで行います。Docker ComposeはDokployがGitHubから取得して実行する構成ファイルです。初回の端末操作は、会社VMの通信確認、非公開設定の生成、合成データの配置に使います。
 
-Linux x86-64、Docker EngineとComposeプラグイン、Python 3.12以上、Gitを使います。Composeは `configs.content` とBuildKitを使うため2.23.1以上が必要です。初回は4 vCPU、8 GiB RAMと30 GiB以上の空き領域を目安に、合成データ専用VMで試してください。これは初期の配置目安であり、負荷試験の結果ではありません。
+## 1. 配備先を確認する
 
-**Bash / Zsh共通**
+- Linux x86-64の配備先にDocker Engine、Compose 2.23.1以上、Git、Python 3.12以上を用意します。最初の検証用VMの初期目安は4 vCPU、8 GiB RAM、空き30 GiBです。
+- Dokployの管理画面で、配備先のサーバーとプロジェクトを選べることを確認します。Docker Composeサービスを作成できる権限が必要です。
+- 社内プロキシを使う場合は、VMのGit、DokployのGit取得、Docker EngineとBuildKitの経路を準備します。[プロキシ・CAの確認](COMPANY.md)
 
-```bash
-git --version
-python3 --version
-docker version
-docker compose version
-```
+## 2. 配備先VMで非公開設定を作る
 
-Docker Engineに接続できない場合は、管理者に接続方法を確認します。Dockerデーモンへアクセスできるユーザーはホストで強い権限を持ちます。社内プロキシを使う場合は [会社ネットワークの準備](COMPANY.md) が先です。
-
-## 2. Cloneして秘密設定を作る
-
-HTTPSでのcloneにGitHubアカウントは不要です。VMのGitの疎通やCAを確認する手順は [会社ネットワークの準備](COMPANY.md) にあります。
+Dokployがコンテナを起動するVMにSSH接続し、ファイルの受け渡しを担当する一般ユーザーで実行します。ここでcloneするコピーは設定生成と合成入力作成に使います。Dokployは配備時に管理用のコピーを取得します。
 
 **Bash / Zsh共通**
 
@@ -40,46 +33,64 @@ git clone https://github.com/hiromura16/lakehouse-foundation-R.git
 cd lakehouse-foundation-R
 python3 native/setup.py
 site="$HOME/.config/lakehouse-foundation-r/site.env"
-```
-
-`site.env` は権限0600で作成されます。初回以外は既存ファイルを使います。既存のPostgreSQLとLakekeeperの鍵が異なる設定では、再接続や復元ができなくなります。landingは入力ファイルの受け渡し場所です。標準では同じ設定ディレクトリ内の `landing` を使い、コンテナは読取専用でマウントします。作業ユーザーと異なるUIDでファイルを生成する場合は、サイト管理者が読取権限を調整します。
-
-## 3. 起動して確認する
-
-**Bash / Zsh共通**
-
-```bash
-chmod -R a+rX native/monitoring
-docker compose --env-file "$site" config --quiet
-docker compose --env-file "$site" up -d --build --wait --wait-timeout 180
-docker compose --env-file "$site" ps -a
-docker compose --env-file "$site" exec -T lakehouse python -m native.api verify
-```
-
-`catalog-migrate` は終了コード0で完了する初期化ジョブです。ほかの7サービスが起動します。検証の期待値は `ok: true`、11件の検査、1回目の取込7ファイル、2回目の新規取込0ファイルです。通常データのGoldは次の操作で作ります。
-
-## 4. 合成データを入れてGoldを読む
-
-**Bash / Zsh共通**
-
-```bash
 landing="$HOME/.config/lakehouse-foundation-r/landing"
+```
+
+`site.env` は権限0600で生成されます。会社VMで安全に開き、次の手順で同じDokployサービスのEnvironmentへ内容を登録します。再配備でも同じ設定を使います。landingは入力の受け渡し先で、設定を生成したユーザーが書き込みます。
+
+## 3. Dokployでサービスを作成する
+
+1. **Projects** から対象プロジェクトと環境を開き、**Create Service → Compose** を選びます。**Compose Type** は **Docker Compose** にします。
+2. **General** でProviderを **Git** にし、下表の値を設定して **Save** します。
+3. **Environment** を開いて `site.env` の内容を登録し、**Save** します。企業CAやビルド用のプロキシが必要な場合は、[企業ネットワークの設定](COMPANY.md) もここで登録します。
+4. **General → Deploy** を選び、**Deployments** の最新ログを開きます。初回はイメージと依存のダウンロードに時間がかかります。
+5. **Docker → Containers** で対象サーバーを選びます。対象Composeの `catalog-migrate` は終了コード0、`lakehouse` はhealthyが合格です。Grafanaを含め、ほかの7サービスが稼働します。
+
+| Generalの項目 | 入力する値 |
+| --- | --- |
+| Provider | Git |
+| HTTPS URL | `https://github.com/hiromura16/lakehouse-foundation-R.git` |
+| Branch | `main` |
+| Compose Path | `compose.yaml` |
+
+[DokployのDocker Compose手順](https://docs.dokploy.com/docs/core/docker-compose) · [公開リポジトリのHTTPS設定](https://docs.dokploy.com/docs/core/providers)
+
+## 4. Dokployのコンテナ端末で受入検査を行う
+
+**Docker → Containers** で、新しく配備したComposeに属する `lakehouse` コンテナを選び、アクションから **Terminal** を開きます。権限がない場合はDokploy運用者にコンテナ端末の操作を依頼します。
+
+**Bash / Zsh共通**
+
+```bash
+python -m native.api verify
+```
+
+合格時は `ok: true` と11項目、初回の取込7ファイル、再取込0ファイルが返ります。[コンテナ端末の公式手順](https://docs.dokploy.com/docs/core/docker-dashboard) · [異常時の切り分け](OPERATIONS.md)
+
+## 5. 合成データで業務集計を読む
+
+設定を作成したVM側のcloneで、合成データをlandingへ生成します。
+
+**Bash / Zsh共通**
+
+```bash
 python3 scripts/generate-demo.py --output "$landing" \
   --seed 42 --orders 20 --days 7 --scenario edge
-docker compose --env-file "$site" exec -T lakehouse python -m native.api medallion
-docker compose --env-file "$site" exec -T lakehouse \
-  python -m native.api gold factory_daily_production --limit 5
 ```
 
-`imported` は今回保存した入力ファイル数です。この手順では `imported: 6` と `sql_statements: 14` が得られ、日次生産は全14行のうち先頭5行が返ります。再実行で `imported: 0` と `unchanged: true` が返れば、入力のスナップショットと変換版が一致しています。Goldの `snapshot_id` はその表の版、`release_snapshot_id` は公開世代の版です。[データ閲覧の実画面](GUI.md) と [稼働監視の実画面](MONITORING.md) でも確認できます。別アプリからの取込は [入力経路](SOURCES.md) を参照します。
-
-## 5. 停止と再開
+Dokployの同じ `lakehouse` コンテナ端末で次を実行します。
 
 **Bash / Zsh共通**
 
 ```bash
-docker compose --env-file "$site" stop
-docker compose --env-file "$site" up -d --wait --wait-timeout 180
+python -m native.api medallion
+python -m native.api gold factory_daily_production --limit 5
 ```
 
-同じプロジェクト名と同じ設定を使うと保存済みのデータを開きます。[障害時とバックアップの手順](OPERATIONS.md) を参照してください。
+空のlandingでの期待値は `imported: 6`、`sql_statements: 14` です。日次生産14行のうち先頭5行を返します。同じ入力でもう一度実行し、新規0、`unchanged: true` と同じ公開世代を確認します。[会社VMの合格条件](ACCEPTANCE.md)
+
+ブラウザーから見る場合は、まず [Grafana監視](MONITORING.md) へ接続します。[業務集計の画面](GUI.md) や [運用ポータル・n8nなど](TOOLS.md) を使う場合も、Dokployの同じComposeサービスに追加します。[Dokployの追加構成とアクセス方法](COMPANY.md)
+
+## 6. 次回の配備
+
+Dokployの同じComposeサービスで **Deploy** を実行します。停止や再開も同じサービスから操作します。設定生成は初回だけです。ログ、アプリの状態、公開世代を確認します。[運用・バックアップ](OPERATIONS.md)
