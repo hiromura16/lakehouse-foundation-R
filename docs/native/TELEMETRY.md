@@ -79,12 +79,39 @@ docker compose --env-file /path/to/private/telemetry.env \
 の形です。最後の整数はUTC秒から換算したナノ秒時刻です。
 試験集計のSQLではGreptimeDBのミリ秒精度を照合します。
 
+## OPC UAの署名・暗号化、読取権限を試す
+
+別の試験モードで、Pythonのasyncua 2.1.0を使用した模擬設備だけを起動
+します。Telegrafは固定したノードをX.509認証、
+`Basic256Sha256` / `SignAndEncrypt` で購読し、Kafka以降はMQTT試験と
+同じ構成を使います。模擬設備とKafkaにホスト公開ポートはありません。
+証明書は試験用に生成し、試験終了後に削除します。
+
+**Bash / Zsh共通**
+
+```bash
+python3 tests/integration/telemetry/acceptance.py --opcua
+```
+
+| 操作 | 観測した結果 |
+| --- | --- |
+| 接続先に別のRSA鍵の証明書を指定 | 暗号チャネルを確立できず、時系列表は生成されない |
+| 正しい鍵と登録済みの読取ユーザー | 22.5を購読。認証済みユーザーの書込要求は `BadUserAccessDenied`、読取り値は前後で22.5 |
+| 発生元時刻とサーバー時刻を10分ずらし、正常3点・通信異常1点を通知 | 発生元時刻で22.5、23.5、24.5の3点。通信異常点の99.5は保存しない |
+| 隔離の境界 | 模擬設備と収集器の通信、Kafkaのワイヤー転送、GreptimeDBの時刻とタグを確認 |
+
+実機の証明書の発行・失効、信頼チェーンや証明書の入替え、利用する
+暗号ポリシーは設備担当者と決定します。この試験ではセッションの署名・
+暗号化と別鍵の拒否を検証します。同じ鍵で再発行された証明書や
+Discovery通信を含む信頼要件は設置先で別に照合します。
+[設定の例](../../native/telemetry/opcua.toml) · [Telegrafの購読設定](https://docs.influxdata.com/telegraf/v1/input-plugins/opcua_listener/) · [asyncuaの固定版](https://github.com/FreeOpcUa/opcua-asyncio/tree/v2.1.0)
+
 ## 設備導入で決める条件
 
 - 送信者と発行トピックを紐づけ、工場内のTLS証明書または認証基盤、
   MQTTとKafkaのACL、シークレット保管を設定します。実データの原本は
   計測時刻、品質コード、設備ID、配信IDやシーケンス番号ごと別経路で保全します。
-- 試験設定ではペイロード64KiB、購読キュー1,000件または8MiB、
+- 試験設定ではパケット64KiB、購読キュー1,000件または8MiB、
   Vectorのディスクバッファ約256MiBです。停止時間と発行速度から容量を決定し、
   欠損を送信側・Kafka・保存先の連番や件数で検知します。
 - MQTTのACKは保存先の全件保証に使えません。Telegrafの変換不能な入力や

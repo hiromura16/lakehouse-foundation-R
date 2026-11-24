@@ -1,0 +1,54 @@
+# 合成設備の購読設定。実設備では証明書とノード契約を個別に管理する。
+[agent]
+  interval = "2s"
+  flush_interval = "2s"
+  omit_hostname = true
+  metric_batch_size = 100
+  metric_buffer_limit = 1000
+
+[[inputs.opcua_listener]]
+  endpoint = "opc.tcp://opcua-simulator:4840/foundation"
+  connect_fail_behavior = "retry"
+  security_policy = "Basic256Sha256"
+  security_mode = "SignAndEncrypt"
+  auth_method = "Certificate"
+  certificate = "/run/secrets/client-cert"
+  private_key = "/run/secrets/client-key"
+  remote_certificate = "/run/secrets/remote-cert"
+  timestamp = "source"
+  subscription_interval = "250ms"
+  name_override = "opc_temperature"
+
+  [[inputs.opcua_listener.nodes]]
+    id = "nsu=urn:foundation:r:opcua-simulator;s=Temperature"
+    name = "celsius"
+    default_tags = {device = "opc01"}
+
+    [inputs.opcua_listener.nodes.monitoring_params]
+      sampling_interval = "100ms"
+      queue_size = 10
+      discard_oldest = true
+
+      [inputs.opcua_listener.nodes.monitoring_params.data_change_filter]
+        trigger = "StatusValue"
+        deadband_type = "None"
+
+[[processors.starlark]]
+  namepass = ["opc_temperature"]
+  source = '''
+def apply(metric):
+    # 品質異常時に収集器が返す既存値を正常系列へ混ぜない。
+    if not metric.fields.get("Quality", "").endswith(" (0x0)"):
+        return None
+    metric.fields.pop("Quality")
+    metric.tags["quality"] = "GOOD"
+    return metric
+'''
+
+[[outputs.kafka]]
+  brokers = ["broker:9092"]
+  topic = "foundation-r-evaluation-sensors"
+  required_acks = -1
+  producer_timestamp = "now"
+  routing_tag = "device"
+  data_format = "influx"

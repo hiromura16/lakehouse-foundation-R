@@ -3,6 +3,7 @@
 import argparse
 import json
 import secrets
+import shutil
 import subprocess
 import tempfile
 import time
@@ -33,7 +34,113 @@ def until(operation, label, timeout=60):
     raise RuntimeError(f"{label}の条件に達しませんでした。")
 
 
-def verify(docker, root):
+def greptime_rows(http, endpoint, table, columns):
+    """時系列表の結果から、確定した計測点のみを読み取る。"""
+    sql = f"SELECT {columns} FROM {table} ORDER BY ts"
+    address = endpoint + "/v1/sql?" + urlencode({"sql": sql})
+    with http.open(address, timeout=3) as reply:
+        result = json.load(reply)
+    return result["output"][0]["records"]["rows"]
+
+
+def opcua_acceptance(docker, project, run, root, http, endpoint):
+    """誤った相手証明書、暗号化購読、時刻、品質悪化の扱いを照合する。"""
+    keys = root / "opcua"
+    run("build", "opcua-simulator", timeout=360)
+    subprocess.run(
+        [
+            *docker,
+            "run",
+            "--rm",
+            "--network",
+            "none",
+            "--user",
+            f"{root.stat().st_uid}:{root.stat().st_gid}",
+            "--mount",
+            f"type=bind,source={keys},target=/keys",
+            f"{project}-opcua-simulator",
+            "--certificates",
+            "/keys",
+        ],
+        check=True,
+        timeout=90,
+    )
+    remote = keys / "remote-cert.pem"
+    shutil.copyfile(keys / "other-cert.pem", remote)
+    run("up", "-d", "opcua-simulator", "telegraf-opcua")
+    until(
+        lambda: "試験用OPC UAを開始" in run("logs", "opcua-simulator").stdout,
+        "模擬設備の起動",
+    )
+
+    def wrong_remote_key_seen():
+        """正常な設定の上で、模擬設備が初回暗号化を復号できないことを判定する。"""
+        logs = run("logs", "opcua-simulator")
+        return "ValueError: Decryption failed" in logs.stdout + logs.stderr
+
+    until(wrong_remote_key_seen, "接続先の鍵が異なる場合の拒否")
+    with http.open(endpoint + "/v1/sql?sql=SHOW+TABLES", timeout=3) as reply:
+        tables = json.load(reply)["output"][0]["records"]["rows"]
+    assert ["opc_temperature_celsius"] not in tables
+
+    shutil.copyfile(keys / "server-cert.pem", remote)
+    run("up", "-d", "--no-deps", "--force-recreate", "telegraf-opcua")
+    semantic_first_ms = FIRST_MS + 3_600_000
+
+    def rows():
+        """Goodに限定した線形計測列を返す。"""
+        return greptime_rows(
+            http,
+            endpoint,
+            "opc_temperature_celsius",
+            "ts, device, quality, val",
+        )
+
+    assert until(rows, "暗号化した最初のOPC UA通知") == [
+        [semantic_first_ms, "opc01", "GOOD", 22.5],
+    ]
+    # 模擬設備にだけ接続する独立した認証クライアントを起動する。
+    probe_mounts = []
+    for name in ("client-cert.pem", "client-key.pem", "server-cert.pem"):
+        probe_mounts.extend(
+            (
+                "--mount",
+                f"type=bind,source={keys / name},target=/keys/{name},readonly",
+            )
+        )
+    subprocess.run(
+        [
+            *docker,
+            "run",
+            "--rm",
+            "--network",
+            f"{project}_default",
+            "--hostname",
+            "telegraf-opcua",
+            "--cap-drop",
+            "ALL",
+            "--user",
+            f"{root.stat().st_uid}:{root.stat().st_gid}",
+            *probe_mounts,
+            f"{project}-opcua-simulator",
+            "--check-read-only",
+            "/keys",
+        ],
+        check=True,
+        timeout=30,
+    )
+    run("exec", "-T", "opcua-simulator", "touch", "/tmp/next-values")
+    assert until(
+        lambda: points if len(points := rows()) >= 3 else None,
+        "OPC UA品質フィルター通過後の保存",
+    ) == [
+        [semantic_first_ms + offset * 1000, "opc01", "GOOD", val]
+        for offset, val in ((0, 22.5), (2, 23.5), (3, 24.5))
+    ]
+    print("OPC UA暗号化、相手鍵不一致・書込みの拒否、発生元時刻と品質を照合。")
+
+
+def verify(docker, root, *, opcua=False):
     """合成送信元だけを使い、保存先で時刻・値・件数を確認する。"""
     project = f"foundation-r-telemetry-{secrets.token_hex(4)}"
     passwords = root / "passwords"
@@ -71,6 +178,16 @@ def verify(docker, root):
         "EVAL_GREPTIME_PORT=0\n",
         encoding="utf-8",
     )
+    if opcua:
+        keys = root / "opcua"
+        keys.mkdir(mode=0o700)
+        with env.open("a", encoding="utf-8") as settings:
+            settings.write(
+                f"OPCUA_FIXTURE_DIR={keys}\n"
+                f"OPCUA_FIXTURE_UID={root.stat().st_uid}\n"
+                f"OPCUA_FIXTURE_GID={root.stat().st_gid}\n"
+                f"OPCUA_REMOTE_CERT_FILE={keys / 'remote-cert.pem'}\n"
+            )
     compose = [
         *docker,
         "compose",
@@ -89,6 +206,16 @@ def verify(docker, root):
         "--profile",
         "telemetry",
     ]
+
+    if opcua:
+        compose.extend(
+            (
+                "-f",
+                "tests/integration/telemetry/compose.opcua.yaml",
+                "--profile",
+                "opcua",
+            )
+        )
 
     def run(*args, input_text=None, check=True, timeout=120):
         """試験プロジェクト内でだけComposeコマンドを実行する。"""
@@ -130,18 +257,16 @@ def verify(docker, root):
 
     def rows_for(size):
         """DBへの保存結果を別経路で読み、MQTTのACKとは分けて照合する。"""
-        sql = f"SELECT ts, device, val FROM {METRIC} ORDER BY ts"
-        with http.open(
-            endpoint + "/v1/sql?" + urlencode({"sql": sql}), timeout=3
-        ) as reply:
-            result = json.load(reply)
-        records = result["output"][0]["records"]["rows"]
+        records = greptime_rows(http, endpoint, METRIC, "ts, device, val")
         assert len(records) <= size, "未承認または重複した点が保存されました。"
         return records if len(records) == size else None
 
     try:
         run("config", "--quiet")
-        run("up", "-d", "broker", "greptime", "mosquitto", timeout=300)
+        services = ["broker", "greptime"]
+        if not opcua:
+            services.append("mosquitto")
+        run("up", "-d", *services, timeout=300)
         until(
             lambda: (
                 run(
@@ -173,7 +298,11 @@ def verify(docker, root):
         )
         endpoint = "http://" + run("port", "greptime", "4000").stdout.strip()
         http = build_opener(ProxyHandler({}))
-        run("up", "-d", "telegraf", "vector", timeout=300)
+        run("up", "-d", "vector", timeout=300)
+        if opcua:
+            opcua_acceptance(docker, project, run, root, http, endpoint)
+            return
+        run("up", "-d", "telegraf", timeout=300)
         until(
             lambda: (
                 "Connected" in run("logs", "telegraf").stdout
@@ -199,19 +328,21 @@ def verify(docker, root):
             for offset, value in enumerate((22.5, 23.5, 24.5))
         ]
         print("MQTTの認証・ACL・購読停止中の2点再送、GreptimeDBの3点を照合。")
-    except Exception:
+    except Exception as error:
         # 合成入力の接続失敗だけを記録し、生成した資格情報は伏せる。
-        logs = run(
-            "logs",
-            "--tail",
-            "20",
-            "mosquitto",
-            "telegraf",
-            "vector",
-            check=False,
+        services = (
+            ["vector", "opcua-simulator", "telegraf-opcua"]
+            if opcua
+            else ["vector", "mosquitto", "telegraf"]
+        )
+        logs = run("logs", "--tail", "20", *services, check=False)
+        error_log = (
+            error.stderr or ""
+            if isinstance(error, subprocess.CalledProcessError)
+            else ""
         )
         details = (
-            (logs.stdout + logs.stderr)
+            (error_log + logs.stdout + logs.stderr)
             .replace(simulator, "[非表示]")
             .replace(collector, "[非表示]")
         )
@@ -226,10 +357,11 @@ def main():
     """Docker実行権限の違いを吸収して固定の合成受入を起動する。"""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sudo", action="store_true")
+    parser.add_argument("--opcua", action="store_true")
     args = parser.parse_args()
     docker = ["sudo", "-n", "docker"] if args.sudo else ["docker"]
     with tempfile.TemporaryDirectory(prefix="foundation-r-telemetry-") as temp:
-        verify(docker, Path(temp))
+        verify(docker, Path(temp), opcua=args.opcua)
 
 
 if __name__ == "__main__":

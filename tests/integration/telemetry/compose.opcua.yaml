@@ -1,0 +1,50 @@
+# 工場への経路を持たない合成OPC UA受入の追加構成。
+x-opcua: &opcua
+  profiles: [opcua]
+  security_opt: [no-new-privileges:true]
+  cap_drop: [ALL]
+  user: "${OPCUA_FIXTURE_UID:?試験用UIDが必要です}:${OPCUA_FIXTURE_GID:?試験用GIDが必要です}"
+  labels:
+    traefik.enable: 'false'
+  logging:
+    driver: json-file
+    options: {max-size: 10m, max-file: '2'}
+
+services:
+  opcua-simulator:
+    hostname: opcua-simulator
+    <<: *opcua
+    build:
+      context: .
+      dockerfile: native/telemetry/opcua.Dockerfile
+      secrets: [corporate-ca, python-index-config, python-index-auth]
+    secrets: [server-cert, server-key, client-cert]
+    mem_limit: 256m
+
+  telegraf-opcua:
+    <<: *opcua
+    image: docker.io/library/telegraf:1.40.3@sha256:695045186c69152ff71827ec0c4f40216fb10491597af71c00195d98be8c39f2
+    depends_on: [opcua-simulator, broker]
+    entrypoint: [/usr/bin/telegraf]
+    command: ["--config", /etc/telegraf/telegraf.conf]
+    configs:
+      - source: opcua-settings
+        target: /etc/telegraf/telegraf.conf
+    secrets: [client-cert, client-key, remote-cert]
+    mem_limit: 256m
+
+configs:
+  opcua-settings:
+    file: ./native/telemetry/opcua.toml
+
+secrets:
+  server-cert:
+    file: ${OPCUA_FIXTURE_DIR:?試験用証明書のディレクトリが必要です}/server-cert.pem
+  server-key:
+    file: ${OPCUA_FIXTURE_DIR:?試験用証明書のディレクトリが必要です}/server-key.pem
+  client-cert:
+    file: ${OPCUA_FIXTURE_DIR:?試験用証明書のディレクトリが必要です}/client-cert.pem
+  client-key:
+    file: ${OPCUA_FIXTURE_DIR:?試験用証明書のディレクトリが必要です}/client-key.pem
+  remote-cert:
+    file: ${OPCUA_REMOTE_CERT_FILE:?試験用接続先証明書が必要です}

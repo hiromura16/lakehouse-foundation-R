@@ -1,4 +1,4 @@
-name: 工場MQTTの隔離受入
+name: 工場MQTT・OPC UAの隔離受入
 
 on:  # yamllint disable-line rule:truthy
   push:
@@ -30,3 +30,5 @@ jobs:
           persist-credentials: false
       - name: MQTTの認証・停止中の再送・時系列保存の検査
         run: python3 tests/integration/telemetry/acceptance.py
+      - name: OPC UA暗号化と読取権限・時刻・品質の検査
+        run: python3 tests/integration/telemetry/acceptance.py --opcua
