@@ -3,20 +3,24 @@
 import argparse
 import json
 
-from gold_client import DATASETS, Dataset, GoldClient
+from gold_client import CHANNELS, DATASETS, Channel, Dataset, GoldClient
 from langchain_core.tools import tool
 
 
 @tool
 def lakehouse_gold(
-    dataset: Dataset, limit: int = 25, release: str | None = None
+    dataset: Dataset,
+    limit: int = 25,
+    release: str | None = None,
+    channel: Channel = "files",
 ) -> dict:
     """公開済みのGold表を読み、行データとIcebergの参照情報を返します。
 
-    最初の応答のrelease_snapshot_idを後続の呼出しに渡すと、同じ公開世代の
-    データを比較できます。登録済みのGoldデータセットを1回につき200行まで取得できます。
+    既定はfilesです。SQL・CDCでは日次生産と受注・出荷を選べます。
+    同じ世代で比較する場合は同じchannelと最初の公開世代IDを指定します。
+    登録済みのデータセットを1回につき200行まで取得できます。
     """
-    return GoldClient().rows(dataset, limit, release)
+    return GoldClient().rows(dataset, limit, release, channel=channel)
 
 
 def main():
@@ -24,6 +28,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("dataset", choices=DATASETS)
     parser.add_argument("--limit", type=int, default=25)
+    parser.add_argument("--channel", choices=CHANNELS, default="files")
     parser.add_argument(
         "--release", help="後続の参照で使用するIcebergの公開世代ID"
     )

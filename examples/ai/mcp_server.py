@@ -4,7 +4,7 @@ import sys
 from typing import Annotated
 from urllib.error import URLError
 
-from gold_client import Dataset, GoldClient
+from gold_client import Channel, Dataset, GoldClient
 from mcp.server import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
@@ -21,7 +21,7 @@ def server(client: GoldClient) -> MCPServer:
 
     @mcp.tool(annotations=read_only, structured_output=True)
     def lakehouse_latest_release() -> dict[str, object]:
-        """最新の公開世代と表のスナップショットIDを返します。"""
+        """ファイル経路の最新公開世代と表のスナップショットIDを返します。"""
         try:
             return client.latest_release()
         except (URLError, TimeoutError, ValueError, KeyError):
@@ -29,11 +29,18 @@ def server(client: GoldClient) -> MCPServer:
 
     @mcp.tool(annotations=read_only, structured_output=True)
     def lakehouse_read_gold(
-        dataset: Dataset, limit: Limit = 25, release: Release | None = None
+        dataset: Dataset,
+        limit: Limit = 25,
+        release: Release | None = None,
+        channel: Channel = "files",
     ) -> dict[str, object]:
-        """公開済みのGoldと出典を取得します。同じ世代で比較する場合はreleaseを指定します。"""
+        """許可された経路のGoldと出典を返します。
+
+        既定はfilesです。SQL・CDCでは日次生産と受注・出荷を選べます。
+        同じ経路・世代で比較する場合は同じchannelとreleaseを指定します。
+        """
         try:
-            return client.rows(dataset, limit, release)
+            return client.rows(dataset, limit, release, channel=channel)
         except (URLError, TimeoutError, ValueError):
             raise ToolError(
                 "指定した公開データを取得できませんでした。"
@@ -48,7 +55,7 @@ def main() -> int:
         client = GoldClient(local_only=True)
     except ValueError:
         print(
-            "ローカルAPIの接続先と読取トークンを確認してください。",
+            "ローカルAPIの接続先、読取トークン、許可する取込経路を確認してください。",
             file=sys.stderr,
         )
         return 1

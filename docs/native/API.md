@@ -129,18 +129,47 @@ export LANGSMITH_TRACING=false
 unset LAKEHOUSE_READER_TOKEN
 ```
 
-[Pythonサンプル](../../examples/ai/native_tools.py) の `lakehouse_gold` をLangChainのtoolsへ登録できます。最初の応答の `release_snapshot_id` を次の呼出しの `release` へ渡すと、異なる表を同じ公開世代で比較できます。結果の記述には表名、表スナップショット、公開世代を残し、切り詰められた結果から全体を推定しないようにします。 `LAKEHOUSE_API_URL` はloopback HTTPまたはHTTPS originです。モデル・トレーシング・社外送信の実行先は利用者が明示して構成します。
+[Pythonサンプル](../../examples/ai/native_tools.py) の `lakehouse_gold` を
+LangChainのtoolsへ登録できます。最初の応答の `release_snapshot_id` を、同じ
+`channel` の次の呼出しで `release` に渡すと、異なる表を同じ公開世代で比較できます。
+結果を記述するときは、取込経路、表名、表スナップショット、公開世代を残します。
+`truncated` が真なら、取得した行の範囲で解釈します。
+
+LangChainとMCPの許可経路は、それぞれのプロセス環境の
+`LAKEHOUSE_GOLD_CHANNELS` で管理します。既定は `files` のみです。
+SQLも許可する場合は、呼出し前に環境変数を `files,sql` に設定し、
+コマンドの引数に `--channel sql` を加えます。CDCには `cdc` を使います。
+
+| `channel` | 選べる表 | 返却される表の接頭辞 |
+| --- | --- | --- |
+| `files`（既定） | 日次生産、受注・出荷、設備の最新値、設備の1分集計 | `gold.` |
+| `sql` | 日次生産、受注・出荷 | `sql_gold.` |
+| `cdc` | 日次生産、受注・出荷 | `cdc_gold.` |
+
+各アダプターは、許可経路の固定GETだけを接続先へ送ります。返された表名、
+指定した公開世代、スナップショットID、行数を応答の16 MiB上限とともに照合します。
+APIへ直接接続する経路は、ネットワークと読取トークンの配布で管理します。
+LangChainの `LAKEHOUSE_API_URL` はループバックHTTPまたはHTTPS originです。
+モデル・トレーシング・社外送信の実行先は利用者が明示して構成します。
 
 [LangChain公式 Tools](https://docs.langchain.com/oss/python/langchain/tools)
 
 
 ## ローカルMCPホストから参照する
 
-MCPを経由すると、対応クライアントから「どの世代が公開中か」
-「指定世代の登録済みGoldにどんな行があるか」を問い合わせられます。
-`lakehouse_latest_release` で取得した世代文字列を、後続の
-`lakehouse_read_gold` の `release` に指定します。返された
-`truncated` が真なら、取得した行の範囲で解釈してください。
+MCPには2つの読取ツールがあります。
+
+- `lakehouse_latest_release` は標準APIの `GET /v1/releases/latest` を使い、
+  ファイル経路の一覧を返します。環境で `files` の参照を許可した場合に利用できます。
+- `lakehouse_read_gold` の既定はファイル経路です。SQLとCDCでは、許可した
+  `channel` を指定して最初のGold応答から `release_snapshot_id` を取得します。
+  以降は同じ `channel` と `release` を指定して、その公開世代を照合します。
+
+SQLを許可したMCPホストからの日次生産の読取引数は次の形です。
+
+```json
+{"dataset":"factory_daily_production","channel":"sql","limit":5}
+```
 
 Python 3.12とuvで、LangChainの環境と独立したMCP環境を作ります。
 
@@ -162,7 +191,9 @@ MCPプロセスの環境に `LAKEHOUSE_READER_TOKEN` を秘密として渡しま
 
 MCPホスト自身が会話やツール結果をクラウドに送信する構成なら、
 ホスト側の送信先と業務データの持出し許可を利用前に確認してください。
-このアダプターは、ループバックHTTPを通じて登録済みの4表を各回最大200行
-返します。書込操作・任意SQL・Raw・モデル呼出しは提供対象外です。
+SQLやCDCを使う場合は、MCPプロセスの環境にも
+`LAKEHOUSE_GOLD_CHANNELS` を設定します。アダプターはループバックHTTP上の
+許可されたGold表を各回最大200行返します。また、ファイル経路の公開世代一覧を
+読取権限で参照できます。
 
 [Python MCP SDKのツール定義](https://py.sdk.modelcontextprotocol.io/servers/tools/) · [MCPのツール仕様](https://modelcontextprotocol.io/specification/2026-07-28/server/tools)

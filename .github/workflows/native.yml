@@ -70,7 +70,7 @@ jobs:
           docker compose --env-file "$RUNNER_TEMP/native-site.env" -p native-ci \
             exec -T blackbox /bin/blackbox_exporter \
             --config.file=/etc/blackbox/blackbox.yml --config.check
-      - name: MCPで公開世代の参照と読取制限を確認
+      - name: MCPとLangChainで公開世代と読取制限を確認
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -78,8 +78,13 @@ jobs:
           uv venv --python 3.12 "$mcp"
           uv pip sync --python "$mcp/bin/python" --require-hashes \
             --only-binary :all: examples/ai/requirements-mcp.lock
+          langchain="$RUNNER_TEMP/native-langchain"
+          uv venv --python 3.12 "$langchain"
+          uv pip sync --python "$langchain/bin/python" --require-hashes \
+            --only-binary :all: examples/ai/requirements.lock
           "$mcp/bin/python" tests/integration/native/mcp_acceptance.py \
-            --env-file "$RUNNER_TEMP/native-site.env" --api-port 18502
+            --env-file "$RUNNER_TEMP/native-site.env" --api-port 18502 \
+            --langchain-python "$langchain/bin/python"
       - name: 自動化・時系列・監視転送を検証
         shell: bash
         run: |
