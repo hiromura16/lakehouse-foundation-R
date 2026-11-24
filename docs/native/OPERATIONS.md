@@ -30,9 +30,41 @@
 | 手元のブラウザーから画面を開けない | VMのIPv4ループバックとブラウザー側を分けて確認します。既定ポート・認証と、[SSH転送](MONITORING.md) または許可済みHTTPS経路を照合 |
 | Grafanaが開けるがダッシュボードがない | provisioningのread権限とGrafanaログ。 [設定ファイル](MONITORING.md) |
 | Goldが404 | `medallion` の成功、ファイル・SQL・CDCに合うAPIパス、指定世代の保持を確認。閲覧画面では「最新版を読み込む」で再確認 |
+| 固定SQLのジョブが失敗 | 完了台帳、反映中の状態、公開中のGoldを端末から別々に照合。 [固定SQLの状態を確認する](#固定sqlの状態を確認する) |
 | CDCが停止 | broker接続、保有topic、stateの所有者、保持期限がcheckpointを超えたか |
 
 CLIで運用する場合は、Dokployに表示される実際の `appName` を `docker compose -p` に指定し、配備と同じComposeファイルおよび非公開設定を指定します。
+
+## 固定SQLの状態を確認する
+
+Dokployで対象Composeの `lakehouse` の **Terminal** を開いて実行します。
+既存のカタログとオブジェクト保存先から運用状態を読み取ります。
+
+**Bash / Zsh共通**
+
+```bash
+python -m native.sql_status
+```
+
+| 出力項目 | 確認できること |
+| --- | --- |
+| `last_completed` | 完了台帳で最新の観測。観測時刻、バッチID、反映ID、固定6表の選択・変更・現在件数、実行したSQL文数 |
+| `apply` | 永続化された1行の反映状態。観測時刻、バッチID、反映ID、反映モード、`applying` または `idle` |
+| `published` | 固定SQLのGoldの公開スナップショットID、公開時刻、公開表の件数 `gold_rows` |
+
+固定SQLをまだ初期化していない場合は3項目とも `null` です。
+計測結果が0件の場合は `0` を表示します。古い台帳や公開記録で計測して
+いなかった件数は `null` です。接続先、ソース識別情報、業務行は出力しません。
+
+三つの項目は別々の表を読み、それぞれ異なる時点の状態を示すことがあります。
+例えばGoldの確定後に完了台帳の記録が失敗した場合は、`published` が新世代、
+`apply.status` が `applying`、`last_completed` が直前の観測になります。
+書込み処理の終了後に再度取得し、取込時の反映IDとログを照合します。
+同じ原本と観測時刻で再実行する判断は、[固定SQLの再実行手順](SOURCES.md)に従います。
+
+完了台帳の読取上限は100,000行です。上限超過や制御表の不整合は
+`SQL_STATUS_INVALID`、接続・読取失敗は `SQL_STATUS_UNAVAILABLE` を
+標準エラーに表示し、終了コード1を返します。
 
 ## Dokployで定期取込を実行する
 

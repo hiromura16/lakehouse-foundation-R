@@ -6,13 +6,19 @@ Icebergの並行処理、SQL Server、Trinoの実行、実際のS3は対象外�
 
 import copy
 import importlib.util
+import io
 import json
+import sys
 import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
 from hashlib import sha256
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
+
+from native import sql_status
+from scripts.sql_batch_worker import SqlBatchError
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location(
@@ -428,6 +434,137 @@ class SnapshotWorkerTests(unittest.TestCase):
         result = self.load()
         self.assertTrue(result["completed"])
         self.assertEqual(len(ledger.rows), 1)
+
+    def test_status_reads_published_gold_even_if_completion_write_failed(self):
+        """先に確定したGoldと、処理中の反映、直前の完了を同時に返す。"""
+        releases = []
+        engine = SimpleNamespace(
+            GOLD={"test_total": (), "test_empty": ()},
+            latest_release=mock.Mock(
+                side_effect=lambda *_args, **_kwargs: (
+                    releases[-1] if releases else None
+                )
+            ),
+        )
+        self.assertEqual(
+            sql_status.collect(self.admin, engine),
+            {"last_completed": None, "apply": None, "published": None},
+        )
+
+        def publish(prefix):
+            """完了台帳の追記より先に、公開世代だけを切り替える。"""
+            self.assertEqual(prefix, "sql_")
+            releases.append(
+                {
+                    "release_snapshot_id": str(len(releases) + 1),
+                    "released_at": "2026-04-01T12:05:00+00:00",
+                    "row_counts": {
+                        "gold.test_total": 1,
+                        "gold.test_empty": 0,
+                        "gold.private.customer.invalid": 42,
+                        "silver.private_path": 1,
+                    },
+                    "source_identity": "private-gold-value",
+                    "outputs": {"gold.test_total": "s3://private.invalid/x"},
+                }
+            )
+            return {"sql_statements": 14}
+
+        self.admin.medallion.side_effect = publish
+        first = self.load()
+        self.load(observed=LATER)
+        initial = sql_status.collect(self.admin, engine)
+        self.assertEqual(initial["apply"]["status"], "idle")
+        self.assertEqual(initial["published"]["release_snapshot_id"], "1")
+        self.assertEqual(initial["last_completed"]["observed_at"], LATER)
+        self.assertEqual(initial["last_completed"]["sql_statements"], 0)
+        self.assertEqual(
+            initial["last_completed"]["changed_counts"]["erp_products"], 0
+        )
+
+        ledger = self.catalog.tables["sql_control.batches"]
+        ledger.fail_append = True
+        with self.assertRaises(RuntimeError):
+            self.load(document(("K1", "K2")), LAST)
+        events_before = list(self.events)
+        observed = sql_status.collect(self.admin, engine)
+        self.assertEqual(self.events, events_before)
+        self.assertEqual(observed["last_completed"], initial["last_completed"])
+        self.assertEqual(observed["apply"]["status"], "applying")
+        self.assertEqual(observed["apply"]["observed_at"], LAST)
+        self.assertNotEqual(observed["apply"]["batch_id"], first["batch_id"])
+        self.assertEqual(observed["published"]["release_snapshot_id"], "2")
+        self.assertEqual(
+            observed["published"]["gold_rows"],
+            {"test_empty": 0, "test_total": 1},
+        )
+        self.assertEqual(set(observed["apply"]), set(sql_status.APPLY_FIELDS))
+        self.assertNotIn("private", json.dumps(observed))
+        self.assertNotIn("source_identity", json.dumps(observed))
+        engine.latest_release.assert_called_with(
+            self.admin, self.catalog, prefix="sql_"
+        )
+
+    def test_sql_status_keeps_legacy_counts_unobserved(self):
+        """旧台帳の計測していない値は0件と区別する。"""
+        self.load()
+        row = self.catalog.tables["sql_control.batches"].rows[0]
+        row["counts_json"] = json.dumps(
+            json.loads(row["counts_json"])["selected"]
+        )
+        engine = SimpleNamespace(
+            GOLD={},
+            latest_release=mock.Mock(
+                return_value={
+                    "release_snapshot_id": "42",
+                    "released_at": "2026-04-01T12:05:00+00:00",
+                }
+            ),
+        )
+        state = sql_status.collect(self.admin, engine)
+        self.assertIsNone(state["last_completed"]["changed_counts"])
+        self.assertIsNone(state["last_completed"]["current_counts"])
+        self.assertIsNone(state["published"]["gold_rows"])
+
+    def test_sql_status_refuses_history_over_the_existing_bound(self):
+        """読取専用の診断も、処理本体の完了台帳の走査上限を維持する。"""
+        self.load()
+        ledger = self.catalog.tables["sql_control.batches"]
+        size = WORKER.MAX_HISTORY + 1
+        rows = SimpleNamespace(to_pylist=lambda: range(size))
+        ledger.scan = mock.Mock(
+            return_value=SimpleNamespace(to_arrow=lambda: rows)
+        )
+        engine = SimpleNamespace(latest_release=mock.Mock())
+        with self.assertRaisesRegex(SqlBatchError, "row limit"):
+            sql_status.collect(self.admin, engine)
+        ledger.scan.assert_called_once_with(limit=size)
+        engine.latest_release.assert_not_called()
+
+    def test_sql_status_cli_reports_only_fixed_diagnostic_on_failure(self):
+        """接続失敗の例外に含まれる内部URIはCLIに出力されない。"""
+        storage = SimpleNamespace(
+            catalog=mock.Mock(
+                side_effect=RuntimeError(
+                    "https://private.invalid/user@example.invalid"
+                )
+            )
+        )
+        stdout, stderr = io.StringIO(), io.StringIO()
+        modules = {
+            "native.storage": storage,
+            "native.engine": SimpleNamespace(),
+        }
+        with (
+            mock.patch.dict(sys.modules, modules),
+            mock.patch("native.storage", storage, create=True),
+            mock.patch("native.engine", modules["native.engine"], create=True),
+            redirect_stdout(stdout),
+            redirect_stderr(stderr),
+        ):
+            self.assertEqual(sql_status.main([]), 1)
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertEqual(stderr.getvalue(), "SQL_STATUS_UNAVAILABLE\n")
 
     def test_committed_bronze_count_mismatch_prevents_completion(self):
         def corrupt(_):
