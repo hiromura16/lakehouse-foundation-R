@@ -1,0 +1,266 @@
+# Foundation Rの運用ツールを追加する。すべてのホストポートはループバックに限定する。
+x-tool-logging: &tool-logging
+  driver: json-file
+  options: {max-size: 10m, max-file: '3'}
+
+services:
+  tools-db:
+    image: postgres:18.6-alpine@sha256:300ebd02c6d4de9ee27ad7f6855d5d21b4d3a4a5117767c1197d284c635d9736
+    environment:
+      POSTGRES_DB: automation
+      POSTGRES_USER: automation
+      POSTGRES_PASSWORD: ${TOOLS_DB_PASSWORD:?追加ツールの専用設定を生成してください}
+    volumes:
+      - tools-db:/var/lib/postgresql
+    healthcheck:
+      test: [CMD, pg_isready, -U, automation, -d, automation]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+    restart: unless-stopped
+    mem_limit: 256m
+    logging: *tool-logging
+
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:2.46.7@sha256:6102ca27d9392c7f4778c0a35a80834d6620a365ab4d546a9fdf855a2b52fe4e
+    environment:
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: tools-db
+      DB_POSTGRESDB_DATABASE: automation
+      DB_POSTGRESDB_USER: automation
+      DB_POSTGRESDB_PASSWORD: ${TOOLS_DB_PASSWORD:?追加ツールの専用設定を生成してください}
+      N8N_ENCRYPTION_KEY: ${TOOLS_N8N_KEY:?追加ツールの専用設定を生成してください}
+      N8N_EDITOR_BASE_URL: ${TOOLS_N8N_URL:-http://localhost:18507/}
+      WEBHOOK_URL: ${TOOLS_N8N_URL:-http://localhost:18507/}
+      N8N_PROXY_HOPS: ${TOOLS_N8N_PROXY_HOPS:-1}
+      N8N_SECURE_COOKIE: ${TOOLS_SECURE_COOKIES:-false}
+      N8N_DIAGNOSTICS_ENABLED: 'false'
+      N8N_PERSONALIZATION_ENABLED: 'false'
+      N8N_VERSION_NOTIFICATIONS_ENABLED: 'false'
+      N8N_COMMUNITY_PACKAGES_ENABLED: 'false'
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: 'true'
+      N8N_SSRF_PROTECTION_ENABLED: 'true'
+      N8N_SSRF_BLOCKED_IP_RANGES: default,100.64.0.0/10
+      # 同梱フローが参照する固定の内部宛先だけを明示する。
+      N8N_SSRF_ALLOWED_HOSTNAMES: lakehouse
+      EXECUTIONS_DATA_PRUNE: 'true'
+      EXECUTIONS_DATA_MAX_AGE: '168'
+      GENERIC_TIMEZONE: Asia/Tokyo
+      TZ: Asia/Tokyo
+    volumes:
+      - tools-n8n:/home/node/.n8n
+    configs:
+      - source: n8n-health-workflow
+        target: /opt/foundation/health-workflow.json
+    depends_on:
+      tools-db:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:5678/healthz/readiness').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 24
+    restart: unless-stopped
+    mem_limit: 1024m
+    logging: *tool-logging
+
+  openobserve:
+    build:
+      context: .
+      dockerfile: infra/openobserve/Dockerfile
+    environment:
+      ZO_ROOT_USER_EMAIL: ${TOOLS_OBSERVE_USER:?追加ツールの専用設定を生成してください}
+      ZO_ROOT_USER_PASSWORD: ${TOOLS_OBSERVE_PASSWORD:?追加ツールの専用設定を生成してください}
+      ZO_HTTP_ADDR: 0.0.0.0
+      ZO_HTTP_PORT: '5080'
+      ZO_LOCAL_MODE: 'true'
+      ZO_LOCAL_MODE_STORAGE: disk
+      ZO_META_STORE: sqlite
+      ZO_DATA_DIR: /data/
+      ZO_COMPACT_DATA_RETENTION_DAYS: '7'
+      ZO_TELEMETRY: 'false'
+      ZO_USAGE_REPORTING_MODE: local
+      ZO_TRACING_ENABLED: 'false'
+      ZO_MEM_TABLE_MAX_SIZE: '128'
+      ZO_MEMORY_CACHE_ENABLED: 'false'
+      ZO_HTTP_WORKER_NUM: '2'
+      ZO_QUERY_THREAD_NUM: '2'
+    volumes:
+      - tools-observe:/data
+    ports:
+      - 127.0.0.1:${TOOLS_OBSERVE_PORT:-18508}:5080
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=64m"]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: [CMD, /bin/busybox, sh, /etc/lakehouse-openobserve/health.sh]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+    mem_limit: 2g
+    logging: *tool-logging
+
+  observe-forwarder:
+    profiles: [tools-metrics]
+    image: prom/prometheus:v3.16.0@sha256:89c1a644817e9ad70fa2af76c84898e327c1de7063735f962e8313b1e28672c3
+    user: "${LANDING_UID}:${LANDING_GID}"
+    command:
+      - --agent
+      - --config.file=/etc/prometheus/forward.yml
+      - --storage.agent.path=/tmp/wal
+    configs:
+      - source: observe-forward
+        target: /etc/prometheus/forward.yml
+    secrets: [observe-passcode]
+    tmpfs: ["/tmp:size=128m,mode=1777"]
+    depends_on:
+      openobserve:
+        condition: service_healthy
+      prometheus:
+        condition: service_started
+    restart: unless-stopped
+    mem_limit: 256m
+    logging: *tool-logging
+
+  influxdb3:
+    build:
+      context: .
+      dockerfile: native/tools/influx.Dockerfile
+      args:
+        TOOLS_UID: ${LANDING_UID}
+        TOOLS_GID: ${LANDING_GID}
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    command:
+      - influxdb3
+      - serve
+      - --node-id=foundation
+      - --object-store=file
+      - --data-dir=/var/lib/influxdb3/data
+      - --admin-token-file=/run/secrets/influx-admin
+      - --disable-authz=health
+    environment:
+      # 設備データの保存とSQLに限定し、Pythonプラグインを初期化しない。
+      INFLUXDB3_UNSET_VARS: INFLUXDB3_PLUGIN_DIR
+    volumes:
+      - tools-influx:/var/lib/influxdb3/data
+    secrets: [influx-admin]
+    ports:
+      - 127.0.0.1:${TOOLS_INFLUX_PORT:-18510}:8181
+    healthcheck:
+      test: [CMD, curl, --noproxy, '*', --fail, --silent, http://127.0.0.1:8181/health]
+      interval: 10s
+      timeout: 4s
+      retries: 15
+    restart: unless-stopped
+    mem_limit: 1536m
+    logging: *tool-logging
+
+  influx-explorer:
+    image: docker.io/influxdata/influxdb3-ui:1.11.2@sha256:7bc3e9caf1c2334a301bfc6b08eb6012cb5b33db9f0f0dd8f86d9b3553343e86
+    command: ["--mode=query"]
+    environment:
+      SESSION_SECRET_KEY: ${TOOLS_EXPLORER_KEY:?追加ツールの専用設定を生成してください}
+      COOKIE_SECURE: ${TOOLS_SECURE_COOKIES:-false}
+    volumes:
+      - tools-explorer:/db
+    restart: unless-stopped
+    mem_limit: 256m
+    logging: *tool-logging
+
+  tools-portal:
+    image: docker.io/library/nginx:stable-alpine@sha256:8eb2b5540eae779603cc3db84b3986a15ecb5308b54303146eee9837c137b51a
+    entrypoint: [nginx]
+    command: [-g, daemon off;]
+    user: "${LANDING_UID}:${LANDING_GID}"
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: ["/tmp:size=32m,mode=1777"]
+    configs:
+      - source: tools-nginx
+        target: /etc/nginx/nginx.conf
+      - source: tools-ports
+        target: /etc/foundation-tools/ports.json
+      - source: tools-page
+        target: /usr/share/nginx/html/index.html
+      - source: tools-style
+        target: /usr/share/nginx/html/portal.css
+      - source: tools-script
+        target: /usr/share/nginx/html/portal.js
+      - source: slide-page
+        target: /usr/share/nginx/html/slides/index.html
+      - source: slide-style
+        target: /usr/share/nginx/html/slides/slides.css
+      - source: slide-script
+        target: /usr/share/nginx/html/slides/slides.js
+    secrets: [tools-htpasswd]
+    ports:
+      - 127.0.0.1:${TOOLS_PORT:-18506}:8060
+      - 127.0.0.1:${TOOLS_N8N_PORT:-18507}:8061
+      - 127.0.0.1:${TOOLS_EXPLORER_PORT:-18509}:8062
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, "http://127.0.0.1:8060/_health"]
+      interval: 10s
+      timeout: 4s
+      retries: 12
+    restart: unless-stopped
+    mem_limit: 96m
+    logging: *tool-logging
+
+  prometheus:
+    configs:
+      - source: tools-targets
+        target: /etc/prometheus/tool-targets/tools.yml
+
+configs:
+  tools-nginx: {file: ./native/tools/nginx.conf}
+  tools-page: {file: ./native/tools/portal/index.html}
+  tools-style: {file: ./native/tools/portal/portal.css}
+  tools-script: {file: ./native/tools/portal/portal.js}
+  slide-page: {file: ./docs/presentation/index.html}
+  slide-style: {file: ./docs/presentation/slides.css}
+  slide-script: {file: ./docs/presentation/slides.js}
+  tools-targets: {file: ./native/tools/targets.yml}
+  n8n-health-workflow: {file: ./native/tools/health-workflow.json}
+  tools-ports:
+    content: |
+      {"grafana":${LAKEHOUSE_GRAFANA_PORT:-18501},"lakehouse":${LAKEHOUSE_API_PORT:-18502},
+       "browser":${LAKEHOUSE_BROWSER_PORT:-18503},"catalog":${LAKEHOUSE_CATALOG_PORT:-18504},
+       "prometheus":${LAKEHOUSE_PROMETHEUS_PORT:-18505},"n8n":${TOOLS_N8N_PORT:-18507},
+       "openobserve":${TOOLS_OBSERVE_PORT:-18508},"explorer":${TOOLS_EXPLORER_PORT:-18509},
+       "influxdb":${TOOLS_INFLUX_PORT:-18510}}
+  observe-forward:
+    content: |
+      global:
+        scrape_interval: 15s
+      scrape_configs:
+        - job_name: foundation-federation
+          honor_labels: true
+          metrics_path: /federate
+          params:
+            'match[]':
+              - '{__name__=~"probe_success|probe_duration_seconds|lakehouse_.*"}'
+          static_configs:
+            - targets: [prometheus:9090]
+      remote_write:
+        - url: http://openobserve:5080/api/default/prometheus/api/v1/write
+          basic_auth:
+            username: ${TOOLS_OBSERVE_USER:?追加ツールの専用設定を生成してください}
+            password_file: /run/secrets/observe-passcode
+
+secrets:
+  influx-admin:
+    file: ${TOOLS_INFLUX_TOKEN_FILE:?追加ツールの専用設定を生成してください}
+  observe-passcode:
+    file: ${TOOLS_OBSERVE_PASSCODE_FILE:?追加ツールの専用設定を生成してください}
+  tools-htpasswd:
+    file: ${TOOLS_HTPASSWD:?追加ツールの専用設定を生成してください}
+
+volumes:
+  tools-db:
+  tools-n8n:
+  tools-observe:
+  tools-influx:
+  tools-explorer:

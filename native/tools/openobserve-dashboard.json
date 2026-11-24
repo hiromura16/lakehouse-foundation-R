@@ -1,0 +1,165 @@
+{
+  "version": 8,
+  "title": "Foundation R 運用監視",
+  "description": "Prometheusから転送したサービスの疎通と業務ジョブの状態。",
+  "tabs": [
+    {
+      "tabId": "foundation-runtime",
+      "name": "サービスとジョブ",
+      "panels": [
+        {
+          "id": "foundation-1",
+          "type": "line",
+          "title": "サービスの応答",
+          "description": "1 はHTTP応答あり、0 は取得失敗。",
+          "queryType": "promql",
+          "config": {
+            "show_legends": true
+          },
+          "layout": {
+            "x": 0,
+            "y": 0,
+            "w": 24,
+            "h": 10,
+            "i": 0
+          },
+          "queries": [
+            {
+              "query": "probe_success",
+              "customQuery": true,
+              "fields": {
+                "stream": "probe_success",
+                "stream_type": "metrics",
+                "x": [],
+                "y": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": "{{app}}"
+              }
+            }
+          ]
+        },
+        {
+          "id": "foundation-2",
+          "type": "line",
+          "title": "疎通の所要時間（秒）",
+          "description": "HTTP確認の開始から完了までの時間。",
+          "queryType": "promql",
+          "config": {
+            "show_legends": true
+          },
+          "layout": {
+            "x": 24,
+            "y": 0,
+            "w": 24,
+            "h": 10,
+            "i": 1
+          },
+          "queries": [
+            {
+              "query": "probe_duration_seconds",
+              "customQuery": true,
+              "fields": {
+                "stream": "probe_duration_seconds",
+                "stream_type": "metrics",
+                "x": [],
+                "y": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": "{{app}}"
+              }
+            }
+          ]
+        },
+        {
+          "id": "foundation-3",
+          "type": "line",
+          "title": "ジョブの成功件数",
+          "description": "ワーカーが公開成功を記録した累積件数。",
+          "queryType": "promql",
+          "config": {
+            "show_legends": true
+          },
+          "layout": {
+            "x": 0,
+            "y": 10,
+            "w": 24,
+            "h": 10,
+            "i": 2
+          },
+          "queries": [
+            {
+              "query": "lakehouse_successful_runs",
+              "customQuery": true,
+              "fields": {
+                "stream": "lakehouse_successful_runs",
+                "stream_type": "metrics",
+                "x": [],
+                "y": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": "成功"
+              }
+            }
+          ]
+        },
+        {
+          "id": "foundation-4",
+          "type": "line",
+          "title": "ジョブの失敗件数",
+          "description": "ワーカーが失敗を記録した累積件数。",
+          "queryType": "promql",
+          "config": {
+            "show_legends": true
+          },
+          "layout": {
+            "x": 24,
+            "y": 10,
+            "w": 24,
+            "h": 10,
+            "i": 3
+          },
+          "queries": [
+            {
+              "query": "lakehouse_failed_runs",
+              "customQuery": true,
+              "fields": {
+                "stream": "lakehouse_failed_runs",
+                "stream_type": "metrics",
+                "x": [],
+                "y": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": "失敗"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "defaultDatetimeDuration": {
+    "type": "relative",
+    "relativeTimePeriod": "30m"
+  }
+}

@@ -41,7 +41,7 @@
 
 ## 受入の手順
 
-- `python3 native/check_contracts.py` で元のSQLと契約のhashを照合します。
+- `python3 native/check_contracts.py` で業務SQLと契約のhashを照合します。
 - `docker compose --env-file "$site" exec -T lakehouse python -m native.api verify` で固定合成データの11検査を行います。
 - 専用の空の検証projectで `tests/integration/native/acceptance.py` を実行し、センサー、公開世代の固定、読み書きトークンの分離、Grafanaのプロビジョニングを確認します。このテストは指定landingへ合成ファイルを書き込みます。
 - 会社の受入では、Git取得と認証、デーモンpull、BuildKitの依存取得、配置後の接続、実データと運用上限、バックアップからの復元をそれぞれ確認します。

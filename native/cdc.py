@@ -1,6 +1,6 @@
 """非公開のKafka互換経路からSQL ServerのCDCイベントを取り込む。
 
-Debeziumのイベント解釈、オフセット検査、Raw保存、状態管理は既存Foundationと共用する。
+Debeziumイベントの解釈、オフセット検査、Raw保存、状態管理を行う。
 このアダプターがDuckDBによる変換とKafkaクライアント設定を渡す。
 SQL Server側のソース登録は上流で行う。
 """

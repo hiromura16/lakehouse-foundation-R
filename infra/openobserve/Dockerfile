@@ -8,7 +8,8 @@ ARG WORKER_GID=10001
 COPY --from=probe /bin/busybox /bin/busybox
 # Metadata applies only to new volume copy-up; never repair mounted live data.
 RUN ["/bin/busybox", "sh", "-ec", "test \"$WORKER_UID\" -gt 0; /bin/busybox mkdir -p /data; /bin/busybox chown \"$WORKER_UID:$WORKER_GID\" /data; /bin/busybox chmod 0700 /data"]
-COPY infra/openobserve/entrypoint.sh /etc/lakehouse-openobserve/entrypoint.sh
-COPY infra/openobserve/health.sh /etc/lakehouse-openobserve/health.sh
+RUN ["/bin/busybox", "mkdir", "-m", "0755", "/etc/lakehouse-openobserve"]
+COPY --chmod=0444 infra/openobserve/entrypoint.sh /etc/lakehouse-openobserve/entrypoint.sh
+COPY --chmod=0444 infra/openobserve/health.sh /etc/lakehouse-openobserve/health.sh
 USER ${WORKER_UID}:${WORKER_GID}
 ENTRYPOINT ["/bin/busybox", "sh", "/etc/lakehouse-openobserve/entrypoint.sh"]

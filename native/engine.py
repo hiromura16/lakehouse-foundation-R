@@ -72,7 +72,7 @@ def connect():
 def sql_for_duckdb(sql):
     """業務規則を保ったまま、検証済みのFoundation SQLをDuckDB向けに調整する。
 
-    既存のTrino SQLを業務契約とする。ここで置換するのはそのSQLと独立した
+    固定済みの業務SQLを契約とする。ここで調整するのは業務ルールと独立した
     受入検査SQLに限定する。新しい構文へ対応する際は、同期元ハッシュと期待値テストも更新する。
     """
     sql = re.sub(r"^\s*--.*$", "", sql, flags=re.MULTILINE)
@@ -92,7 +92,7 @@ def sql_for_duckdb(sql):
         flags=re.DOTALL | re.IGNORECASE,
     )
     # DuckDBは小数文字列を丸めてBIGINTにする。整数形式を先に検証し、
-    # Trinoでのinvalid_type判定を引き継ぐ。
+    # 型変換エラーを隔離する業務ルールに合わせる。
     sql = re.sub(
         r"TRY_CAST\((\w+) AS BIGINT\)",
         r"CASE WHEN regexp_full_match(trim(\1), '[+-]?[0-9]+') "
@@ -311,7 +311,7 @@ def verify_query(core, sql, prefix):
             )
         rows = db.execute(sql_for_duckdb(sql)).fetchall()
 
-    # Trino RESTの応答に合わせ、日付と小数をJSONの値に変換する。
+    # APIの型契約に合わせ、日付と小数をJSONに変換する。
     def oracle_value(value):
         """独立した期待値JSONで使われるスカラー値の表現へそろえる。"""
         if isinstance(value, date):

@@ -47,16 +47,18 @@ docker compose --env-file "$site" exec -T lakehouse python -m native.api verify
 | ブラウザーで公開した集計を確認する | [集計結果の確認と接続先一覧](docs/native/GUI.md) |
 | アプリの状態を見る、ダッシュボードを変更する | [Grafana運用監視](docs/native/MONITORING.md) |
 | ファイル、SQL Server、外部Kafkaを接続する | [入出力契約と接続方法](docs/native/SOURCES.md) |
+| 自動化・調査・時系列を追加する | [n8n、OpenObserve、InfluxDB、運用ポータル](docs/native/TOOLS.md) |
+| 導入と運用を説明する | [説明スライド10枚](docs/native/PRESENTATION.md) |
 | GoldをアプリやLangChainから参照する | [APIとLangChain](docs/native/API.md) |
 | 障害を切り分ける、会社VMで受入試験を行う | [運用とバックアップ](docs/native/OPERATIONS.md) · [受入手順と合格条件](docs/native/ACCEPTANCE.md) |
-| 設計判断を確認する、旧構成の機能を使う | [構成と採用理由](docs/native/ARCHITECTURE.md) · [レイクハウスの設計思想](docs/native/DESIGN.md) · [旧Foundationとの互換性](docs/native/COMPATIBILITY.md) |
+| 設計判断と評価状況を確認する | [構成と採用理由](docs/native/ARCHITECTURE.md) · [レイクハウスの設計思想](docs/native/DESIGN.md) · [構想と実装の対応](docs/native/ROADMAP.md) |
 
 ## リポジトリの構成
 
 | 場所 | 内容 |
 | --- | --- |
 | `native/` | API、取込、S3とカタログの接続、DuckDBの変換、任意の閲覧UI、監視設定 |
-| `medallion/` と `contracts/` | 取り込めるファイル、業務SQL、期待値、引き継いだ契約の出典とハッシュ |
+| `medallion/` と `contracts/` | 取り込めるファイル、業務SQL、期待値、契約の固定ハッシュ |
 | `infra/` | CDCの状態管理、SQL Serverの接続例、ビルドで使うCA処理 |
 | `scripts/` と `tests/` | 合成データ、ホスト側の抽出・検査、単体とComposeの受入試験 |
 

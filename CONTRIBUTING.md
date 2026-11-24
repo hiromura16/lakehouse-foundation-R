@@ -7,136 +7,58 @@
 >
 > **読むタイミング:** コードや文書を変更する前と、差分をレビューに出す前。
 >
-> **前提となる資料:** [ファイルの場所と変更のしかた](<docs/compatibility/DIRECTORY-GUIDE.md>)
+> **前提となる資料:** なし。必要な用語は本文で確認します。
 >
-> **次に読む資料:** [レビュー指摘を改善へ取り込む](<docs/compatibility/REVIEW-WORKFLOW.md>) / [図と出力スクリプトを変更する人へ](<docs/compatibility/reports/EDITING-GUIDE.md>)
+> **次に読む資料:** 目的別一覧から必要な資料を選びます。
 >
 > **文書一覧:** [目的・読者から探す文書マニフェスト](<docs/DOCUMENTATION-MANIFEST.md>)
 <!-- doc-purpose:end -->
 
-<!-- shell-usage:start -->
-**コマンドのシェル:** 「Bash / Zsh共通」は同じ内容を使い、専用例は自分のシェルを選びます。[詳しい使い分け](docs/compatibility/SHELLS.md)。
+## 変更する場所
 
-Zshの対話端末では、コメント付きの例を貼る前に一度だけ次を実行します。Bashでは不要です。
-
-**Zsh**
-
-```zsh
-setopt INTERACTIVE_COMMENTS
-```
-<!-- shell-usage:end -->
-
-初回構築は [START-HERE](docs/compatibility/START-HERE.md)、レビューの取り込みは [REVIEW-WORKFLOW](docs/compatibility/REVIEW-WORKFLOW.md)、図とexportの編集は [EDITING-GUIDE](docs/compatibility/reports/EDITING-GUIDE.md) を参照します。実接続先・秘密値・企業CA・実データはGit外に保持します。
-
-## コードを読む人へ必要な情報を残す
-
-Foundation Rで追加・更新するコメント、docstring、CLIの説明、画面ラベルは日本語で書きます。製品名、識別子、プロトコルの値、外部から確認するエラーコードは仕様どおりに表記します。同期元のハッシュで検証する業務契約と第三者の配布物は、元の内容を保持します。
-
-- moduleのdocstringで、目的・入力・出力・副作用・処理の入口を説明します。
-- publicな関数・class・初期化関数に役割を示すdocstringを付けます。重要な引数・戻り値・例外は意味も記載します。
-- CLIの全引数に `help` を付け、必要な前提、保存先、明示同意、上限、既定と対象外を説明します。`--help` の確認でサービスやDBを変更しません。
-- コメントには、処理を直訳するだけでなく、順序・拒否・再実行・互換性・信頼境界をその形にした理由を書きます。
-- 一つの関数が複数の工程を担い始めたら、意味のある工程名で分けます。小さく分けるだけの抽象化や、動作と食い違う説明は追加しません。
-- 変数・引数には用途を示す名前を使います。座標などの慣用的な短い名前は単位と座標系を説明します。寸法や上限の固定値には意味のある定数名を付けます。
-- 型注釈は呼び出し方の理解に役立つ箇所へ付けます。型・コメント・実装の意味を揃えます。
-
-PythonはPEP8と79文字の規約、Ruff・pycodestyleを使います。SQLはCTE名とコメントで粒度・集計順・NULL/不正値・更新優先・表単位commitを明示します。Composeはprofile・依存・永続化・host公開範囲が人間に分かる区切りとコメントを維持します。shellは入口を薄く保ち、host変更のplan/applyと実行権限を見える形にします。
-
-説明だけの変更では、フラグ名、既定値、validation、実行順序を混ぜて変更しません。必要な動作修正は理由・影響・検証を別に示します。パスや設定は変数で指定し、特定の配置先の値を例として埋め込みません。
-
-### Python、API、シェル、SQLのレビュー
-
-| 対象 | Foundation Rで確認すること | 参照した資料 |
-| --- | --- | --- |
-| Python | 名前から入力・結果を想像できるか。再試行の順序や権限など理由が必要な箇所を日本語で説明しているか。依存をハッシュ付きで固定し、テストと静的解析を同じ環境で再現できるか | [リーダブルコード](https://www.oreilly.co.jp/books/9784873115658/) · [ハイパーモダンPython](https://www.oreilly.co.jp/books/9784814400928/) |
-| HTTP API | 読取とジョブ実行の権限、固定の操作名、入力上限、エラー時の挙動をコマンドとテストで確認できるか。合成データで検証し、ログやエラーに資格情報や業務行を含めていないか | [マスタリングAPIアーキテクチャ](https://www.oreilly.co.jp/books/9784814400898/) · [責任あるソフトウェアエンジニアリング](https://www.oreilly.co.jp/books/9784814401581/) |
-| シェル | コマンドを小さくつなぎ、パスを引用し、期待する失敗と異常終了を扱えているか。設定ファイルの所有者・権限と終了状態を確認できるか。シェル固有機能のある例はBash用と明記する | [Efficient Linuxコマンドライン](https://www.oreilly.co.jp/books/9784814400485/) · [入門 モダンLinux](https://www.oreilly.co.jp/books/9784814400218/) · [マスタリングLinuxシェルスクリプト 第2版](https://www.oreilly.co.jp/books/9784814400119/) |
-| SQL | CTEごとの1行の意味、結合の多重度、NULL、集計の母数と窓の順序が明確か。多対多になりうる事実表は目的の粒度へ集計してから結合する。遅延到着や部分出荷を合成データで確認する | [SQLクックブック 第2版](https://www.oreilly.co.jp/books/9784873119779/) · [初めてのSQL 第3版](https://www.oreilly.co.jp/books/9784873119588/) |
-
-例として、[Gold SQL](medallion/03_gold.sql) の日次生産集計は指図・実績・停止を工場×日まで先に集約します。[結合で計画値が増えないことを確認するSQL](medallion/checks/04-factory-daily-measures-avoid-join-multiplication.sql) と [部分出荷・遅延出荷を確認するSQL](medallion/checks/05-sales-partial-and-late-deliveries.sql) を併せて読みます。
-
-## 専用uv環境で検査する
-
-リポジトリルートから、通常ユーザーで実行します。
-
-**Bash / Zsh共通**
-
-```bash
-QUALITY_VENV="$HOME/.local/share/lakehouse-foundation/source-quality-venv"
-uv venv --python 3.12 "$QUALITY_VENV"
-uv pip sync --python "$QUALITY_VENV/bin/python" \
-  --require-hashes requirements-dev.lock
-
-"$QUALITY_VENV/bin/ruff" check .
-"$QUALITY_VENV/bin/ruff" format --check .
-"$QUALITY_VENV/bin/pycodestyle" --max-line-length=79 scripts tests infra
-"$QUALITY_VENV/bin/python" -m unittest discover -s tests
-"$QUALITY_VENV/bin/sqlfluff" lint --dialect trino medallion
-"$QUALITY_VENV/bin/python" scripts/render_report_assets.py --check
-"$QUALITY_VENV/bin/python" scripts/documentation.py --check
-"$QUALITY_VENV/bin/python" scripts/shell_examples.py --check
-"$QUALITY_VENV/bin/python" scripts/check-source.py --history
-git diff --check
-```
-
-CIの公開検査には会社の実秘密値はありません。公開前にはGit外の既知情報リストと秘密値照合も別途行います。ドキュメントのPNGは表示内容とメタデータを確認し、`scripts/check-source.py` に画像のSHA-256を追加します。差し替え時はGit履歴の検査用に既存の承認済みハッシュも残します。第三者の画像には出典と利用条件を添えます。
-
-図・説明を変更した場合は、[生成・出力・確認手順](docs/compatibility/reports/EDITING-GUIDE.md) を使います。データ処理や版を変えた場合は、関連する互換性・機能・再実行試験を追加します。合成機能試験、会社での受入、性能・復元・モデル推論の確認は、対象と成功条件を分けて記録します。
-
-## 初めて変更する場合
-
-1. [文書マニフェスト](docs/DOCUMENTATION-MANIFEST.md) で対象機能の手順・設計・検証を揃えます。
-2. 稼働環境と分けたbranch・uv環境を用意し、変更前に同じ操作を確認します。DBやvolumeの削除で再現条件を作りません。
-3. 一つの利用者の操作を例に、変更前後の結果を書きます。読みやすさの改善は、入力・出力・副作用が変わらないことを確認します。
-4. 影響するコード・SQL・Compose・文書・図・期待値を一緒に直し、差分と検査結果をPRへ示します。
-
-MDを追加・改名する場合は [documentation-manifest.json](docs/documentation-manifest.json) へ目的・読者・使う場面・関連文書を登録し、`python3 scripts/documentation.py` で冒頭の役割欄と一覧を生成します。生成区間以外の説明は手で書きます。CAPTIONSは図の生成物なので、役割欄も含めて描画スクリプトから生成します。
-
-## 上級者が変更前に確認する契約
-
-| 変更領域 | 維持・更新するもの |
+| 変更内容 | 対象 |
 | --- | --- |
-| データ変換 | 行の粒度、最新版優先、隔離理由、指標の母数、表単位commit、再実行 |
-| API/GUI/MCP | 固定jobの範囲、token、確認入力、上限、timeout後の状態、互換payload |
-| profile/Compose | 依存、host公開、volume名、one-shot、proxy/CA、初期鍵の継続 |
-| バージョン | image digest、Python lock、Spark/Scala/Java/Iceberg、Airflow constraints |
-| 図・報告 | 根拠commit、既存試験と現地受入の区別、未評価、再生成とリンク |
+| 入力の検査、Goldの公開、API | `native/` と `tests/integration/native/` |
+| 業務ルール、列、集計の期待値 | `medallion/` と `contracts/native/` |
+| 監視するサービス、グラフ | `native/monitoring/` と `docs/native/MONITORING.md` |
+| 運用ポータル、ワークフロー、時系列 | `native/tools/` と `compose.tools.yaml` |
+| 発表資料と手順 | `docs/presentation/` と `docs/documentation-manifest.json` |
 
-失敗を広い例外処理で隠したり、検査をskipへ変えて通したりせず、再現する境界をテストします。必要な依存が本当に未導入の場合と、導入済み環境の破損は区別します。詳細な拡張例は [CUSTOMIZATION](docs/compatibility/CUSTOMIZATION.md)、レビューの記録方法は [REVIEW-WORKFLOW](docs/compatibility/REVIEW-WORKFLOW.md) を参照してください。
+[構成と採用理由](docs/native/ARCHITECTURE.md) で変更対象の責務を確認します。準備、取り込み、集計、公開、閲覧の役割ごとに入力と出力を定義します。エラーの処理は、原因を把握できる呼出元の境界で行います。
 
-## YAML・shell・秘密値の追加検査
+## コードとコメント
 
-`.yamllint.yml` はdefault規則を継承し、既存の書式に合わせて
-document-start・line-length・indentationの3規則だけを無効にします。
-GitHub Actionsの`on:` は引用せず、その行だけtruthy検査を抑制します。
-`scripts/check_ci_sources.py` は未追跡ファイルと`.github`を含む
-全階層の`*.yml`・`*.yaml`・`*.sh`を検査し、`.git`以外は除外しません。
-symlinkは辿らず失敗にし、ファイル名の空白を引数として保ちます。
-ShellCheckはshellを実行せず、警告も失敗として扱います。
+- 関数名と引数名には操作と対象を含めます。公開するPython関数のdocstringは、日本語で目的、必須の前提、返す値、重要な例外を書きます。
+- コメントでは、再実行でどの状態を使うか、公開位置をいつ進めるか、権限をどこで絞るかなど、ソースだけでは判断しにくい設計理由を説明します。
+- Pythonの依存は隔離環境に置きます。CLIは終了コードを返し、通常結果とエラーを分けます。シェルでは変数を引用し、対象が限定されたコマンドを使います。
+- SQLは読み手が行の粒度、結合キー、NULLの意味を把握できる順序で組み立てます。更新順、欠損、遅延到着、結合による行数増加の期待値を用意します。
+- 会社の接続先、秘密、CA、入力ファイル、書籍PDFはチェックアウト外で管理します。画像には合成データを使い、トークン、URLの秘密値、ユーザー名が写っていないことを確認します。
 
-yamllint 1.38.0は専用品質環境のhash付きlockに含みます。
-ShellCheck 0.11.0とGitleaks 8.30.1は公式GitHub releaseのLinux x86-64
-archiveをSHA-256で固定して検証します。CIの取得URLとchecksumは
-`.github/workflows/validate.yml`を参照してください。
+## 変更を確認する
+
+Python 3.12、uv、Docker Compose、ShellCheck、Gitleaks、Bash、Zshを用意します。単体・静的検査はユーザーのソース環境を変更しないよう専用の仮想環境で実行します。
 
 **Bash / Zsh共通**
 
 ```bash
+uv venv --python 3.12 .venv
+uv pip sync --python .venv/bin/python --require-hashes requirements-dev.lock
+export PATH="$PWD/.venv/bin:$PATH"
+ruff check .
+ruff format --check .
+pycodestyle --max-line-length=79 native scripts tests infra
 python scripts/check_ci_sources.py
+python -m unittest discover -s tests
+python native/check_contracts.py
+python scripts/documentation.py --check
+python scripts/shell_examples.py --check
+python scripts/check-source.py --history
 gitleaks git --redact=100 --no-banner --log-opts=HEAD .
 gitleaks dir --redact=100 --no-banner .
 ```
 
-GitleaksのGit検査は完全checkoutのHEADと全祖先commitを対象にします。
-pushでは対象commit、pull requestではcheckoutされたmerge commitと
-両親の履歴を検査します。変更差分だけの検査ではなく、別作業の未公開local
-branchを含む`--all`でもありません。現在の未追跡ファイルもdir検査で
-確認します。Markdownも対象です。値は100%redactし、CIではreportや
-artifactを作りません。検出時は非公開で原因を調べ、広い除外や
-検査成功扱いで隠しません。Git外の既知秘密値との照合と人の公開判断は、
-従来どおり別途必要です。
+業務SQLと公開APIは [合成データでの受入手順](docs/native/ACCEPTANCE.md) も実施します。入力契約を変更するときはサンプル、SQL、期待する出力、契約ハッシュを一緒に確認します。障害を修正したときは再現条件と確認結果を記録します。
 
-Composeの検査は既存の全profile合成と`config --quiet`を維持します。
-demo・sail・cdc・openobserve・lakehouse・computeを含む設定は
-依存サービスを跨ぐため、単体ファイルではなく既存の合成順序で検証します。
-一時領域の合成値だけを使用し、コンテナ起動・実環境への接続は行いません。
+## 文書と図を更新する
+
+Markdownを追加したら `docs/documentation-manifest.json` へ目的と対象読者を登録し、`python3 scripts/documentation.py` で索引を更新します。CLIの例には実行できるシェルを明示します。説明スライドは [HTMLの編集元](docs/presentation/index.html) を開き、各ページと印刷を確認します。製品の仕様は [公式リファレンス](docs/native/REFERENCES.md) を採用版と照合します。

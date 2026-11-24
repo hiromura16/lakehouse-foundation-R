@@ -1,0 +1,29 @@
+{
+  "name": "Foundation R 疎通確認",
+  "active": false,
+  "settings": {"executionOrder": "v1"},
+  "nodes": [
+    {
+      "id": "manual",
+      "name": "手動で開始",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, 0],
+      "parameters": {}
+    },
+    {
+      "id": "foundation-health",
+      "name": "基盤の状態を読む",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [240, 0],
+      "parameters": {
+        "url": "http://lakehouse:8080/health",
+        "options": {"timeout": 5000}
+      }
+    }
+  ],
+  "connections": {
+    "手動で開始": {"main": [[{"node": "基盤の状態を読む", "type": "main", "index": 0}]]}
+  }
+}

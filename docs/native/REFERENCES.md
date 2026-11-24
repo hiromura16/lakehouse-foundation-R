@@ -29,5 +29,8 @@
 | Debezium、Redpanda | 外部Debeziumは設置先の採用版。Redpanda 26.3.1は隔離試験のみ | [SQL Server connector](https://debezium.io/documentation/reference/stable/connectors/sqlserver.html) · [Redpanda単一broker](https://docs.redpanda.com/labs/docker-compose/single-broker/) · [Redpandaのライセンス](https://github.com/redpanda-data/redpanda/blob/dev/licenses/bsl.md) |
 | Streamlit、NGINX | 1.67.0、1.30.8 | [Streamlitの表](https://docs.streamlit.io/develop/api-reference/data/st.dataframe) · [NGINXのBasic認証](https://nginx.org/en/docs/http/ngx_http_auth_basic_module.html) · [WebSocket中継](https://nginx.org/en/docs/http/websocket.html) |
 | LangChain Core | 1.7.6 | [Tools](https://docs.langchain.com/oss/python/langchain/tools) |
+| n8n | 2.46.7 | [Docker Compose](https://docs.n8n.io/hosting/installation/server-setups/docker-compose/) · [SSRF保護](https://docs.n8n.io/hosting/securing/ssrf-protection/) · [Sustainable Use License](https://docs.n8n.io/sustainable-use-license/) |
+| OpenObserve | 1.1.2 | [Prometheus remote write](https://openobserve.ai/docs/ingestion/metrics/prometheus/) · [ダッシュボード](https://openobserve.ai/docs/user-guide/dashboards/) |
+| InfluxDB 3 Core、Explorer | 3 Coreはdigest固定、Explorer 1.11.2 | [管理用トークン](https://docs.influxdata.com/influxdb3/core/admin/tokens/admin/preconfigured/) · [SQL API](https://docs.influxdata.com/influxdb3/core/query-data/execute-queries/) · [Explorer](https://docs.influxdata.com/influxdb3/explorer/) |
 
-更新時は依存の版とhash、イメージdigest、入力契約の参照commit、受入試験結果を同じ差分で確認します。既存の別構成を使う場合は、[旧Foundationとの互換性](COMPATIBILITY.md) から各構成の固定版を参照します。
+更新時は依存の版とhash、イメージdigest、入力契約のハッシュ、受入試験結果を同じ差分で確認します。

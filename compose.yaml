@@ -1,5 +1,4 @@
-# 標準構成はJVMを使わない。互換構成はinfra/lakehouseから起動し、
-# 専用プロジェクト、設定、ボリュームを使う。
+# Foundation Rの標準構成。設定とデータはComposeプロジェクトごとに管理する。
 name: lakehouse-r
 
 x-logging: &logging

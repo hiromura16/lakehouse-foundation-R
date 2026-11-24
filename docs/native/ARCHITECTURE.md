@@ -1,7 +1,7 @@
 # アーキテクチャと業務契約
 
 <!-- doc-purpose:start -->
-> **役割:** コンポーネントの役割と採用理由、業務契約、公開世代、元のFoundationとの違いを確認します。
+> **役割:** コンポーネントの役割と採用理由、業務契約と公開世代を確認します。
 >
 > **対象読者:** 初めて使う人 / 基盤構築担当
 >
@@ -43,7 +43,7 @@ flowchart LR
 
 | コンポーネント | Foundation Rでの役割 | 採用理由 |
 | --- | --- | --- |
-| DuckDB | 受注・出荷の結合、工場別日次集計、設備の1分窓など、Pythonワーカーの中でSQLを実行 | 分析処理を1台に収め、別のSQLサーバーやJVMの管理を省ける。既存業務SQLの結果を合成データで照合できる。[DuckDBの設計](https://duckdb.org/why_duckdb) |
+| DuckDB | 受注・出荷の結合、工場別日次集計、設備の1分窓など、Pythonワーカーの中でSQLを実行 | 分析処理を1台に収め、別のSQLサーバーやJVMの管理を省ける。定義済みの業務SQLの結果を合成データで照合できる。[DuckDBの設計](https://duckdb.org/why_duckdb) |
 | Apache Arrow / PyArrow | DuckDBとPyIcebergの間で、列ごとの型を持つデータを受け渡す | 一時CSVを作る工程を省ける。日時や数値型を明示して渡せる。[Arrowの仕様](https://arrow.apache.org/docs/format/Columnar.html) |
 | Parquet / Apache Iceberg | Parquetが行の実体を保存し、Icebergがその表の列、ファイル一覧、履歴を管理 | 開いた仕様で保存し、スナップショットIDで参照する表の版を特定できる。[Parquet](https://parquet.apache.org/docs/) · [Iceberg仕様](https://iceberg.apache.org/spec/) |
 | PyIceberg | PythonでIceberg表を読み書きし、表のスナップショットを確定 | ArrowとRESTカタログを使って、書き込みまでPythonワーカーで完結できる。[PyIceberg](https://py.iceberg.apache.org/) |
@@ -57,7 +57,7 @@ flowchart LR
 | LangChain Core | AIワークフローから、固定されたGoldデータセットを読取ツールとして利用 | データセット名や行数を制約し、表の版と公開世代を回答の根拠として渡せる。[LangChainのTools](https://docs.langchain.com/oss/python/langchain/tools) |
 | Docker Compose / Dokploy | 同じサービス定義をCLIとDokployから配置 | セットアップ、ヘルスチェック、追加GUIを共通化し、配置先ごとのプロキシやCAを外部設定に置ける。[会社VMでの配置](COMPANY.md) |
 
-1台のVMで業務SQLを実行する用途では、Sparkの代わりにDuckDBを使います。Icebergへの保存と表の版管理はPyIcebergが担当します。単一ホスト構成の処理上限は下記を参照してください。複数ホストでの分散実行や既存PySparkジョブには互換構成のSparkが使えます。[採用バージョンと公式リファレンス](REFERENCES.md)
+1台のVMで業務SQLを実行する用途では、Sparkの代わりにDuckDBを使います。Icebergへの保存と表の版管理はPyIcebergが担当します。単一ホスト構成の処理上限は下記を参照してください。複数ホストでの分散実行は [構想と実装の対応](ROADMAP.md) に評価条件があります。[採用バージョンと公式リファレンス](REFERENCES.md)
 
 ## UNIXの責務分離とDDD
 
@@ -72,7 +72,7 @@ flowchart LR
 | CDC | SQL Serverのストリーミング変更はsnapshot読取より後とし、commit/change LSNとserialで順序を決めます。業務DELETEは現在値を取り消し、Kafka tombstoneは別の生配送記録です。 |
 | 時系列 | 設備の品質コードを残し、良品判定とは分離します。センサーの1分窓はUTC基準で、GOODだけを統計に使います。 |
 
-`medallion/sources.json` と既存SQLを正本とし、同期元commitとSHA-256は [契約マニフェスト](../../contracts/native/foundation-source.json) に記録します。 `python3 native/check_contracts.py` で一致を確認できます。業務上の「訂正」「取消」「生産日」「品質」を変更する場合は、業務オーナーと意味を決めてからSQL・独立期待値を更新します。構想書のSail、RisingWave、GreptimeDB/InfluxDB、DataFusion、Ballista、Cometは評価候補です。標準構成はDuckDBとPyIcebergで、時系列はIcebergバッチです。ミリ秒級のオンラインTSDB性能、分散処理、候補製品間の比較結果は現時点で未計測です。
+`medallion/sources.json` と既存SQLを正本とし、列と集計仕様を固定するSHA-256は [契約マニフェスト](../../contracts/native/contract-lock.json) に記録します。 `python3 native/check_contracts.py` で一致を確認できます。業務上の「訂正」「取消」「生産日」「品質」を変更する場合は、業務オーナーと意味を決めてからSQL・独立期待値を更新します。構想書のSail、RisingWave、GreptimeDB/InfluxDB、DataFusion、Ballista、Cometは評価候補です。標準構成はDuckDBとPyIcebergで、時系列はIcebergバッチです。ミリ秒級のオンラインTSDB性能、分散処理、候補製品間の比較結果は現時点で未計測です。
 
 ## 公開と失敗時の一貫性
 
@@ -105,20 +105,16 @@ sequenceDiagram
   end
 ```
 
-## 元のFoundationとの比較
+## 作業に合わせて構成を選ぶ
 
-比較元は [既存Foundationのmain](https://github.com/hiromura16/lakehouse-foundation/tree/8adaef6d28a4fa01f2e409fd01a568cd6770e071) です。既存の6ソース契約と合成データの期待値を両構成で共有します。
-
-| 観点 | 元のFoundation | Foundation R |
+| Compose | 追加される機能 | 使用する場面 |
 | --- | --- | --- |
-| 標準の変換・参照 | Trinoで業務SQLを実行。Sparkクラスタを追加可能 | 組み込みのDuckDBとPyIcebergで単一ホスト実行。スナップショットを固定したAPIを提供 |
-| 取り込み | ファイル、SQL Server、既存Debezium/Kafka用の配置と管理 | 同じファイル・SQLバッチ契約。外部Kafka互換ブローカー向けのネイティブCDCと設備JSONLを追加 |
-| 業務・運用GUI | 操作ポータル、Superset、Kafka UI、n8n、監視などが豊富 | Grafana、Gold閲覧、Lakekeeper、Prometheusを使う軽量な入口。既存の各画面は互換構成で起動可能 |
-| 監視・オーケストレーション | Prometheus、Grafana、Loki、Vector、Airflow、n8nなど | 設定ファイルで標準アプリの監視を配備。ログ基盤とオーケストレーションは互換構成 |
-| 新しいデータ利用 | Gold API、MCP、LangChainのサンプル | 設備の最新値・1分集計と全表の公開世代。Gold閲覧画面とLangChainで表の版を確認可能 |
-| 処理規模 | Spark分散構成・外部分析ツールを追加可能 | 標準は単一ホスト。複数ノードと既存Sparkジョブには互換構成を使用 |
+| `compose.yaml` | ファイル取込、SQL集計、Iceberg、Gold API、Grafana | 最初の合成データ試験と標準運用 |
+| `compose.gui.yaml` | 集計結果、カタログ、Prometheusの認証付き閲覧 | ブラウザーで受入結果を確認 |
+| `compose.tools.yaml` | n8n、OpenObserve、InfluxDB 3 Core、Explorer、運用ポータル | 自動化、監視の調査、時系列SQL |
+| `compose.cdc.yaml` | 外部Kafkaからの変更取込 | 到着順と更新順、再開位置を管理 |
 
-標準構成の機能数は既存Foundationの全プロファイルより少なく、JVMなしで配備できる変換・閲覧の経路と設備時系列の扱いが増えています。
+[追加ツールの役割と使い方](TOOLS.md) · [構想上の候補と評価項目](ROADMAP.md)
 
 ## 実装の責務と入口
 
@@ -130,5 +126,3 @@ sequenceDiagram
 | DuckDB、設備の集計、Gold公開世代 | [native/engine.py](../../native/engine.py) · [native/sensor.py](../../native/sensor.py) |
 | 合成入力と独立期待値の照合 | [native/verification.py](../../native/verification.py) |
 | 外部Kafkaとの接続と再開位置 | [native/cdc.py](../../native/cdc.py) · [CDC状態の実装](../../infra/cdc/state.py) |
-
-既存の分散SQL、BI、オーケストレーション、Debezium登録が必要な場合は、[旧Foundationとの互換性](COMPATIBILITY.md) から専用の構成を選びます。

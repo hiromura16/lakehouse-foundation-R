@@ -16,7 +16,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
-      - name: 元のFoundationと業務契約を照合
+      - name: 固定した業務契約のハッシュを照合
         run: python3 native/check_contracts.py
       - name: 隔離したCompose構成を検査して起動
         shell: bash
@@ -52,10 +52,41 @@ jobs:
           docker compose --env-file "$RUNNER_TEMP/native-site.env" -p native-ci \
             exec -T blackbox /bin/blackbox_exporter \
             --config.file=/etc/blackbox/blackbox.yml --config.check
+      - name: 自動化・時系列・監視転送を検証
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          site="$RUNNER_TEMP/native-site.env"
+          tools="$RUNNER_TEMP/native-tools"
+          python3 native/tools/setup.py --directory "$tools"
+          docker compose --env-file "$site" --env-file "$tools/tools.env" -p native-ci \
+            -f compose.yaml -f compose.gui.yaml -f compose.tools.yaml \
+            up -d --build --wait --wait-timeout 240
+          python3 -m native.tools.demo --token-file "$tools/influx-admin.json"
+          python3 -m native.tools.observe provision --directory "$tools"
+          docker compose --env-file "$site" --env-file "$tools/tools.env" -p native-ci \
+            -f compose.yaml -f compose.gui.yaml -f compose.tools.yaml \
+            --profile tools-metrics up -d --wait --wait-timeout 90
+          for attempt in {1..12}; do
+            if python3 -m native.tools.observe verify --directory "$tools"; then
+              break
+            fi
+            test "$attempt" -lt 12
+            sleep 5
+          done
+          python3 tests/integration/native/tools_acceptance.py "$tools"
       - name: 試験プロジェクトと合成データを破棄
         if: always()
         run: |
           if test -f "$RUNNER_TEMP/native-site.env"; then
-            docker compose --env-file "$RUNNER_TEMP/native-site.env" -p native-ci \
-              -f compose.yaml -f compose.gui.yaml down --volumes --remove-orphans
+            site="$RUNNER_TEMP/native-site.env"
+            tools="$RUNNER_TEMP/native-tools/tools.env"
+            if test -f "$tools"; then
+              docker compose --env-file "$site" --env-file "$tools" -p native-ci \
+                -f compose.yaml -f compose.gui.yaml -f compose.tools.yaml \
+                --profile tools-metrics down --volumes --remove-orphans
+            else
+              docker compose --env-file "$site" -p native-ci \
+                -f compose.yaml -f compose.gui.yaml down --volumes --remove-orphans
+            fi
           fi

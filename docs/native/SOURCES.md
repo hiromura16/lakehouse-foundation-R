@@ -63,7 +63,7 @@ docker compose --env-file "$site" exec -T lakehouse python -m native.api medalli
 
 ## Kafka互換ブローカーでCDCを取り込む
 
-外部のDebeziumがSQL Server CDCのJSONを発行している環境向けの任意構成です。source connectorの登録や設定は [旧FoundationのCDCガイド](https://github.com/hiromura16/lakehouse-foundation/blob/8adaef6d28a4fa01f2e409fd01a568cd6770e071/docs/CDC.md) にあります。標準RのComposeとconsumerにはJavaが不要です。Debezium Kafka Connectの実行環境にはJVMが必要です。
+外部のDebeziumがSQL Server CDCのJSONを発行している環境向けの任意構成です。コネクターは外部のKafka Connectで管理します。標準RのComposeとconsumerにはJavaが不要です。Debezium Kafka Connectの実行環境にはJVMが必要です。
 
 1. Kafka管理者が専用consumer groupのACLと対象6 topicへの読取権限を用意します。初回に必要な履歴を確保し、topicの保持期間と鍵ごとのpartition整合性を確認します。
 2. [設定例](../../native/kafka-settings.example.json) をcheckout外のprivateファイルへコピーして、broker、DB、topic prefix、`lakehouse-r-` から始まる専用groupを入力します。実接続ではTLSまたはSASL_SSLを使い、brokerが広告する全アドレスへ直接接続できるようにします。OSの信頼ストアを使う場合は設定例のCAパスを維持し、broker専用のCAを使う場合は `site.env` に `CDC_BROKER_CA_FILE` の絶対パスを、Kafka設定の `ssl.ca.location` に `/run/cdc/broker-ca.pem` を入力します。
@@ -80,4 +80,4 @@ docker compose --env-file "$site" -f compose.yaml -f compose.cdc.yaml \
   logs --tail 60 native-cdc
 ```
 
-まず `cdc_events.events` に配送IDと原本を保存し、LSNで現在値を選びます。派生テーブルの公開に成功した後にローカルcheckpointとKafkaの確認位置を進めます。 `/v1/cdc/gold/<dataset>` はCDCの公開世代を参照します。SQLiteは現在値と配送位置を持つため、Kafka・Iceberg・state directoryを揃えて復旧してください。履歴が切れた場合はconsumerを停止して原因を確認します。通常経路のRaw再構築機能は互換構成の固定CDCにあります。Rでの実SQL Server、社内Kafka TLS、長期保持からの復元は会社環境の受入対象です。 [Debezium SQL Server公式](https://debezium.io/documentation/reference/stable/connectors/sqlserver.html)
+まず `cdc_events.events` に配送IDと原本を保存し、LSNで現在値を選びます。派生テーブルの公開に成功した後にローカルcheckpointとKafkaの確認位置を進めます。 `/v1/cdc/gold/<dataset>` はCDCの公開世代を参照します。SQLiteは現在値と配送位置を持つため、Kafka・Iceberg・state directoryを揃えて復旧してください。履歴が切れた場合はconsumerを停止して原因を確認します。手動で状態を入れ替える前に、Kafkaの保持範囲と保存済みRawの照合を実施します。Rでの実SQL Server、社内Kafka TLS、長期保持からの復元は会社環境の受入対象です。 [Debezium SQL Server公式](https://debezium.io/documentation/reference/stable/connectors/sqlserver.html)

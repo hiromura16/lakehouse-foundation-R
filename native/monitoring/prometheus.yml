@@ -22,7 +22,10 @@ scrape_configs:
   - job_name: app-probes
     metrics_path: /probe
     file_sd_configs:
-      - files: [/etc/prometheus/targets/*.yml, /etc/prometheus/optional-targets/*.yml]
+      - files:
+          - /etc/prometheus/targets/*.yml
+          - /etc/prometheus/optional-targets/*.yml
+          - /etc/prometheus/tool-targets/*.yml
         refresh_interval: 30s
     relabel_configs:
       - source_labels: [__address__]

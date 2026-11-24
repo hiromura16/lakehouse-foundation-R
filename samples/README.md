@@ -7,9 +7,9 @@
 >
 > **読むタイミング:** 空の検証用landingに小さい固定条件の合成入力を初めて用意するとき。
 >
-> **前提となる資料:** [初めて構築する人の一本道ガイド](<../docs/compatibility/START-HERE.md>)
+> **前提となる資料:** [Foundation Rの初回導入と操作](<../docs/native/START.md>)
 >
-> **次に読む資料:** [MES・ERPのダミーデータ投入](<../docs/compatibility/DEMO-DATA.md>) / [GUIからダミーデータを投入する](<../docs/compatibility/DEMO-GUI.md>) / [MES・ERPデータをBronzeからGoldへ整える](<../docs/compatibility/MEDALLION.md>)
+> **次に読む資料:** [会社VMの受入手順と合格条件](<../docs/native/ACCEPTANCE.md>)
 >
 > **文書一覧:** [目的・読者から探す文書マニフェスト](<../docs/DOCUMENTATION-MANIFEST.md>)
 <!-- doc-purpose:end -->

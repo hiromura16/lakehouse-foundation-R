@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Foundation R 運用ポータル</title>
+  <link rel="stylesheet" href="portal.css">
+  <script src="portal.js" defer></script>
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="./"><span aria-hidden="true">R</span> Foundation R</a>
+    <nav aria-label="資料"><a href="slides/">説明スライド</a><button id="refresh" type="button">状態を更新</button></nav>
+  </header>
+  <main>
+    <div class="intro">
+      <div><h1>運用ポータル</h1><p>アプリの状態を確認し、集計結果の閲覧、調査、ワークフロー実行へ進みます。</p></div>
+      <div class="indicator" aria-live="polite"><strong id="summary">状態を取得中</strong><span id="checked">この画面から内部ヘルスを確認</span></div>
+    </div>
+    <section class="routes" aria-label="作業の入口">
+      <button type="button" data-category="automation"><strong>自動化を組む</strong><span>n8nで定型の確認やジョブをつなぐ</span></button>
+      <button type="button" data-category="observe"><strong>障害を調べる</strong><span>現在値とメトリクスの履歴を照合する</span></button>
+      <button type="button" data-category="data"><strong>数値を確認する</strong><span>Goldの集計と時系列点を調べる</span></button>
+    </section>
+    <section aria-labelledby="tools-title">
+      <div class="toolbar">
+        <div><h2 id="tools-title">アプリとサービス</h2><div id="selected" aria-live="polite"></div></div>
+        <label>検索 <input id="search" type="search" placeholder="アプリ名や用途"></label>
+        <button type="button" data-category="all">すべて表示</button>
+      </div>
+      <p id="connection-error" hidden role="status">接続先設定を取得できません。画面を読み直してください。</p>
+      <div id="tools" class="tools"></div>
+      <p id="empty" hidden>条件に合うアプリがありません。</p>
+    </section>
+    <footer>疎通結果は、このCompose環境からの応答です。データの完全性は取込後の受入検査で確認します。</footer>
+  </main>
+</body>
+</html>

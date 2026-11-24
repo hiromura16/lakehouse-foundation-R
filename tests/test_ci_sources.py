@@ -91,7 +91,7 @@ class SourceChecks(unittest.TestCase):
                 checker.source_paths(root)
 
     def test_yaml_config_and_workflow_keep_narrow_policy(self):
-        """3規則だけ無効化し、履歴範囲・redact・既存Compose検査を保持。"""
+        """3規則だけ無効化し、履歴範囲・redact・配布中のCompose検査を保持。"""
         import yaml
 
         root = Path(__file__).resolve().parents[1]
@@ -111,15 +111,9 @@ class SourceChecks(unittest.TestCase):
         self.assertIn("--redact=100 --no-banner --log-opts=HEAD", workflow)
         self.assertNotIn("--report-path", workflow)
         self.assertNotIn("pull_request_target", workflow)
-        for name in (
-            "demo",
-            "sail",
-            "cdc",
-            "openobserve",
-            "lakehouse",
-            "compute",
-        ):
-            self.assertIn(f"-f infra/{name}/compose.yaml", workflow)
+        for overlay in ("cdc", "gui", "tools"):
+            self.assertIn(f"-f compose.{overlay}.yaml", workflow)
+        self.assertIn("-f compose.yaml", workflow)
         self.assertIn("config --quiet", workflow)
 
 
