@@ -110,6 +110,15 @@ Dockerイメージの実行設定には渡しません。ミラーのファイ�
 更新して疎通を確認する場合は、Dockerのビルドキャッシュを使わずに
 再ビルドします。確認は会社側で公開してよい情報に絞り、認証ファイルは
 Gitやログに残さないでください。
+
+Composeの実行環境でBakeを選択していて、外部の会社CAやミラーファイルに
+対して `additional privileges requested: ... fs.read=...` が出る場合は、
+Composeを起動するプロセスで `COMPOSE_BAKE=false` を設定し、標準の
+BuildKit経路で再実行します。Dokployでは対象リリースのCompose実行方式を
+管理者が確認します。Bakeを組織で使い続ける場合、読取許可は承認済みの
+個別ファイルに絞ります。[ComposeとBake](https://docs.docker.com/compose/how-tos/dependent-images/#build-with-bake)
+· [Bakeの読取許可](https://docs.docker.com/reference/cli/docker/buildx/bake/#allow)
+
 [uvのpip設定](https://docs.astral.sh/uv/reference/settings/#pip) · [uvの認証形式](https://docs.astral.sh/uv/concepts/authentication/http/#netrc-files) · [Dockerのビルド用secret](https://docs.docker.com/build/building/secrets/)
 
 合成ミラーを用いた受入では、BakuのBuildKitで同じ依存取得処理を実行

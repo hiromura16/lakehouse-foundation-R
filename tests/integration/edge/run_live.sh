@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # 合成したTLSの発行者と、実際に生成したIcebergのGoldを照合する。
 set -Eeuo pipefail
+# 生成したCAはcheckoutの外に置く。標準BuildKitで必要なファイルだけを渡す。
+export COMPOSE_BAKE=false
 
 docker_cmd=(docker)
 if [[ "${1:-}" == --sudo ]]; then
