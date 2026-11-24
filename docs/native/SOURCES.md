@@ -14,9 +14,37 @@
 > **文書一覧:** [目的・読者から探す文書マニフェスト](<../DOCUMENTATION-MANIFEST.md>)
 <!-- doc-purpose:end -->
 
+## 入力経路を選ぶ
+
+原本を残す工程と、特定の列や型へ変換する工程を分けます。
+Goldを確認するときは、投入した経路に対応する公開世代を選びます。
+
+| 工場から受け取るデータ | 合成データで確認した経路・到達先 | 業務表へ反映する条件 |
+| --- | --- | --- |
+| SMB・SFTP・手動コピー、CP932の業務ファイル | ローカル着地後の原本・UTF-8変換・配送ID再送を検査 | 送信元と配送ID、文字コード、固定6ソースの対応する列を指定し、`.ready` 確定後に `medallion` を実行 |
+| 内製SQLite | 閉じたバックアップから固定6表を抽出し、SQL Goldの削除と再送を確認 | バックアップ、固定の設置IDと列マップ、SQLバッチの完了印、`sql-load` の3項目 |
+| SQL Server | 外部ソースからの固定6表の抽出、同一時点読取、TLS拒否を確認。出力は通常のCSV・JSONL | 読取権限と表・列マップ、同一時点が必要ならDBA承認済みのSNAPSHOT設定、着地後の `medallion` |
+| PostgreSQL | 同一時点の読取とTLSの照合、SQL Goldの反映・再送を確認 | 固定6表の権限と列マップ、固定の設置ID、SQLバッチの完了印と `sql-load` の3項目 |
+| KafkaのSQL Server CDC | 合成Debezium JSONから `cdc_` 系の現在値、削除、再起動後の再開を確認 | 外部コネクター、6トピックの対応表、業務キーとLSN、初回履歴、KafkaとSQLiteの位置の照合 |
+| MQTT・OPC UA | 隔離構成のTelegraf・Kafka・Vector経由でGreptimeDBを確認 | 標準の設備Iceberg集計へ反映する場合は、設備ID・時刻・品質を対応づけ、契約済みJSONLと `.ready` を出力 |
+| Modbus TCP・仮想RTU | 模擬設備の読取、倍率、欠測、再接続を確認 | 実設備のレジスタ表を承認し、収集値の保存先と、設備JSONLへの変換を用意 |
+| 画像・任意バイナリ | S3原本とファイル台帳。対応画像は寸法、読取エラーは隔離理由も確認 | 検査結果や設備IDを業務表に載せる場合は、別の対応表や抽出結果を用意 |
+| 大容量の検査原本・ログ・CAD | S3原本とファイル台帳。両S3で2 GiB全バイト、保存後SHAと再起動・再送を確認 | `large-raw/` と `.sealed` を使う。展開・解析した値を表にする場合は、別の抽出と契約済み入力が必要 |
+
+SQLバッチは1プロジェクトにつき1つの設置先を結び付けます。SQLiteとPostgreSQLを
+併用する場合は、SQLバッチのカタログと保存領域をプロジェクトごとに分けます。
+設備専用経路とRisingWaveの設備原本保存は、[テレメトリの構成](TELEMETRY.md) を
+参照してください。OPC UAの隔離試験では異常品質の点を時系列保存から除外します。
+異常値も監査用に残すときは、品質情報付きの原本を保全する経路を用意します。
+
 ## 工場ファイルをローカルで確定する
 
 SMB、SFTP、手動コピーで届いた原本は、配備先VMのローカルファイルシステムへ受け渡します。コピーと書込の終了を送信側で確認してから、原本のパス、送信元、配送IDを指定します。別送信元が同じ名前で送っても保管先を分離します。
+
+SMB・SFTPの接続、認証、途中切断からの再転送は受け渡しの担当側で管理します。
+Foundation Rの受入試験はローカル着地から始まります。送信元が用意できる場合は、
+再転送後のローカル原本を送信元のSHA-256とも照合します。
+[OpenSSHのSFTP](https://man.openbsd.org/sftp) · [SMBの公式概要](https://learn.microsoft.com/en-us/windows-server/storage/file-server/file-server-smb-overview) · [Python 3.14の文字コード](https://docs.python.org/3.14/library/codecs.html#standard-encodings)
 
 **Bash / Zsh共通**
 
@@ -27,13 +55,15 @@ python3 -m native.intake.spool --landing "$landing" \
   --encoding cp932 /path/to/copied-products.csv
 ```
 
-登録済みの6データセットはUTF-8、CP932、BOM付きUTF-16を受け入れます。原本と変換結果のSHA-256を受入台帳に記録します。完了印が付いたUTF-8の変換結果だけを既存の業務取込へ渡します。任意形式のファイルを保全する場合は `--dataset raw` を指定します。対象の上限は1ファイル16 MiBです。
+登録済みの6データセットはUTF-8、CP932、BOM付きUTF-16を受け入れます。原本と変換結果のSHA-256を受入台帳に記録します。完了印が付いたUTF-8の変換結果だけを既存の業務取込へ渡します。任意形式のファイルを保全する場合は `--dataset raw` を指定します。原本と変換後のファイルはそれぞれ16 MiBまでです。
 
 | 終了値 | 受入の状態 |
 | --- | --- |
-| 0 | 原本を保全済み。登録済み形式は列検査を通して正規化済み |
+| 0 | 原本をローカル着地へ確定。登録済み形式は列検査を通して正規化済み |
 | 1 | 原本の読取、権限、同じ配送IDの内容不一致などで確定に失敗 |
-| 2 | 原本と拒否理由を保全済み。列や文字コードの不一致で業務表への配置を拒否 |
+| 2 | 原本と拒否理由をローカル着地へ確定。列や文字コードの不一致で正規化を拒否 |
+
+原本は `ingest` または `medallion` の取込でS3とファイル台帳へ登録します。
 
 再送には同じ送信元と配送IDを使います。訂正版は新しい配送IDを発行し、後続の業務ルールで更新時刻や業務キーを照合します。複数の配送が同じファイルを同時に上書きする形でマウントせず、工場側で原本を閉じてから送ってください。復旧時は `receipts/<送信元>/<配送ID>.json` と完了印を確認します。正規化の拒否は取込境界の結果として保全されます。型や業務ルールによる行の隔離は業務処理で行います。
 
@@ -43,7 +73,7 @@ python3 -m native.intake.spool --landing "$landing" \
 2. 確定ファイルのSHA-256を計算し、隣の `<ファイル名>.ready` へ64桁の小文字と改行を保存します。完了印を最後に確定します。
 3. `python -m native.api medallion` をLakehouseコンテナ内で実行します。原本と印は取込み完了まで保持します。
 
-6ソースのパスと列は [sources.json](../../medallion/sources.json) にあります。 `csv/erp_products__<12桁の小文字hex>_<4桁の連番>.csv` のような増分名も認識します。見覚えのない拡張子や名前はファイル原本として保存し、任意の業務表には割り当てません。大文字JSONキーも含め列名は契約と一致させます。同じパスとhashは取込済みとして扱います。
+6ソースのパスと列は [sources.json](../../medallion/sources.json) にあります。 `csv/erp_products__<12桁の小文字hex>_<4桁の連番>.csv` のような増分名も認識します。見覚えのない拡張子や名前はファイル原本として保存し、任意の業務表には割り当てません。直接置く業務ファイルはUTF-8で作り、大文字JSONキーも含め列名を契約と一致させます。同じパスとhashは取込済みとして扱います。
 
 送信アプリの実装や配備は送信側で管理します。Foundation Rが受け取るのは、型と列を定めたファイルと隣接する `.ready` です。JSONの完了マニフェストを使う送信側では、受け渡しアダプターで原本と整合性を検証してから、この形式の完了印を出力します。
 
@@ -53,10 +83,13 @@ python3 -m native.intake.spool --landing "$landing" \
 失敗した場合も原本を保全し、公開済みの業務集計を維持します。訂正された素材を
 受け取ってから再実行します。
 
-PNG、JPEG、WebPは32メガピクセル以下で先頭画像を展開できる場合に、型と寸法を
-`bronze.images` に記録します。破損・対象外・上限超過の画像はS3にそのまま保全し、
-`quarantine.image_files` に原本SHA-256、位置、理由コードを記録します。業務の取込は
-継続します。同じパスの正常版を受け取ると、現在の画像一覧が回復します。
+通常の取込で16 MiB以下の `.png`、`.jpg`、`.jpeg`、`.webp` は、
+先頭画像を検査します。PNG・JPEG・WebPとして読み取れ、32メガピクセル以内なら
+`bronze.images` に型と寸法を記録します。検査で失敗した場合はS3へ原本を保全し、
+`quarantine.image_files` にSHA-256、位置、理由を記録します。同じパスの正常版で
+現在の画像一覧は回復します。TIFF・HEICなど別の拡張子はファイル原本として扱います。
+16 MiBを超える画像は次節の大容量原本経路を使います。
+[Pillowの画像読取と画素制限](https://pillow.readthedocs.io/en/stable/reference/Image.html)
 検査用画像の実データは公開APIから読めません。原本を扱う担当者を分け、
 製品番号や作業者が画像に含まれる場合は社内データとして管理します。
 
@@ -82,8 +115,10 @@ python -m native.api archive inspection-0001.bin
 既定設定では原本を最大1 MiBずつ読み、完了印と一致するSHA-256を検証します。
 S3の条件付き作成で既存原本を保護し、保存先が報告するSHA-256とサイズを照合
 してから `bronze.files` に登録します。応答の `object_created` はS3への新規作成、
-`registered` は台帳上の現在版の更新です。再送では両方false、更新版ではSHA-256
-別の原本を保全します。対応する `.sealed` の付いた入力を、通常の `medallion` は
+`registered` は台帳上の現在版の更新です。同じ現在版を確定済みなら再送で両方falseです。
+S3だけが確定済みなら `object_created=false`、台帳を更新したときは `registered=true`
+です。内容が変わった原本は別のSHA-256で保全します。対応する `.sealed` の付いた
+入力を、通常の `medallion` は
 自動処理しません。業務表への変換、圧縮の展開、外部公開には別の承認を使います。
 [条件付き書込](https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-writes.html)
 · [S3のオブジェクト照合](https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadObject.html)
@@ -104,13 +139,14 @@ Dokployの環境変数またはローカルComposeの `site.env` で
 あります。保存先の対応を確認し、未完了マルチパートを期限付きで回収します。
 支給するS3権限には対象バケットでの条件付き作成・HEAD・当該upload IDの中断が
 必要です。複合SHA-256を返さない保存先では台帳を確定しません。2 GiBは設定の上限で、
-隔離CIの入力は257 MiBです。採用する最大サイズで転送時間と
+隔離CIの入力は257 MiBです。別の上限試験では両S3保存先で2 GiBを照合しました。
+採用する最大サイズで転送時間と
 プロキシ・クライアントの待機時間を照合してください。コンテナ内の操作CLIは
 最長600秒待機します。CLIが先に時間切れになっても、処理が完了している場合が
 あります。ヘルスAPIの `busy` がfalseになってから、同じ完了印と原本で再実行します。
 停止・再配備では先に新規投入を止め、実行中の保全ジョブが終了したことを
 確認してください。Composeの停止猶予は2分です。
-[S3のチェックサム方式](https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity-upload.html) · [マルチパートの確定](https://docs.aws.amazon.com/AmazonS3/latest/API/API_CompleteMultipartUpload.html) · [マルチパートの中断](https://docs.aws.amazon.com/AmazonS3/latest/API/API_AbortMultipartUpload.html) · [257 MiBの隔離受入](../../.github/workflows/archive-multipart.yml)
+[S3のチェックサム方式](https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity-upload.html) · [マルチパートの確定](https://docs.aws.amazon.com/AmazonS3/latest/API/API_CompleteMultipartUpload.html) · [マルチパートの中断](https://docs.aws.amazon.com/AmazonS3/latest/API/API_AbortMultipartUpload.html) · [257 MiBの隔離受入](../../.github/workflows/archive-multipart.yml) · [2 GiBの実測](EVALUATION.md#2-gibの検査原本を両s3保存先で照合する)
 
 ## 設備時系列JSONL
 
@@ -301,16 +337,17 @@ python3 scripts/extract-sqlite.py --db "$sqlite_config/source.sqlite3" \
 ```
 
 抽出が成功すると、内容に対応したSQLバッチと完了印を作り、`job.json` に
-内容IDとUTCの抽出時刻を出します。 `job.json` の2項目を使い、下の手順で反映します。
+`action`、`batch_id`、`observed_at` を出します。3項目をそのまま下の手順で送ります。
 抽出先のホストと基盤ホストが別なら、バッチ本体を先にコピーしてSHA-256を確認し、
-最後に `.ready` を置きます。元のSQLite DBを基盤ホストへ同期する必要はありません。
-SQLiteの全件取込から消えた業務行はSQLの公開世代に反映されます。
+最後に `.ready` を置きます。同じ観測の再送には元の `job.json` を使います。
+SQL Rawへ残る原本は抽出したJSONです。SQLiteのDBバックアップ自体を保管する場合は、
+原本保全の手順を用います。SQLiteの全件取込から消えた業務行はSQLの公開世代に反映されます。
 [SQLite専用のGitHub Actions](../../.github/workflows/sqlite.yml) は、同じ内容を再取得した時点、
 削除、3世代のGold読取、同じ観測の再送、RawのSHA-256を照合します。
 
 ## 固定SQLバッチをAPIで受け取る
 
-上流の固定SQL観測が生成した `<batch_id>.json` と完了印を `sql-batches/` に置く経路です。 `POST /run` に操作トークンと `batch_id`、`observed_at` を送ります。ファイル抽出CLIの出力は上記の通常取込に渡します。[操作APIとSQLバッチ例](API.md)
+上流の固定SQL観測が生成した `<batch_id>.json` と完了印を `sql-batches/` に置く経路です。 `POST /run` に操作トークンと `action: sql-load`、`batch_id`、`observed_at` を送ります。PostgreSQL・SQLiteの抽出CLIがこの形式を作ります。SQL ServerのCSV・JSONL抽出は通常の `medallion` に渡します。[操作APIとSQLバッチ例](API.md)
 
 業務出力は `sql_bronze`、`sql_silver`、`sql_quarantine`、`sql_gold` に分かれます。確認するには `GET /v1/sql/gold/sales_fulfillment` を使用します。取り込み前に実DBの権限・SQL型・水位の意味を確認してください。
 
