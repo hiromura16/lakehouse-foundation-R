@@ -25,6 +25,7 @@
 | --- | --- | --- |
 | Eclipse Mosquitto（C） | 工場側のMQTTを受信。送信と収集を別アカウントに割り当て | 軽量なブローカーでQoS 1と永続購読を試せる |
 | Telegraf（Go） | MQTTからLine Protocolを解析し、Kafka互換ブローカーへ転送 | 機器のプロトコルに対応する入力プラグインが揃う |
+| Nisshi（Rust、隔離試験用） | Kafka互換の独立ブローカーでSQLiteに保存 | Apache-2.0。TelegrafとVectorの非トランザクション経路をJVMなしで再現できる。 [公式互換表](https://docs.nisshi.io/docs/compatibility) |
 | Redpanda（C++、隔離試験用） | Kafka互換ストリームをディスクへ保存 | JVMを起動せずに、独立した合成トピックで転送を確かめられる。[配布条件](REFERENCES.md#追加機能の配布条件) |
 | Vector（Rust） | 収集済み計測を読み、ディスクバッファを介して保存先へ転送 | Kafkaによる再取得とGreptimeDB gRPCの両方を扱える |
 | GreptimeDB（Rust） | 同じデバイスの時系列を保存し、SQLで検索 | JVMを使わず時刻とタグで検索できる |
@@ -48,6 +49,24 @@ Docker操作をsudoで行う環境では `--sudo` を付けます。これは
 ```bash
 python3 tests/integration/telemetry/acceptance.py
 ```
+
+Linux amd64・Compose 2.24.4以降では、`--nisshi` を付けると同じ試験を
+[Nisshiの設定](../../compose.telemetry.nisshi.yaml) で実行できます。
+この試験ではMQTTの再起動に加えてKafkaブローカーも再起動し、
+Telegraf・Vectorを経由した3点の値と時刻をGreptimeDBで照合します。
+
+**Bash / Zsh共通**
+
+```bash
+python3 tests/integration/telemetry/acceptance.py --nisshi
+```
+
+単体の検証では5イベントを冪等送信し、保存した消費者位置2から再開、
+seek、削除を示すNULL値を照合しました。Nisshi 0.8.2のSQLiteは開発試験用で、
+Kafkaトランザクションを初期化する操作は拒否されます。実用時は
+永続化方式、認証、周辺クライアント互換を別途確認します。
+[公式GitHub](https://github.com/nisshi-io/solace-nisshi/releases/tag/v0.8.2)
+· [ストレージとKafka API互換性](https://docs.nisshi.io/docs/compatibility)
 
 | 検査 | 合格条件 |
 | --- | --- |
@@ -86,6 +105,7 @@ docker compose --env-file /path/to/private/telemetry.env \
 `Basic256Sha256` / `SignAndEncrypt` で購読し、Kafka以降はMQTT試験と
 同じ構成を使います。模擬設備とKafkaにホスト公開ポートはありません。
 証明書は試験用に生成し、試験終了後に削除します。
+`--opcua --nisshi` でも同じ受入を行えます。
 
 **Bash / Zsh共通**
 

@@ -5,6 +5,7 @@ on:  # yamllint disable-line rule:truthy
     paths:
       - compose.evaluation.yaml
       - compose.telemetry.yaml
+      - compose.telemetry.nisshi.yaml
       - native/telemetry/**
       - tests/integration/telemetry/**
       - tests/integration/modbus/**
@@ -13,6 +14,7 @@ on:  # yamllint disable-line rule:truthy
     paths:
       - compose.evaluation.yaml
       - compose.telemetry.yaml
+      - compose.telemetry.nisshi.yaml
       - native/telemetry/**
       - tests/integration/telemetry/**
       - tests/integration/modbus/**
@@ -36,3 +38,7 @@ jobs:
         run: python3 tests/integration/telemetry/acceptance.py --opcua
       - name: Modbus保持レジスタの読取専用と欠測・鮮度の検査
         run: python3 tests/integration/modbus/acceptance.py
+      - name: Rust製Kafka互換ブローカーでMQTTからGreptimeDBまでを検査
+        run: python3 tests/integration/telemetry/acceptance.py --nisshi
+      - name: Rust製Kafka互換ブローカーでOPC UAからGreptimeDBまでを検査
+        run: python3 tests/integration/telemetry/acceptance.py --nisshi --opcua

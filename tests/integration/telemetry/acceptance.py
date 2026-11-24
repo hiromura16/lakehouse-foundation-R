@@ -159,7 +159,7 @@ def opcua_acceptance(docker, project, run, root, http, endpoint):
     print("OPC UA暗号化、相手鍵不一致・書込みの拒否、発生元時刻と品質を照合。")
 
 
-def verify(docker, root, *, opcua=False):
+def verify(docker, root, *, opcua=False, nisshi=False):
     """合成送信元だけを使い、保存先で時刻・値・件数を確認する。"""
     project = f"foundation-r-telemetry-{secrets.token_hex(4)}"
     passwords = root / "passwords"
@@ -207,6 +207,15 @@ def verify(docker, root, *, opcua=False):
                 f"OPCUA_FIXTURE_GID={root.stat().st_gid}\n"
                 f"OPCUA_REMOTE_CERT_FILE={keys / 'remote-cert.pem'}\n"
             )
+    if nisshi:
+        broker_state = root / "nisshi"
+        broker_state.mkdir(mode=0o700)
+        with env.open("a", encoding="utf-8") as settings:
+            settings.write(
+                f"NISSHI_UID={root.stat().st_uid}\n"
+                f"NISSHI_GID={root.stat().st_gid}\n"
+                f"NISSHI_STATE_DIR={broker_state}\n"
+            )
     compose = [
         *docker,
         "compose",
@@ -226,6 +235,8 @@ def verify(docker, root, *, opcua=False):
         "telemetry",
     ]
 
+    if nisshi:
+        compose.extend(("-f", "compose.telemetry.nisshi.yaml"))
     if opcua:
         compose.extend(
             (
@@ -280,41 +291,42 @@ def verify(docker, root, *, opcua=False):
         assert len(records) <= size, "未承認または重複した点が保存されました。"
         return records if len(records) == size else None
 
+    broker_probe = (
+        ("/nisshi", "topic", "list") if nisshi else ("rpk", "cluster", "info")
+    )
+    topic = "foundation-r-evaluation-sensors"
+    broker_create = (
+        ("/nisshi", "topic", "create", topic, "--partitions", "1")
+        if nisshi
+        else (
+            "rpk",
+            "topic",
+            "create",
+            topic,
+            "--partitions",
+            "1",
+            "--replicas",
+            "1",
+        )
+    )
+
+    def broker_ready():
+        """共通入口のKafka要求が完了してから送信・再送を始める。"""
+        return (
+            run(
+                "exec", "-T", "broker", *broker_probe, check=False, timeout=15
+            ).returncode
+            == 0
+        )
+
     try:
         run("config", "--quiet")
         services = ["broker", "greptime"]
         if not opcua:
             services.append("mosquitto")
         run("up", "-d", *services, timeout=300)
-        until(
-            lambda: (
-                run(
-                    "exec",
-                    "-T",
-                    "broker",
-                    "rpk",
-                    "cluster",
-                    "info",
-                    check=False,
-                    timeout=15,
-                ).returncode
-                == 0
-            ),
-            "Kafka応答",
-        )
-        run(
-            "exec",
-            "-T",
-            "broker",
-            "rpk",
-            "topic",
-            "create",
-            "foundation-r-evaluation-sensors",
-            "--partitions",
-            "1",
-            "--replicas",
-            "1",
-        )
+        until(broker_ready, "Kafka応答")
+        run("exec", "-T", "broker", *broker_create)
         endpoint = "http://" + run("port", "greptime", "4000").stdout.strip()
         http = build_opener(ProxyHandler({}))
         run("up", "-d", "vector", timeout=300)
@@ -341,6 +353,9 @@ def verify(docker, root, *, opcua=False):
         publish(1, 23.5)
         publish(2, 24.5)
         run("restart", "mosquitto")
+        if nisshi:
+            run("restart", "broker")
+            until(broker_ready, "Kafkaの再起動")
         run("start", "telegraf")
         assert until(lambda: rows_for(3), "永続購読の再送") == [
             [FIRST_MS + offset * 1000, "sim01", value]
@@ -377,10 +392,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sudo", action="store_true")
     parser.add_argument("--opcua", action="store_true")
+    parser.add_argument("--nisshi", action="store_true")
     args = parser.parse_args()
     docker = ["sudo", "-n", "docker"] if args.sudo else ["docker"]
     with tempfile.TemporaryDirectory(prefix="foundation-r-telemetry-") as temp:
-        verify(docker, Path(temp), opcua=args.opcua)
+        verify(docker, Path(temp), opcua=args.opcua, nisshi=args.nisshi)
 
 
 if __name__ == "__main__":

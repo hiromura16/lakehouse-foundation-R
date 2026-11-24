@@ -1,0 +1,30 @@
+# 既存Kafkaクラスタとは別の、非トランザクション用途の合成試験ブローカー。
+services:
+  broker:
+    platform: linux/amd64
+    image: ghcr.io/nisshi-io/nisshi:v0.8.2@sha256:885a32be1d49a20f1b70eb302bf40e1d0139caeec917821deacc456400d342a0
+    user: "${NISSHI_UID:?専用状態の所有UIDを設定してください}:${NISSHI_GID:?専用状態の所有GIDを設定してください}"
+    command:
+      - broker
+      - --listener-url=tcp://0.0.0.0:9092
+      - --advertised-listener-url=tcp://broker:9092
+      - --storage-engine=sqlite:///data/nisshi.db
+      - --group-initial-rebalance-delay=150ms
+      - --auto-create-topics-enable=false
+    read_only: true
+    cap_drop: [ALL]
+    tmpfs: ["/tmp:size=16m,noexec,nosuid,nodev,mode=1777"]
+    mem_limit: 384m
+    cpus: 1.0
+    pids_limit: 64
+    volumes: !override
+      - type: bind
+        source: ${NISSHI_STATE_DIR:?専用SQLiteディレクトリを設定してください}
+        target: /data
+        bind:
+          create_host_path: false
+    healthcheck:
+      test: [CMD, /nisshi, topic, list]
+      interval: 5s
+      timeout: 3s
+      retries: 12
