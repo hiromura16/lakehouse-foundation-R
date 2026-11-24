@@ -2,9 +2,18 @@ name: ネイティブ処理系の合成データ比較
 
 on:  # yamllint disable-line rule:truthy
   push:
-    paths: ['compose.evaluation.yaml', 'native/evaluation/**', '.github/workflows/evaluation.yml']
+    paths: &engine_paths
+      - .github/workflows/evaluation.yml
+      - compose.evaluation.yaml
+      - medallion/**
+      - native/catalog_schema.py
+      - native/engine.py
+      - native/evaluation/**
+      - native/requirements.lock
+      - scripts/generate-demo.py
+      - scripts/raw_file_input.py
   pull_request:
-    paths: ['compose.evaluation.yaml', 'native/evaluation/**', '.github/workflows/evaluation.yml']
+    paths: *engine_paths
   workflow_dispatch:
 
 permissions:
@@ -89,3 +98,28 @@ jobs:
       - name: 合成環境の専用volumeを破棄
         if: always()
         run: docker compose -f compose.evaluation.yaml --profile '*' down --volumes
+
+
+  business-sql:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+        with:
+          version: '0.13.7'
+          checksum: c5221ff41b7892bfc223543883600125f6a47fe845093e0f5bdff4f359196d83
+          enable-cache: false
+      - name: 同じIceberg入力から二つのエンジンで業務表を再構築
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          eval_env="$RUNNER_TEMP/business-sql"
+          uv venv --python 3.14 "$eval_env"
+          uv pip sync --python "$eval_env/bin/python" --require-hashes \
+            --only-binary :all: native/requirements.lock \
+            native/evaluation/parquet_benchmark.lock \
+            native/evaluation/business_parity.lock
+          "$eval_env/bin/python" -m native.evaluation.business_parity

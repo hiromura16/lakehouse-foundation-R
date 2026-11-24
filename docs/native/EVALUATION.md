@@ -92,6 +92,40 @@ docker compose -f compose.evaluation.yaml --profile sail up -d --build --wait
 
 同じSQLを初回1回、温まったセッションで3回実行します。P1の14.25を採用し、削除されたP2を除き、P3の型不正を報告します。DataFusionは別の合成入力をParquetにし、件数3と平均23.5を照合します。RSSはクライアントプロセス、時間はその実行に含まれるクエリを測っています。サーバーの起動時間や同一CPU制限の比較としては扱いません。[Sailの導入](https://github.com/lakehq/sail/blob/main/docs/introduction/getting-started/index.md) · [DataFusion PythonのI/O](https://datafusion.apache.org/python/user-guide/data-sources.html)
 
+## DataFusionで業務20表の計算を照合する
+
+RustのDataFusion 55.0.0で、既存の業務SQLからSilver 6表、Quarantine 6表、
+Gold 2表を計算します。ローカルのSQLiteカタログで作った同じBronze 6表の
+Iceberg V2スナップショットを固定し、標準DuckDB処理とDataFusion処理に
+分けます。出力は別々のIceberg warehouseへ確定し、行、型、フィールドIDを
+読戻して照合します。既存のエッジデータは期待値SQL 10件を両方で実行します。
+追加データはUTC日付境界、マイクロ秒、原文のUnicodeと不正整数を含みます。
+空のBronzeからも全14派生表のスキーマを照合します。
+
+**Bash / Zsh共通**
+
+```bash
+uv venv --python 3.14 .venv-business-parity
+uv pip sync --python .venv-business-parity/bin/python --require-hashes \
+  --only-binary :all: native/requirements.lock \
+  native/evaluation/parquet_benchmark.lock \
+  native/evaluation/business_parity.lock
+.venv-business-parity/bin/python -m native.evaluation.business_parity
+```
+
+既存の業務SQLへ適用した変換は、相関 `NOT EXISTS` を重複を除いた参照キーとの
+左結合に置換、`count_if` をフィルター付き `count` へ置換、時刻の型を
+UTCのマイクロ秒へ固定、JSONの原文を同じキー順で直列化、整数集計を
+DECIMALへ広げてArrowで範囲を検査する処理です。DataFusion 55.0.0の
+BIGINT集計は、上限を超えると符号が回り込むことを試験で確認します。
+
+この照合は合成データとローカルストレージを使う評価です。標準エンジンを
+切り替える前には、入力契約で受け付けるレガシー文字列と隔離理由を揃える
+受入が必要です。例えば、`2024-11-01T00:00:00+09:00` を日付へ変換した
+結果は両エンジンで日が異なり、指数表記の小数やスラッシュ区切りの日時は
+採否が異なります。試験はこれらの既知の差も結果に残します。
+[DataFusionの設定](https://datafusion.apache.org/python/user-guide/configuration.html) · [実行プログラム](../../native/evaluation/business_parity.py)
+
 ## RisingWaveでKafkaの現在値を確認する
 
 新規の合成試験プロジェクトで実行します。PostgreSQLクライアント `psql` が必要です。起動後に `psql` の接続が確立してからDDLを適用します。
