@@ -530,9 +530,9 @@ Lakekeeper 0.15.1の移行を実行しました。
 | 組み込み受入 | 各構成で11項目に成功 |
 | 同じTrivyの脆弱性DBでのパッケージ照合 | SeaweedFSのHIGH 1件は4.55で0、LakekeeperのHIGH 1件は0.15.1で0 |
 
-会社での更新では、採取前と同じ版を隔離先へ復元できることを先に確認します。
-PostgreSQLにカタログの移行が適用された後は、古いアプリと移行後のDBを組み合わせず、
-切替前のカタログとS3の停止点を対で復元します。試験に用いたデータは合成です。
+標準構成は更新後の2製品を使います。試験に用いたデータは合成です。
+更新の作業順、バックアップと切り戻しの条件は
+[運用手順](OPERATIONS.md#s3とカタログを更新する)で確認します。
 [SeaweedFS 4.55](https://github.com/seaweedfs/seaweedfs/releases/tag/4.55)
 · [Lakekeeper 0.15.1](https://github.com/lakekeeper/lakekeeper/releases/tag/v0.15.1)
 · [保全と隔離復元](OPERATIONS.md#停止済みのdockerボリュームを採取する)

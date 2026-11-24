@@ -47,7 +47,17 @@ case "$variant" in
   current) source_pg="$current_pg" ;;
   previous)
     source_pg=$(postgres_ref LEGACY_POSTGRES)
-    printf '{"services":{"catalog-db":{"image":"%s"}}}\n' "$source_pg" > "$stage/source-previous.yaml"
+    # 更新前に取得した台帳に相当する旧カタログ・旧S3も使う。
+    PYTHONPATH=scripts python3 - "$source_pg" > "$stage/source-previous.yaml" <<'PYCODE'
+import json
+import runpy
+import sys
+
+constants = runpy.run_path("scripts/backup-native.py", run_name="constants")
+images = {**constants["LEGACY_CORE_IMAGES"], "catalog-db": sys.argv[1]}
+images["catalog-migrate"] = images["catalog"]
+json.dump({"services": {role: {"image": ref} for role, ref in images.items()}}, sys.stdout)
+PYCODE
     source_dc+=(-f "$stage/source-previous.yaml")
     ;;
   *) echo "試験用PostgreSQLの指定が不正です。" >&2; exit 1 ;;
@@ -92,7 +102,9 @@ image, manifest, overlay = sys.argv[1:]
 recorded = json.loads(Path(manifest).read_text(encoding="utf-8"))
 effective = json.loads(Path(overlay).read_text(encoding="utf-8"))
 assert recorded["native_core"]["images"]["catalog-db"] == image
-assert effective["services"]["catalog-db"]["image"] == image
+for role, ref in recorded["native_core"]["images"].items():
+    assert effective["services"][role]["image"] == ref
+assert effective["services"]["catalog-migrate"]["image"] == recorded["native_core"]["images"]["catalog"]
 PYCODE
 if "${restore[@]}"; then
   echo "同じ出力先の再利用を検出できませんでした。" >&2

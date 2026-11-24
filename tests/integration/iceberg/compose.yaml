@@ -23,7 +23,7 @@ services:
     mem_limit: 320m
 
   catalog-migrate:
-    image: quay.io/lakekeeper/catalog:v0.14.3@sha256:0009e7ccb26db811b8fc485974b624a999fd096f4da549a8704d3121dc20e98a
+    image: quay.io/lakekeeper/catalog:v0.15.1@sha256:22dcb6044c106a962c242b70051bd226bd50c9134c763121d8713c37fe9a70ec
     command: [migrate]
     environment: *catalog-env
     depends_on:
@@ -31,7 +31,7 @@ services:
         condition: service_healthy
 
   catalog:
-    image: quay.io/lakekeeper/catalog:v0.14.3@sha256:0009e7ccb26db811b8fc485974b624a999fd096f4da549a8704d3121dc20e98a
+    image: quay.io/lakekeeper/catalog:v0.15.1@sha256:22dcb6044c106a962c242b70051bd226bd50c9134c763121d8713c37fe9a70ec
     command: [serve]
     environment: *catalog-env
     depends_on:
@@ -41,7 +41,7 @@ services:
     mem_limit: 384m
 
   storage:
-    image: chrislusf/seaweedfs:4.53@sha256:972ba30c529dfc72a6a12ed427e94d99c7b6a6e59d97bfa52be0a849f43e2cc9
+    image: chrislusf/seaweedfs:4.55@sha256:7ca46aeae2f223b37e5d91593c17ab37738eec6df6ab69b48a0487f7643342b9
     command: [server, -dir=/data, -ip=storage, -ip.bind=0.0.0.0, -volume.max=16, -master.volumeSizeLimitMB=128, -filer, -s3, -s3.config=/etc/seaweedfs/s3.json]
     ports: ["127.0.0.1::8333"]
     configs:

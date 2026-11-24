@@ -308,8 +308,11 @@ class RestoreTest(unittest.TestCase):
             )
 
     def test_legacy_v2_restore_uses_only_original_images(self):
-        """18.7をキャッシュしていない復元先でも、採取版の18.6を選ぶ。"""
-        images = {**backup.CORE_IMAGES, "catalog-db": backup.LEGACY_POSTGRES}
+        """新しい版があっても、DB・カタログ・S3は採取版で復元する。"""
+        images = {
+            **backup.LEGACY_CORE_IMAGES,
+            "catalog-db": backup.LEGACY_POSTGRES,
+        }
         self.manifest["native_core"]["images"] = images
         checksum = backup.publish(self.archive, self.manifest)
         with (
@@ -333,8 +336,25 @@ class RestoreTest(unittest.TestCase):
             (self.output / "compose.restore.yaml").read_text()
         )
         self.assertEqual(
-            overlay["services"]["catalog-db"]["image"], backup.LEGACY_POSTGRES
+            overlay["services"],
+            {
+                role: {"image": image}
+                for role, image in {
+                    **images,
+                    "catalog-migrate": images["catalog"],
+                }.items()
+            },
         )
+
+    def test_mixed_storage_and_catalog_images_are_rejected(self):
+        """別々に許可された固定版でも、承認していない組合せは拒否する。"""
+        for pins, other in (
+            (backup.CORE_IMAGES, backup.LEGACY_CORE_IMAGES),
+            (backup.LEGACY_CORE_IMAGES, backup.CORE_IMAGES),
+        ):
+            with self.subTest(storage=pins["storage"]):
+                mixed = {**pins, "catalog": other["catalog"]}
+                self.assertFalse(backup.supported_core_images(mixed))
 
     def test_unapproved_postgres_digest_fails_before_docker(self):
         """台帳のSHAが正しくても任意のイメージ置換を許さない。"""

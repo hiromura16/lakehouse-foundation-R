@@ -30,6 +30,19 @@ POSTGRES_IMAGES = frozenset((LEGACY_POSTGRES, POSTGRES))
 CORE_IMAGES = {
     "catalog-db": POSTGRES,
     "catalog": (
+        "quay.io/lakekeeper/catalog:v0.15.1@sha256:"
+        "22dcb6044c106a962c242b70051bd226bd50c9134c763121d8713c37fe9a70ec"
+    ),
+    "storage": (
+        "chrislusf/seaweedfs:4.55@sha256:"
+        "7ca46aeae2f223b37e5d91593c17ab37738eec6df6ab69b48a0487f7643342b9"
+    ),
+}
+# カタログの移行前に取得済みの物理アーカイブは、
+# 台帳に記録された旧カタログとS3を組にして復元する。
+LEGACY_CORE_IMAGES = {
+    "catalog-db": POSTGRES,
+    "catalog": (
         "quay.io/lakekeeper/catalog:v0.14.3@sha256:"
         "0009e7ccb26db811b8fc485974b624a999fd096f4da549a8704d3121dc20e98a"
     ),
@@ -247,7 +260,10 @@ def supported_core_images(images):
     return (
         isinstance(database, str)
         and database in POSTGRES_IMAGES
-        and images == {**CORE_IMAGES, "catalog-db": database}
+        and any(
+            images == {**pinned, "catalog-db": database}
+            for pinned in (CORE_IMAGES, LEGACY_CORE_IMAGES)
+        )
     )
 
 

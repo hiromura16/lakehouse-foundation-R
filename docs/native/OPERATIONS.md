@@ -111,7 +111,7 @@ python -m native.archive_uploads --before 2026-11-20 --max-pages 4
 `has_next_page` が `true` の場合、件数と `inventory_sha256` は取得済みページの
 範囲を表します。出力に個別のキーやupload IDは含みません。送信中の一覧は走査中に
 変わるため、比較する場合は新規送信を止めてから読み直します。
-[S3の一覧と2種類のマーカー](https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListMultipartUploads.html) · [SeaweedFS 4.53の一覧実装](https://github.com/seaweedfs/seaweedfs/blob/4.53/weed/s3api/filer_multipart.go)
+[S3の一覧と2種類のマーカー](https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListMultipartUploads.html) · [SeaweedFS 4.55の一覧実装](https://github.com/seaweedfs/seaweedfs/blob/4.55/weed/s3api/filer_multipart.go)
 
 回収する場合は、対象バケットへの送信を行う全writerで新規受付を停止し、処理中の
 要求が終了したことを確認します。単一PUTの終了は操作APIの応答と原本台帳で
@@ -168,6 +168,32 @@ CVE-2025-68121も両方で検出されました。このCVEはTLSセッション
 [PostgreSQLの公式イメージ](https://hub.docker.com/_/postgres)
 · [Goの該当アドバイザリ](https://pkg.go.dev/vuln/GO-2026-4337)
 · [隔離復元と更新のCI](../../.github/workflows/recovery.yml)
+
+### S3とカタログを更新する
+
+標準の保存先はSeaweedFS 4.55、カタログはLakekeeper 0.15.1です。
+初回配置ではComposeの `catalog-migrate` が終了してからカタログが起動します。
+既存の0.14.3と4.53を更新するときは、同じ保守時間にカタログと保存先を
+停止して保全します。先に書込みと定期実行を止め、保全したイメージの組で
+隔離復元を行い、固定Gold・原本・S3参照先を照合します。
+[停止と保全の順序](COMPANY.md#停止する順序と保全の範囲)
+
+1. データベースとストレージの空きを確認します。Lakekeeper 0.15の移行時は
+   endpoint statisticsの表を複製するため、上流はその表の約2倍の空きを
+   目安としています。移行と同時に `pg_dump` などの長いトランザクションが
+   残らない時間を選び、カタログとデータベースの時刻を同期します。
+2. 既存のApp Name、設定、名前付きボリュームで更新します。
+   `catalog-migrate` の終了0、カタログとS3の応答、固定した公開世代・原本の
+   一致を確認してから、定期実行や新規受付を戻します。
+3. 切替前の版に戻す場合は、切替前に一緒に採取したカタログDBとS3を
+   隔離の新規ボリュームへ復元し、元の固定イメージの組で起動します。
+   `backup-native.py restore` が出力したComposeのイメージ指定を使います。
+   古いアプリを移行後のデータベースで起動すると、旧版への切り戻しが
+   成立しません。確認した復元先に利用者の接続を合わせます。
+
+[Lakekeeper 0.15の移行条件](https://github.com/lakekeeper/lakekeeper/releases/tag/v0.15.0)
+· [SeaweedFS 4.55の変更](https://github.com/seaweedfs/seaweedfs/releases/tag/4.55)
+· [公開世代と原本を維持した更新試験](EVALUATION.md#s3とカタログの更新を隔離で試す)
 
 ### 停止済みのDockerボリュームを採取する
 
@@ -404,6 +430,7 @@ HIGH 63件です。同じイメージを使う2つのPostgreSQLサービスは1�
 | Grafana OSS | 13.3.2は15 HIGH。直前の同一DBによる13.3.0→13.3.2の比較は54→15 HIGH |
 | PostgreSQLイメージの `gosu` | GoのTLSに関するCRITICALを1件検出しました。実イメージの実行ファイルにGoの該当TLSハンドシェイク関数の名前が見つからず、起動時の権限切替に使われます。パッケージ検出は台帳に残します |
 | InfluxDB Explorer | Debian BookwormのzlibでCRITICALを1件検出しました。Debianの判定では該当MiniZipはBookwormのzlibバイナリに含まれず、実イメージからもMiniZipのコマンドと対応する共有ライブラリは見つかりませんでした |
+| S3とカタログの更新 | 別の隔離環境のSeaweedFS 4.55とLakekeeper 0.15.1では、前の版で各1件あったHIGHは各0件でした |
 
 別に、リポジトリのPythonロック18ファイルに含まれる144の異なる
 パッケージ名・版の組合せをPyPIの版別JSONで確認し、掲載された脆弱性情報は

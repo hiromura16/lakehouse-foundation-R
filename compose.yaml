@@ -61,7 +61,7 @@ services:
   catalog-migrate:
     networks:
       catalog_db: {}
-    image: quay.io/lakekeeper/catalog:v0.14.3@sha256:0009e7ccb26db811b8fc485974b624a999fd096f4da549a8704d3121dc20e98a
+    image: quay.io/lakekeeper/catalog:v0.15.1@sha256:22dcb6044c106a962c242b70051bd226bd50c9134c763121d8713c37fe9a70ec
     command: [migrate]
     logging: *logging
     environment: *catalog-env
@@ -74,7 +74,7 @@ services:
       catalog_db: {}
       writer: {}
       catalog_view: {}
-    image: quay.io/lakekeeper/catalog:v0.14.3@sha256:0009e7ccb26db811b8fc485974b624a999fd096f4da549a8704d3121dc20e98a
+    image: quay.io/lakekeeper/catalog:v0.15.1@sha256:22dcb6044c106a962c242b70051bd226bd50c9134c763121d8713c37fe9a70ec
     command: [serve]
     restart: unless-stopped
     logging: *logging
@@ -92,7 +92,7 @@ services:
   storage:
     networks:
       writer: {}
-    image: chrislusf/seaweedfs:4.53@sha256:972ba30c529dfc72a6a12ed427e94d99c7b6a6e59d97bfa52be0a849f43e2cc9
+    image: chrislusf/seaweedfs:4.55@sha256:7ca46aeae2f223b37e5d91593c17ab37738eec6df6ab69b48a0487f7643342b9
     restart: unless-stopped
     logging: *logging
     mem_limit: 768m
