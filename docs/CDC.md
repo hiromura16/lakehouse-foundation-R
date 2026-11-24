@@ -397,16 +397,14 @@ lock を使います。更新時は SQL Server の対応版と protocol を再�
 
 ### digest更新とregistry検証
 
-**2026-11-19の更新候補（リリース未承認）:** 公式Quayの同版タグを再照合し、
-index `sha256:3419f2c9e6970e87a383cd25b991c56630837046ed5ae97faceddc3e967dff73`、
-linux/amd64子manifest
-`sha256:015e78794776036f9ffccf22fb36feae451a9152a652db491929d9cce01642a5`
-を候補としてlock・Compose・台帳へ同期しています。公式configのdigest一致と
-linux/amd64、`DEBEZIUM_VERSION=3.7.1.Final` は確認しました。
-これは全layer取得・実pull・実行時互換性の確認ではありません。
-**GitHubの使い捨てrunnerでの実pullと互換性確認は未完了です。**
-その検証と独立レビューが終わるまで、この候補をリリース・デプロイしません。
-
+**2026-11-24の再固定:** Quayの同じ3.7.1.Finalタグを再照合しました。
+旧pinはregistryで `MANIFEST_MISSING` になり、空の環境から取得できません。
+現在のindexは
+`sha256:e20f73da3136cbc1c2a12a67f5f4a4c2cfd83120e886c3c961917e8ca3383769`、
+linux/amd64 manifestは
+`sha256:30296c9dd713146d4291fd20527921fdfaba296e25e5c422414619b7e0811dfa`
+です。互換構成のlock・Compose・台帳をこのdigestに同期しました。
+SQL Serverを含む配置先の機能受入は、実環境で別途行います。
 
 `images.lock.json` を変更したら、次の正規手順でComposeのimage行と台帳を生成します。
 台帳は手編集しません。専用の品質検査venvから実行します。
