@@ -18,13 +18,32 @@
 
 | メソッドとパス | 認証 / 意味 |
 | --- | --- |
+| GET /openapi.json | OpenAPI 3.2.1の機械可読仕様。業務データを返しません。 |
 | GET /health、GET /metrics | ヘルスと集計カウンタ。業務データを返しません。 |
 | POST /run | WORKER_TOKEN。 `{"action":"medallion"}`、`ingest`、`verify` またはSQLバッチを実行 |
+| GET /v1/ingestion/status | READER_TOKEN。直近のファイル取込と標準経路の公開中世代の件数 |
 | GET /v1/releases/latest | READER_TOKEN。標準ソースの最新公開世代とその表スナップショット |
 | GET /v1/gold/{dataset} | READER_TOKEN。 `limit=1..200` と任意の `release=<ID>` |
 | GET /v1/cdc/gold/{dataset}、GET /v1/sql/gold/{dataset} | READER_TOKEN。該当する任意ソースの公開済みGold |
 
 Goldのデータセット名は `factory_daily_production`、`sales_fulfillment`、`sensor_latest`、`sensor_minute` です。センサーの2表は標準ファイル経路にあります。 `release_snapshot_id` と `snapshot_id` は64-bit IDを改変しないよう文字列で返します。金額などのDECIMALは文字列、日付時刻はISO形式です。 `total_rows` と `truncated` で参照件数の限界を確認できます。未公開は404、認証エラーは401、処理中の別操作は409です。
+
+### 取込状態と公開中のデータ
+
+取込状態の `last_attempt` は、APIプロセス上で最後に受理された
+`ingest` または `medallion` です。起動直後は `null` です。
+`imported_files` は当該試行でBronzeの完了台帳に追加したファイル数です。
+`received_deliveries` は同じ試行で新しく保存した受付票を、原本のみ
+（`raw`）、正規化済み（`normalized`）、形式不備（`rejected`）で数えます。
+取込が途中で失敗し、受付票の集計を返すところまで進まなかった場合は
+`received_deliveries` に `null` が返ります。
+
+公開マニフェストに保存される `published` の件数は直近の成功世代です。
+取込試行が失敗しても、公開世代は最後の成功時点に維持されます。
+未公開の場合は `published` 自体が `null` になり、件数を保存する前に
+公開された世代は `gold_rows` と `quarantine_rows` が `null` になります。
+
+[API定義JSON](../../native/openapi.json) · [OpenAPI 3.2.1公式仕様](https://spec.openapis.org/oas/v3.2.1.html)
 
 SQLバッチを反映するときのJSONは次の形です。抽出結果のhousekeeping情報から実値を設定します。
 

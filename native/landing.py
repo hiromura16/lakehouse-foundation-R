@@ -4,6 +4,7 @@
 順に確定し、台帳を再実行時の境界にする。
 """
 
+import json
 import os
 import re
 from datetime import datetime, timezone
@@ -48,6 +49,26 @@ def resolve_source(relative):
     return None
 
 
+def receipt_outcome(relative, data):
+    """確定済み受領票を識別し、元の行を読まずに配送の状態を得る。"""
+    if not relative.startswith("receipts/") or not relative.endswith(".json"):
+        return None
+    try:
+        document = json.loads(data)
+        sender = document["sender"]
+        delivery = document["delivery"]
+        outcome = document["outcome"]
+        if (
+            document["format_version"] == 1
+            and relative == f"receipts/{sender}/{delivery}.json"
+            and outcome in {"raw", "normalized", "rejected"}
+        ):
+            return outcome
+    except (KeyError, TypeError, ValueError):
+        pass
+    return None
+
+
 def ingest(directory=Path("/landing"), prefix=""):
     """ready付き原本を照合し、原本・業務文字列・完了台帳を保存する。
 
@@ -61,6 +82,7 @@ def ingest(directory=Path("/landing"), prefix=""):
     cat = catalog()
     files = cat.load_table(schema(prefix, "bronze") + ".files")
     imported = skipped = 0
+    receipt_counts = {"raw": 0, "normalized": 0, "rejected": 0}
     # 工程1: 完了印と原本を照合した RAW 入力だけを永続化へ渡す。
     for raw in ready_files(directory):
         path, relative, data, digest = (
@@ -142,5 +164,12 @@ def ingest(directory=Path("/landing"), prefix=""):
         # 1表ずつはatomicでも、S3と複数表をまとめたtransactionではない。
         overwrite(files, [meta], "path", relative)
         imported += 1
-    STATE["imported_files"] += imported
-    return {"imported": imported, "skipped": skipped}
+        STATE["imported_files"] += 1
+        outcome = receipt_outcome(relative, data)
+        if outcome:
+            receipt_counts[outcome] += 1
+    return {
+        "imported": imported,
+        "skipped": skipped,
+        "received_deliveries": receipt_counts,
+    }

@@ -38,6 +38,7 @@ S3 = boto3.client(
     ),
 )
 LOCK = threading.Lock()
+INGESTION_ATTEMPT = None
 STATE = {
     "ready": False,
     "blocked": False,

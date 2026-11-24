@@ -146,6 +146,11 @@ def reject_bad_header(root, http, writer, reader, release):
             raise AssertionError("契約外のCSVヘッダーを受け入れました。")
         latest = fetch(http + "/v1/releases/latest", authorization=reader)
         assert latest["release_snapshot_id"] == release
+        status = fetch(http + "/v1/ingestion/status", authorization=reader)
+        attempt = status["last_attempt"]
+        assert attempt["status"] == "failed"
+        assert attempt["error"] == "JOB_FAILED"
+        assert status["published"]["release_snapshot_id"] == release
     finally:
         if created_marker:
             marker.unlink()
@@ -158,6 +163,21 @@ def check(args, env):
     writer = "Bearer " + env["WORKER_TOKEN"]
     http = f"http://127.0.0.1:{args.api_port}"
     assert fetch(http + "/health")["ready"]
+    spec = fetch(http + "/openapi.json")
+    assert spec["openapi"] == "3.2.1"
+    assert "workerToken" in spec["paths"]["/run"]["post"]["security"][0]
+    assert (
+        "readerToken"
+        in spec["paths"]["/v1/ingestion/status"]["get"]["security"][0]
+    )
+    initial = fetch(http + "/v1/ingestion/status", authorization=reader)
+    assert initial == {"last_attempt": None, "published": None}
+    try:
+        fetch(http + "/v1/ingestion/status", authorization=writer)
+    except HTTPError as error:
+        assert error.code == 401
+    else:
+        raise AssertionError("取込状態を操作トークンで取得できました。")
     for supplied in (None, writer):
         try:
             fetch(http + "/v1/gold/sensor_latest", authorization=supplied)
@@ -178,6 +198,12 @@ def check(args, env):
         http + "/run", authorization=writer, body={"action": "medallion"}
     )
     assert build["imported"] >= 1 and build["sql_statements"] == 14, build
+    status = fetch(http + "/v1/ingestion/status", authorization=reader)
+    attempt = status["last_attempt"]
+    assert attempt["status"] == "succeeded"
+    assert attempt["imported_files"] == build["imported"]
+    assert attempt["received_deliveries"] == build["received_deliveries"]
+    assert status["published"]["gold_rows"]["sensor_latest"] == 1
     latest = fetch(http + "/v1/gold/sensor_latest", authorization=reader)
     assert latest["total_rows"] == 1 and latest["rows"][0]["value"] == 90
     assert latest["rows"][0]["quality_code"] == "BAD"

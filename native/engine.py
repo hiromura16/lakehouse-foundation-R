@@ -232,6 +232,7 @@ def medallion(core, prefix=""):
     ):
         return {"sql_statements": 0, "unchanged": True}
     outputs = {}
+    row_counts = {}
     with connect() as db:
         for layer in LAYERS:
             db.execute(f"CREATE SCHEMA {layer}")
@@ -258,11 +259,13 @@ def medallion(core, prefix=""):
             layer, name = local.split(".")
             identifier = f"{core.schema(prefix, layer)}.{name}"
             outputs[local] = write_table(catalog, identifier, arrow)
+            row_counts[local] = arrow.num_rows
         if not prefix:
             for local, arrow in sensor.tables(
                 core, db, sensor_entries
             ).items():
                 outputs[local] = write_table(catalog, local, arrow)
+                row_counts[local] = arrow.num_rows
     release = pa.Table.from_pylist(
         [
             {
@@ -271,6 +274,7 @@ def medallion(core, prefix=""):
                     {
                         "inputs": inputs,
                         "outputs": outputs,
+                        "row_counts": row_counts,
                         "recipe": recipe,
                         "sensor_inputs": sensor_inputs,
                     },

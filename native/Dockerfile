@@ -33,7 +33,7 @@ ENV PATH="/opt/venv/bin:$PATH" \
 WORKDIR /opt/lakehouse
 COPY --chmod=644 scripts/raw_file_input.py scripts/landing_contract.py scripts/generate-demo.py scripts/source_scenarios.py scripts/sql_batch_worker.py ./scripts/
 COPY --chmod=755 medallion ./medallion
-COPY --chmod=644 native/*.py ./native/
+COPY --chmod=644 native/*.py native/openapi.json ./native/
 COPY --chmod=644 infra/cdc/config.py infra/cdc/consumer.py infra/cdc/consumer_runtime.py infra/cdc/event_limits.py infra/cdc/fixed_source.py infra/cdc/raw_writer.py infra/cdc/runtime_control.py infra/cdc/state.py infra/cdc/raw_history.py infra/cdc/cdc_replay.py ./cdc/
 RUN chmod 755 /opt/lakehouse/native /opt/lakehouse/scripts /opt/lakehouse/cdc
 USER 10001:10001

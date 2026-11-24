@@ -1,0 +1,910 @@
+{
+  "openapi": "3.2.1",
+  "info": {
+    "title": "Lakehouse Foundation R",
+    "version": "1.0.0",
+    "description": "取込、公開済みIcebergスナップショットの読取、監視の契約。"
+  },
+  "servers": [
+    {
+      "url": "/"
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "operationId": "getHealth",
+        "summary": "準備状態",
+        "responses": {
+          "200": {
+            "description": "準備完了",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "準備中または停止中",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/metrics": {
+      "get": {
+        "operationId": "getMetrics",
+        "summary": "集計メトリクス",
+        "responses": {
+          "200": {
+            "description": "Prometheusテキスト形式",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi.json": {
+      "get": {
+        "operationId": "getOpenApi",
+        "summary": "API仕様",
+        "responses": {
+          "200": {
+            "description": "OpenAPI文書",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/ingestion/status": {
+      "get": {
+        "operationId": "getIngestionStatus",
+        "summary": "直近の取込と公開中の件数",
+        "security": [
+          {
+            "readerToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "取込状態",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "該当するBearerトークンが必要",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "カタログが利用不可",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/releases/latest": {
+      "get": {
+        "operationId": "getLatestRelease",
+        "summary": "標準経路の最新公開世代",
+        "security": [
+          {
+            "readerToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "最新公開世代",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Release"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "該当するBearerトークンが必要",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "カタログが利用不可",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "未公開",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/run": {
+      "post": {
+        "operationId": "runJob",
+        "summary": "許可済みの定型ジョブを実行",
+        "security": [
+          {
+            "workerToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ジョブ別の集計結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "該当するBearerトークンが必要",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "不正なジョブ要求",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "別のジョブを実行中",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "ジョブ失敗",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "description": "UTF-8 JSON、最大256バイト",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Job"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/gold/{dataset}": {
+      "get": {
+        "operationId": "listGold",
+        "summary": "標準経路の公開済みGold",
+        "security": [
+          {
+            "readerToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "指定世代の行と由来情報",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoldRows"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "該当するBearerトークンが必要",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "行数または公開世代の指定が不正",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "データセットが存在しないか未公開",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Goldが利用不可",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "factory_daily_production",
+                "sales_fulfillment",
+                "sensor_latest",
+                "sensor_minute"
+              ]
+            }
+          },
+          {
+            "$ref": "#/components/parameters/limit"
+          },
+          {
+            "$ref": "#/components/parameters/release"
+          }
+        ]
+      }
+    },
+    "/v1/cdc/gold/{dataset}": {
+      "get": {
+        "operationId": "listCdcGold",
+        "summary": "CDC経路の公開済みGold",
+        "security": [
+          {
+            "readerToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "指定世代の行と由来情報",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoldRows"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "該当するBearerトークンが必要",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "行数または公開世代の指定が不正",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "データセットが存在しないか未公開",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Goldが利用不可",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "factory_daily_production",
+                "sales_fulfillment"
+              ]
+            }
+          },
+          {
+            "$ref": "#/components/parameters/limit"
+          },
+          {
+            "$ref": "#/components/parameters/release"
+          }
+        ]
+      }
+    },
+    "/v1/sql/gold/{dataset}": {
+      "get": {
+        "operationId": "listSqlGold",
+        "summary": "SQL経路の公開済みGold",
+        "security": [
+          {
+            "readerToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "指定世代の行と由来情報",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoldRows"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "該当するBearerトークンが必要",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "行数または公開世代の指定が不正",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "データセットが存在しないか未公開",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Goldが利用不可",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "factory_daily_production",
+                "sales_fulfillment"
+              ]
+            }
+          },
+          {
+            "$ref": "#/components/parameters/limit"
+          },
+          {
+            "$ref": "#/components/parameters/release"
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "readerToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "読取専用"
+      },
+      "workerToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "ジョブ実行専用"
+      }
+    },
+    "parameters": {
+      "limit": {
+        "in": "query",
+        "name": "limit",
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 200,
+          "default": 50
+        }
+      },
+      "release": {
+        "in": "query",
+        "name": "release",
+        "description": "省略時は最新の公開世代",
+        "schema": {
+          "type": "string",
+          "pattern": "^[0-9]{1,19}$"
+        }
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "Health": {
+        "type": "object",
+        "required": [
+          "ready",
+          "blocked",
+          "busy"
+        ],
+        "properties": {
+          "ready": {
+            "type": "boolean"
+          },
+          "blocked": {
+            "type": "boolean"
+          },
+          "busy": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "GoldRows": {
+        "type": "object",
+        "required": [
+          "table",
+          "snapshot_id",
+          "release_snapshot_id",
+          "released_at",
+          "recipe",
+          "rows",
+          "total_rows",
+          "truncated"
+        ],
+        "properties": {
+          "table": {
+            "type": "string"
+          },
+          "snapshot_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[0-9]{1,19}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "release_snapshot_id": {
+            "type": "string",
+            "pattern": "^[0-9]{1,19}$"
+          },
+          "released_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "recipe": {
+            "type": "string"
+          },
+          "rows": {
+            "type": "array",
+            "maxItems": 200,
+            "items": {
+              "type": "object"
+            }
+          },
+          "total_rows": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "Release": {
+        "type": "object",
+        "required": [
+          "release_snapshot_id",
+          "released_at",
+          "recipe",
+          "inputs",
+          "outputs"
+        ],
+        "properties": {
+          "release_snapshot_id": {
+            "type": "string",
+            "pattern": "^[0-9]{1,19}$"
+          },
+          "released_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "recipe": {
+            "type": "string"
+          },
+          "inputs": {
+            "type": "object",
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "outputs": {
+            "type": "object",
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "row_counts": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "additionalProperties": true
+      },
+      "IngestionStatus": {
+        "type": "object",
+        "required": [
+          "last_attempt",
+          "published"
+        ],
+        "properties": {
+          "last_attempt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IngestionAttempt"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "published": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PublishedCounts"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "IngestionAttempt": {
+        "type": "object",
+        "required": [
+          "action",
+          "status",
+          "started_at",
+          "finished_at",
+          "imported_files",
+          "skipped_files",
+          "received_deliveries",
+          "error"
+        ],
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "ingest",
+              "medallion"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "running",
+              "succeeded",
+              "failed"
+            ]
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "imported_files": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "skipped_files": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "received_deliveries": {
+            "anyOf": [
+              {
+                "type": "object",
+                "required": [
+                  "raw",
+                  "normalized",
+                  "rejected"
+                ],
+                "properties": {
+                  "raw": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "normalized": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "rejected": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "PublishedCounts": {
+        "type": "object",
+        "required": [
+          "release_snapshot_id",
+          "released_at",
+          "gold_rows",
+          "quarantine_rows"
+        ],
+        "properties": {
+          "release_snapshot_id": {
+            "type": "string",
+            "pattern": "^[0-9]{1,19}$"
+          },
+          "released_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "gold_rows": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "quarantine_rows": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "Job": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "action"
+            ],
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": [
+                  "verify",
+                  "ingest",
+                  "medallion"
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "action",
+              "batch_id",
+              "observed_at"
+            ],
+            "properties": {
+              "action": {
+                "const": "sql-load"
+              },
+              "batch_id": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "observed_at": {
+                "type": "string",
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{7}Z$"
+              }
+            },
+            "additionalProperties": false
+          }
+        ]
+      }
+    }
+  }
+}

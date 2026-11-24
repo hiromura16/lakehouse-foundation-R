@@ -9,7 +9,7 @@ import socket
 import sys
 import time
 import traceback
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from functools import partial
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -37,10 +37,49 @@ def json_value(value):
     raise TypeError("JSON応答に対応していない型です。")
 
 
+def ingestion_status(core):
+    """観測の欠測と0件、直近の取込と公開中の世代を分けて返す。"""
+    last_attempt = core.INGESTION_ATTEMPT
+    release = engine.latest_release(core, core.catalog())
+    if not release:
+        return {"last_attempt": last_attempt, "published": None}
+    counts = release.get("row_counts")
+    published = {
+        "release_snapshot_id": release["release_snapshot_id"],
+        "released_at": release["released_at"],
+        "gold_rows": None,
+        "quarantine_rows": None,
+    }
+    if counts is not None:
+        for layer in ("gold", "quarantine"):
+            published[f"{layer}_rows"] = {
+                name.split(".", 1)[1]: count
+                for name, count in counts.items()
+                if name.startswith(f"{layer}.")
+            }
+    return {"last_attempt": last_attempt, "published": published}
+
+
 def run_job(core, action, body):
     """書込みを直列化し、正常に完了したジョブを記録する。"""
+    if action not in {"verify", "ingest", "medallion", "sql-load"}:
+        raise ValueError("INVALID_JOB")
     if not core.LOCK.acquire(blocking=False):
         return None
+    track = action in {"ingest", "medallion"}
+    before = core.STATE["imported_files"]
+    if track:
+        attempt = {
+            "action": action,
+            "status": "running",
+            "started_at": datetime.now(timezone.utc).isoformat(),
+            "finished_at": None,
+            "imported_files": None,
+            "skipped_files": None,
+            "received_deliveries": None,
+            "error": None,
+        }
+        core.INGESTION_ATTEMPT = attempt
     try:
         if action == "verify":
             from native.verification import verify
@@ -68,13 +107,33 @@ def run_job(core, action, body):
             from native.landing import ingest
 
             result = ingest()
+            attempt = {
+                **attempt,
+                "skipped_files": result["skipped"],
+                "received_deliveries": result["received_deliveries"],
+            }
             if action == "medallion":
                 result.update(engine.medallion(core))
         core.STATE["successful_runs"] += 1
         core.STATE["last_success"] = time.time()
+        if track:
+            core.INGESTION_ATTEMPT = {
+                **attempt,
+                "status": "succeeded",
+                "finished_at": datetime.now(timezone.utc).isoformat(),
+                "imported_files": core.STATE["imported_files"] - before,
+            }
         return result
     except Exception:
         core.STATE["failed_runs"] += 1
+        if track:
+            core.INGESTION_ATTEMPT = {
+                **attempt,
+                "status": "failed",
+                "finished_at": datetime.now(timezone.utc).isoformat(),
+                "imported_files": core.STATE["imported_files"] - before,
+                "error": "JOB_FAILED",
+            }
         raise
     finally:
         core.LOCK.release()
@@ -113,9 +172,11 @@ def handler(core):
 
         def authorized(self, setting):
             """用途別のトークンを一定時間で比較する。"""
-            supplied = self.headers.get("Authorization", "").encode("utf-8")
+            supplied = self.headers.get_all("Authorization", [])
             expected = f"Bearer {os.environ[setting]}".encode()
-            return secrets.compare_digest(supplied, expected)
+            return len(supplied) == 1 and secrets.compare_digest(
+                supplied[0].encode("utf-8"), expected
+            )
 
         def respond(self, status, value, content_type="application/json"):
             """応答を1回だけ直列化し、業務データを共有キャッシュに残さない。"""
@@ -145,6 +206,11 @@ def handler(core):
                         "busy": core.LOCK.locked(),
                     },
                 )
+            if self.path == "/openapi.json":
+                spec = Path(__file__).with_name("openapi.json")
+                return self.respond(
+                    200, json.loads(spec.read_text(encoding="utf-8"))
+                )
             if self.path == "/metrics":
                 samples = []
                 for key, value in core.STATE.copy().items():
@@ -165,6 +231,12 @@ def handler(core):
                 return self.monitoring()
             if not self.authorized("READER_TOKEN"):
                 return self.respond(401, {"error": "AUTHENTICATION_REQUIRED"})
+            if parsed.path == "/v1/ingestion/status" and not parsed.query:
+                try:
+                    return self.respond(200, ingestion_status(core))
+                except Exception as error:
+                    report_error(error)
+                    return self.respond(503, {"error": "CATALOG_UNAVAILABLE"})
             if parsed.path == "/v1/releases/latest" and not parsed.query:
                 try:
                     value = engine.latest_release(core, core.catalog())
