@@ -113,6 +113,15 @@ services:
         target: /etc/seaweedfs/filer.toml
     volumes:
       - storage:/data
+    healthcheck:
+      # 固定ポートでS3が応答し、未認証のバケット一覧を拒否することを確認する。
+      test:
+        - CMD-SHELL
+        - wget -S -Y off -O /dev/null -T 3 http://127.0.0.1:8333/ 2>&1 | grep -q 'HTTP/1.1 403 Forbidden'
+      interval: 5s
+      timeout: 4s
+      retries: 30
+      start_period: 20s
 
   lakehouse:
     networks:
@@ -165,7 +174,7 @@ services:
       catalog:
         condition: service_healthy
       storage:
-        condition: service_started
+        condition: service_healthy
     healthcheck:
       test: [CMD, python, -m, native.api, health]
       interval: 5s

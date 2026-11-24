@@ -32,6 +32,33 @@
 
 CLIで運用する場合は、Dokployに表示される実際の `appName` を `docker compose -p` に指定し、配備と同じComposeファイルおよび非公開設定を指定します。
 
+## Dokployで定期取込を実行する
+
+配備先の管理画面で対象Composeの **Schedules** を開き、**Create
+Schedule** を選びます。会社で使うDokployは修正済みの版を確認し、
+試験時はv0.31.4の入力欄を基準にします。[Dokployの定期ジョブ](https://docs.dokploy.com/docs/core/schedule-jobs)
+· [Dokploy v0.31.4](https://github.com/Dokploy/dokploy/releases/tag/v0.31.4)
+
+| 入力欄 | 例 |
+| --- | --- |
+| **Service Name** | `lakehouse` |
+| **Name** | `定期取込と業務集計` |
+| **Cron Expression** | `7,22,37,52 * * * *` |
+| **Timezone** | `Asia/Tokyo` |
+| **Command** | `python -m native.api medallion --strict` |
+
+最初に同じコマンドを `lakehouse` のTerminalで試します。**Run Manual
+Schedule** で1回実行し、ジョブのログとGrafana、取込状態APIを照合します。
+App Nameは配備時に決まるため、`COMPOSE_PROJECT_NAME` を別の名前へ
+上書きすると対象コンテナを特定できなくなります。
+
+正常完了と変更なしは終了0です。業務が公開され設備経路だけが更新保留に
+なった場合は、結果JSONを出力して終了2を返します。別ジョブの実行中は
+APIが409を返し、CLIは終了1になります。入力修正後に再実行します。
+運用担当者は、投入側が完了印を確定する時刻と、実測した最長の処理時間を
+基に実行間隔を選びます。トークンはコンテナの既存環境から渡され、Command
+には書きません。[取込状態と認証](API.md#取込状態と公開中のデータ)
+
 ## バックアップと復元
 
 保全対象はカタログDB、S3のSeaweedFSデータと設定、landing原本、private `site.env` と暗号鍵、Grafana volumeと設定ファイル、必要に応じてPrometheusデータ、CDC SQLiteのディレクトリ全体とその運用設定です。追加構成ではn8n専用DBと暗号鍵、OpenObserve、InfluxDB、Explorerのデータと資格情報も対象にします。DokployのVolume Backupsを使う場合、名前付きvolumeに加えてホストのlandingとCAを別途保全します。

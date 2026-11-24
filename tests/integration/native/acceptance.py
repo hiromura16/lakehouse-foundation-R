@@ -4,7 +4,9 @@ import argparse
 import base64
 import hashlib
 import json
+import re
 import secrets
+import subprocess
 import time
 from pathlib import Path
 from urllib.error import HTTPError
@@ -219,7 +221,31 @@ def check_archive(root, http, writer, reader, release):
     )
 
 
-def check_independent_lanes(root, http, writer, reader):
+def strict_schedule(container, expected_exit):
+    """実コンテナで定期ジョブと同じコマンドを実行し、終了値を照合する。"""
+    result = subprocess.run(
+        [
+            "docker",
+            "exec",
+            container,
+            "python",
+            "-m",
+            "native.api",
+            "medallion",
+            "--strict",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=90,
+    )
+    assert result.returncode == expected_exit
+    response = json.loads(result.stdout)
+    assert bool(response["sensor"]["error"]) == (expected_exit == 2)
+    assert response["unchanged"] and response["imported"] == 0
+
+
+def check_independent_lanes(root, http, writer, reader, schedule=None):
     """破損した設備完了印の横で業務が更新され、修復後に設備が再開する。"""
     source = root / "sensor/acceptance.jsonl"
     marker = source.with_suffix(".jsonl.ready")
@@ -259,6 +285,8 @@ def check_independent_lanes(root, http, writer, reader):
         )
         for dataset in ("gold.sensor_minute", "gold.sensor_latest"):
             assert current["outputs"][dataset] == before["outputs"][dataset]
+        if schedule:
+            strict_schedule(schedule, 2)
     finally:
         marker.write_text(original, encoding="utf-8")
     healed = fetch(
@@ -281,6 +309,8 @@ def check_independent_lanes(root, http, writer, reader):
         authorization=reader,
     )
     assert retained["sensor"]["status"] == "retained"
+    if schedule:
+        strict_schedule(schedule, 0)
 
 
 def check_filters(http, reader, release):
@@ -400,7 +430,9 @@ def check(args, env):
     )
     check_archive(args.landing, http, writer, reader, release)
     reject_bad_header(args.landing, http, writer, reader, release)
-    check_independent_lanes(args.landing, http, writer, reader)
+    check_independent_lanes(
+        args.landing, http, writer, reader, args.schedule_container
+    )
     verified = fetch(
         http + "/run", authorization=writer, body={"action": "verify"}
     )
@@ -532,7 +564,12 @@ def main():
     parser.add_argument("--browser-port", type=int, default=18503)
     parser.add_argument("--catalog-port", type=int, default=18504)
     parser.add_argument("--prometheus-port", type=int, default=18505)
+    parser.add_argument("--schedule-container")
     args = parser.parse_args()
+    if args.schedule_container and not re.fullmatch(
+        r"[0-9a-f]{12,64}", args.schedule_container
+    ):
+        parser.error("対象Composeから得たlakehouseのコンテナIDを指定します。")
     fixture(args.landing)
     check(args, load_test_env(args.env_file))
     if args.gui_env_file:

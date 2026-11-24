@@ -167,8 +167,11 @@ checkoutのルートから次を実行します。登録済みの `landing` を�
 設定ファイルは作成時から0600にし、接続用の `PG*` 環境設定がある場合は、
 抽出専用のシェルから実行します。
 
+**Bash / Zsh共通**
+
 ```bash
 config="$HOME/.config/lakehouse-postgresql"
+landing="$HOME/.config/lakehouse-foundation-r/landing"
 umask 077
 mkdir -p "$config"
 python3 -m venv "$config/venv"

@@ -462,7 +462,14 @@ def main():
         "dataset", nargs="?", help="Goldの集計名、または保全するファイル名"
     )
     parser.add_argument("--limit", type=int, default=50)
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="medallionで設備経路に失敗したときも非ゼロで終了する",
+    )
     args = parser.parse_args()
+    if args.strict and args.action != "medallion":
+        parser.error("--strict は medallion で使います。")
     try:
         if args.action == "serve":
             serve()
@@ -470,6 +477,9 @@ def main():
             value = operation(args.action, args.dataset, args.limit)
             if args.action != "health":
                 print(json.dumps(value, ensure_ascii=False))
+            # 業務世代とエラー情報はAPIで確定済み。自動実行へ部分成功を伝える。
+            if args.strict and value.get("sensor", {}).get("error"):
+                return 2
     except Exception as error:
         if args.action == "serve":
             report_error(error)

@@ -45,12 +45,18 @@ jobs:
           docker compose --env-file "$site" -p native-ci \
             -f compose.yaml -f compose.gui.yaml up \
             -d --build --wait --wait-timeout 180
-      - name: 業務SQL・公開世代・API・閲覧画面を検査
+      - name: 業務SQL・公開世代・定期ジョブ・閲覧画面を検査
+        shell: bash
         run: |
+          set -Eeuo pipefail
+          site="$RUNNER_TEMP/native-site.env"
+          container=$(docker compose --env-file "$site" -p native-ci \
+            -f compose.yaml -f compose.gui.yaml ps -q lakehouse)
           python3 tests/integration/native/acceptance.py \
             --env-file "$RUNNER_TEMP/native-site.env" \
             --landing "$RUNNER_TEMP/native-landing" --api-port 18502 \
-            --grafana-port 18501 --gui-env-file "$RUNNER_TEMP/native-operator.env"
+            --grafana-port 18501 --gui-env-file "$RUNNER_TEMP/native-operator.env" \
+            --schedule-container "$container"
           docker compose --env-file "$RUNNER_TEMP/native-site.env" -p native-ci \
             exec -T prometheus promtool check config /etc/prometheus/prometheus.yml
           docker compose --env-file "$RUNNER_TEMP/native-site.env" -p native-ci \
