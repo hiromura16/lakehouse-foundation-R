@@ -33,6 +33,44 @@
 
 メダリオンはデータ品質の段階を、DDDは業務用語の境界を、データメッシュは所有と運用の分担を決めるときに使えます。同じ製造データに3つの考え方を適用できます。メダリオンの製品側の構成例はMicrosoftの図で確認できます。[メダリオン設計](https://learn.microsoft.com/en-us/azure/databricks/lakehouse/medallion/) · [Microsoft Fabricの公式構成図](https://learn.microsoft.com/en-us/azure/architecture/databases/architecture/dataops-mdw) · [データメッシュの原則](https://martinfowler.com/articles/data-mesh-principles.html) · [Kimballのディメンショナルモデリング](https://www.kimballgroup.com/data-warehouse-business-intelligence-resources/kimball-techniques/dimensional-modeling-techniques/)
 
+## 品質、モデル、配信方式を決める
+
+メダリオンを使う場合でも、表のモデルと処理の方式は用途ごとに決めます。
+同じ製造イベントを原本の調査、設備の速報、確定した生産実績に利用する
+例で考えます。
+
+| 方式 | 先に決めること | 工場データでの使い方 |
+| --- | --- | --- |
+| Kimballのディメンショナルモデリング | 1行が表す測定事象、切り口、足し合わせられる数値 | 製造実績は指図・設備・日付を照合し、計画数と実績数が結合で増えないよう先に集計します。日次生産Goldの粒度は工場×UTC日です |
+| Data Vault 2.0 | 業務キーのHub、関係のLink、属性や変更履歴のSatellite | 拠点・業務システムごとに品番の属性と履歴を独立して保持する候補です。標準は原本と個別の型付け表で対応し、長期の統合キーが必要になったときに評価します |
+| Lambdaアーキテクチャ | 速報を出す経路と、まとめて再計算する経路の照合方法 | 設備速報の検索用時系列DBと、承認済みの原本・長期履歴を区別します。同じ指標を速報と確定に出す場合は計算規則と遅着の扱いを揃えます |
+| Kappaアーキテクチャ | 再処理に必要なイベント履歴、順序、差し替えや削除の意味 | ブローカーの履歴を十分に保持できる経路で候補になります。CDCの隔離復元では確定済みRawの位置とNULLを照合し、履歴の欠けた区間は停止します |
+
+[粒度を先に決めるKimballの手順](https://www.kimballgroup.com/data-warehouse-business-intelligence-resources/kimball-techniques/dimensional-modeling-techniques/four-4-step-design-process/)
+· [Daniel LinstedtによるData Vault 2.0の解説](https://datavaultalliance.com/engineering/data-vault-2-0-an-introduction/)
+· [LambdaとKappaの設計例](https://learn.microsoft.com/en-us/azure/architecture/databases/guide/big-data-architectures)
+· [確定済みCDCを隔離で再生する手順](CDC-SHADOW.md)
+
+## 工場内の責任とキーを合わせる
+
+ISA-95／IEC 62264の考え方では、計測・制御、製造オペレーション、
+経営計画・物流の間でやり取りする情報と責任を定めます。
+Foundation Rでは、設備の値と品質、生産の指図・停止・実績、ERPの受注・出荷を
+それぞれの契約で受け取り、取り込み担当と指標の所有者を決めます。
+PLC・制御機器への書込を伴う運転制御は工場の既存の責任範囲です。
+[ISAの概要](https://www.isa.org/standards-and-publications/isa-standards/isa-95-standard)
+· [ISA-95の製造と業務システム間の情報交換プロファイル](https://www.isa.org/products/ansi-isa-95-00-08-2020-enterprise-control-system-i)
+
+| 導入時に合意する項目 | 例 |
+| --- | --- |
+| 設備の論理IDと物理資産 | 温度センサーを交換しても製造ラインの論理設備IDを継続します。個体番号と交換時刻を別に記録すると、設備の集計と校正・保守の履歴を同時に追えます |
+| 発生時刻、受信時刻、業務日 | 深夜シフトを一勤務として集計する場合は、工場のタイムゾーン、日付の帰属、日跨ぎ・夏時間をカレンダー契約に定めます。標準のUTC日と業務シフトの値はそれぞれの粒度で照合します |
+| 名称、単位、品質 | 同じ名前の設備を工場とラインのIDで分け、温度の単位と品質コードを記録します。スケールや換算を変更する場合は、配備時刻と設定の版を保全します |
+| 訂正、取消、遅着 | 出荷取消、同一計測の再送、設備時刻の誤りを区別します。原本と確定済みの公開世代を照合し、正しいデータ製品だけを再公開します |
+
+[OPC UA ISA-95の論理設備と物理資産](https://reference.opcfoundation.org/specs/OPC-10030/8)
+· [設備JSONLとソース契約](SOURCES.md)
+
 ## テーブル形式の選択
 
 | 形式 | 設計上の特徴 | Foundation Rでの判断 |
