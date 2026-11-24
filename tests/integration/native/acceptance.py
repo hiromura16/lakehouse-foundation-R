@@ -469,7 +469,7 @@ def check(args, env):
             "Grafanaにダッシュボードが自動設定されませんでした。"
         )
     panels = {item["id"]: item for item in result["dashboard"]["panels"]}
-    assert len(panels) == 6
+    assert len(panels) == 8
     assert result["meta"]["provisioned"]
     # 実際にプロビジョニングされたJSONで現在値と履歴の表示意図を検査する。
     for panel_id in (1, 6):
@@ -484,6 +484,11 @@ def check(args, env):
         "lakehouse_partial_runs",
     }
     assert panels[5]["options"]["colorMode"] == "none"
+    assert {target["expr"] for target in panels[7]["targets"]} == {
+        "lakehouse_gold_active",
+        "lakehouse_gold_limit",
+    }
+    assert panels[8]["targets"][0]["expr"] == "lakehouse_gold_rejected_total"
     print(
         json.dumps(
             {

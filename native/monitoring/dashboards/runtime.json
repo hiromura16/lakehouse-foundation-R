@@ -336,6 +336,76 @@
           ]
         }
       }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Goldの同時参照件数",
+      "description": "標準・CDC・SQLの読取枠を合算します。",
+      "gridPos": {
+        "x": 0,
+        "y": 27,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "lakehouse-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "lakehouse_gold_active",
+          "legendFormat": "参照中",
+          "instant": false
+        },
+        {
+          "refId": "B",
+          "expr": "lakehouse_gold_limit",
+          "legendFormat": "割当上限",
+          "instant": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Goldの混雑による応答",
+      "description": "同時参照の上限で待機を依頼した累計です。",
+      "gridPos": {
+        "x": 12,
+        "y": 27,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "lakehouse-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "lakehouse_gold_rejected_total",
+          "legendFormat": "待機を依頼",
+          "instant": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {}
     }
   ]
 }

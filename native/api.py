@@ -14,6 +14,7 @@ from decimal import Decimal
 from functools import partial
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from threading import Lock
 from types import SimpleNamespace
 from urllib.parse import parse_qs, urlsplit
 from urllib.request import Request, urlopen
@@ -179,8 +180,42 @@ def report_error(error, *, file=sys.stdout):
     )
 
 
-def handler(core):
-    """ランタイム状態を使うHTTPハンドラークラスを組み立てる。"""
+class GoldAdmission:
+    """同時に開始するGoldの参照数と、空きがなく返した応答を記録する。"""
+
+    def __init__(self, limit):
+        self.limit = limit
+        self.active = 0
+        self.rejected = 0
+        self.lock = Lock()
+
+    def acquire(self):
+        """枠が空いている場合だけ、PyIcebergやDuckDBの処理を許す。"""
+        with self.lock:
+            if self.active >= self.limit:
+                self.rejected += 1
+                return False
+            self.active += 1
+            return True
+
+    def release(self):
+        """成功・読み取り失敗・クライアント切断のいずれでも枠を返す。"""
+        with self.lock:
+            self.active -= 1
+
+    def metrics(self):
+        """同じロックで採取したカウンターとゲージを返す。"""
+        with self.lock:
+            return {
+                "gold_active": self.active,
+                "gold_limit": self.limit,
+                "gold_rejected_total": self.rejected,
+            }
+
+
+def handler(core, *, gold_readers=2):
+    """1つのHTTPサーバーが標準・CDC・SQLで同じGold参照枠を共有する。"""
+    admission = GoldAdmission(gold_readers)
 
     class Handler(BaseHTTPRequestHandler):
         """稼働確認、メトリクス、定型ジョブ、スナップショット参照を提供する。"""
@@ -201,7 +236,14 @@ def handler(core):
                 supplied[0].encode("utf-8"), expected
             )
 
-        def respond(self, status, value, content_type="application/json"):
+        def respond(
+            self,
+            status,
+            value,
+            content_type="application/json",
+            *,
+            retry_after=None,
+        ):
             """応答を1回だけ直列化し、業務データを共有キャッシュに残さない。"""
             content = (
                 json.dumps(value, default=json_value)
@@ -213,6 +255,8 @@ def handler(core):
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
+            if retry_after is not None:
+                self.send_header("Retry-After", str(retry_after))
             self.end_headers()
             self.wfile.write(body)
 
@@ -236,7 +280,8 @@ def handler(core):
                 )
             if self.path == "/metrics":
                 samples = []
-                for key, value in core.STATE.copy().items():
+                state = core.STATE.copy() | admission.metrics()
+                for key, value in state.items():
                     metric = int(value) if isinstance(value, bool) else value
                     samples.append(f"lakehouse_{key} {metric}\n")
                 return self.respond(
@@ -314,27 +359,29 @@ def handler(core):
                 predicate = engine.gold_filter(match[2], filters)
             except ValueError:
                 return self.respond(400, {"error": "INVALID_FILTER"})
+            if not admission.acquire():
+                return self.respond(503, {"error": "GOLD_BUSY"}, retry_after=2)
             try:
-                value = engine.gold_rows(
-                    core,
-                    match[2],
-                    limit,
-                    prefix=f"{match[1]}_" if match[1] else "",
-                    release_id=release_id,
-                    row_filter=predicate,
-                )
+                try:
+                    value = engine.gold_rows(
+                        core,
+                        match[2],
+                        limit,
+                        prefix=f"{match[1]}_" if match[1] else "",
+                        release_id=release_id,
+                        row_filter=predicate,
+                    )
+                except Exception as error:
+                    report_error(error)
+                    return self.respond(503, {"error": "GOLD_UNAVAILABLE"})
                 if value and filters:
                     value["filters"] = filters
                 return self.respond(
                     200 if value else 404,
-                    value
-                    or {
-                        "error": "DATASET_NOT_READY",
-                    },
+                    value or {"error": "DATASET_NOT_READY"},
                 )
-            except Exception as error:
-                report_error(error)
-                return self.respond(503, {"error": "GOLD_UNAVAILABLE"})
+            finally:
+                admission.release()
 
         def do_POST(self):
             """トークン、パス、要求内容を検証し、許可済みのジョブを実行する。"""
@@ -393,6 +440,9 @@ def serve():
         re.fullmatch(r"[a-f0-9]{64}", token) for token in (worker, reader)
     ):
         raise ValueError("64文字の異なるトークンを生成してください。")
+    readers = os.environ.get("LAKEHOUSE_GOLD_MAX_CONCURRENT", "2")
+    if not re.fullmatch(r"[1-8]", readers):
+        raise ValueError("Goldの同時実行数は1〜8を指定してください。")
     core = core_module()
     # Lakekeeperの健全性はComposeで待機する。S3の初回接続に失敗した場合は
     # 初期化を再試行し、成功するまでHTTPを受け付けない。
@@ -408,7 +458,9 @@ def serve():
             )
             time.sleep(2)
     core.STATE["ready"] = True
-    with ThreadingHTTPServer(("0.0.0.0", 8080), handler(core)) as http:
+    with ThreadingHTTPServer(
+        ("0.0.0.0", 8080), handler(core, gold_readers=int(readers))
+    ) as http:
         http.serve_forever()
 
 

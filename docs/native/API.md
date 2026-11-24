@@ -49,6 +49,10 @@ Goldの参照では、固定世代のArrowをバッチ順にDuckDBへ渡し、�
 返却JSONの契約は共通です。1回の参照で処理する範囲は、絞り込み後の
 10万行、Arrow 64 MiBを上限とします。超えた場合は503を返すため、工場、
 設備、受注、日付などデータ製品が許可する条件で絞ります。
+標準・CDC・SQLを合わせ、同時に開始できるGold参照は既定で2件です。枠が
+埋まっている場合、認証と条件検査を通ったGold参照にはHTTP 503、
+`GOLD_BUSY` と `Retry-After: 2` を返します。指定された秒数を待ってから
+再試行してください。ヘルスとメトリクスは引き続き取得できます。
 [PyIcebergのバッチ読取](https://py.iceberg.apache.org/reference/pyiceberg/table/#pyiceberg.table.DataScan.to_arrow_batch_reader)
 · [DuckDBでのArrow入力](https://duckdb.org/docs/2.0/clients/python/data_ingestion)
 

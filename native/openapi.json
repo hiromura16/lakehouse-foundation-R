@@ -306,7 +306,13 @@
             }
           },
           "503": {
-            "description": "Goldが利用不可",
+            "description": "Goldが利用不可。GOLD_BUSYの場合はRetry-After後に再試行",
+            "headers": {
+              "Retry-After": {
+                "description": "GOLD_BUSYの場合に待機する秒数",
+                "schema": {"type": "integer", "minimum": 1}
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -406,7 +412,13 @@
             }
           },
           "503": {
-            "description": "Goldが利用不可",
+            "description": "Goldが利用不可。GOLD_BUSYの場合はRetry-After後に再試行",
+            "headers": {
+              "Retry-After": {
+                "description": "GOLD_BUSYの場合に待機する秒数",
+                "schema": {"type": "integer", "minimum": 1}
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -501,7 +513,13 @@
             }
           },
           "503": {
-            "description": "Goldが利用不可",
+            "description": "Goldが利用不可。GOLD_BUSYの場合はRetry-After後に再試行",
+            "headers": {
+              "Retry-After": {
+                "description": "GOLD_BUSYの場合に待機する秒数",
+                "schema": {"type": "integer", "minimum": 1}
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {

@@ -159,6 +159,7 @@ services:
       WAREHOUSE_NAME: foundation-r
       # 2 CPUの上限に揃え、Parquet読み込みをホストのCPU総数へ広げない。
       PYICEBERG_MAX_WORKERS: '2'
+      LAKEHOUSE_GOLD_MAX_CONCURRENT: ${LAKEHOUSE_GOLD_MAX_CONCURRENT:-2}
       WORKER_TOKEN: ${WORKER_TOKEN:?native/setup.pyで非公開設定を作成してください}
       READER_TOKEN: ${READER_TOKEN:?native/setup.pyで非公開設定を作成してください}
       NO_PROXY: *no-proxy

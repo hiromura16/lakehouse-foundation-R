@@ -177,6 +177,10 @@ def show():
             )
         elif error.code == 401:
             st.error("運用担当者に読取トークンの設定確認を依頼してください。")
+        elif error.code == 503 and error.headers.get("Retry-After"):
+            st.warning(
+                "参照が集中しています。少し待ってから、この画面を再読み込みしてください。"
+            )
         else:
             st.error(
                 f"データを取得できませんでした（HTTP {error.code}）。"
