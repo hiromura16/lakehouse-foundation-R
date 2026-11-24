@@ -1,11 +1,13 @@
 """完了印から原本を取り出す境界を、標準ライブラリだけで確認する。"""
 
+import os
 import tempfile
 import unittest
 from hashlib import sha256
 from pathlib import Path
+from unittest import mock
 
-from scripts.raw_file_input import RawFile, ready_files
+from scripts.raw_file_input import RawFile, ready_files, source_bytes
 
 
 class RawFileTests(unittest.TestCase):
@@ -53,3 +55,46 @@ class RawFileTests(unittest.TestCase):
             (directory / "marker-link.csv").write_bytes(payload.read_bytes())
             (directory / "marker-link.csv.ready").symlink_to(marker)
             self.assertEqual(list(ready_files(directory)), [])
+
+    def test_growing_file_is_read_only_to_limit_plus_one(self):
+        """open後に原本が追記されても、読取りバイト数を上限で止める。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "growing.csv"
+            path.write_bytes(b"ready")
+            original_fdopen = os.fdopen
+            observed_limits = []
+
+            def open_after_growth(fd, mode):
+                """最初の属性確認とstreamの実読取りの間で追記する。"""
+                stream = original_fdopen(fd, mode)
+                original_read = stream.read
+
+                def grow_and_read(limit):
+                    observed_limits.append(limit)
+                    with path.open("ab") as writer:
+                        writer.write(b"x" * 512)
+                    return original_read(limit)
+
+                stream.read = grow_and_read
+                return stream
+
+            with (
+                mock.patch("scripts.raw_file_input.MAX_BYTES", 32),
+                mock.patch(
+                    "scripts.raw_file_input.os.fdopen", open_after_growth
+                ),
+            ):
+                with self.assertRaisesRegex(
+                    ValueError, "bounded import limit"
+                ):
+                    source_bytes(path)
+            self.assertEqual(observed_limits, [33])
+
+    def test_nonregular_completion_marker_fails_without_waiting(self):
+        """完了印がFIFOへ誤設定されても、入力の待ち受けを始めない。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            (directory / "source.csv").write_bytes(b"data")
+            os.mkfifo(directory / "source.csv.ready")
+            with self.assertRaisesRegex(ValueError, "must be a regular file"):
+                list(ready_files(directory))

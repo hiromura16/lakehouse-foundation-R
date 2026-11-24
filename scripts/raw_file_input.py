@@ -4,7 +4,9 @@
 次の原本は要求されるまで読まないため、既存の表ごとの確定順も維持する。
 """
 
+import os
 import re
+import stat
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
@@ -22,20 +24,53 @@ class RawFile:
     digest: str
 
 
-def completion_hash(marker):
-    """改行付きのSHA-256完了markerを検査してhash文字列を返す。
+def read_stable(path, limit, label):
+    """通常ファイルを上限付きで読み、読取中の変更と差替えを拒否する。
 
-    サイズ確認の後も読取量を制限し、読取前後のfile成長に備える。
-    原本との一致は呼出元のingestが別に検査する。
+    statとopenの間にFIFOへ差し替えられても待機しない。読んだfdと
+    現在の着地パスの属性を比較し、同名差替えも失敗にする。
     """
-    if marker.stat().st_size > 66:
-        raise ValueError("Invalid completion marker.")
-    # stat後の成長にも備え、読取量そのものにも上限を設ける。
-    with marker.open("rb") as stream:
-        content = stream.read(67)
+    flags = os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW
+    with os.fdopen(os.open(path, flags), "rb") as stream:
+        before = os.fstat(stream.fileno())
+        if not stat.S_ISREG(before.st_mode):
+            raise ValueError(f"{label} must be a regular file.")
+        if before.st_size > limit:
+            raise ValueError(f"{label} exceeds the bounded import limit.")
+        data = stream.read(limit + 1)
+        if len(data) > limit:
+            raise ValueError(f"{label} exceeds the bounded import limit.")
+        after = os.fstat(stream.fileno())
+        current = path.stat(follow_symlinks=False)
+        if len(data) != after.st_size or not (
+            identity(before) == identity(after) == identity(current)
+        ):
+            raise ValueError(f"{label} changed while it was read.")
+        return data
+
+
+def identity(info):
+    """サイズ、時刻、デバイス、inodeを用いて読取りの一貫性を確認する。"""
+    return (
+        info.st_dev,
+        info.st_ino,
+        info.st_size,
+        info.st_mtime_ns,
+        info.st_ctime_ns,
+    )
+
+
+def completion_hash(marker):
+    """通常ファイルの完了印から、改行付きSHA-256を検査して返す。"""
+    content = read_stable(marker, 66, "Completion marker")
     if not re.fullmatch(rb"[a-f0-9]{64}\r?\n", content):
         raise ValueError("Invalid completion marker.")
     return content[:64].decode("ascii")
+
+
+def source_bytes(path):
+    """受入上限を超えずに原本を読み取る。"""
+    return read_stable(path, MAX_BYTES, "Landing file")
 
 
 def ready_files(directory):
@@ -45,19 +80,11 @@ def ready_files(directory):
         if marker.is_symlink() or path.is_symlink() or not path.is_file():
             continue
         relative = path.relative_to(directory).as_posix()
-        if path.stat().st_size > MAX_BYTES:
-            raise ValueError("Landing file exceeds the bounded import limit.")
         expected = completion_hash(marker)
-        # 内容hashと読取前後の属性で、marker作成後や読取中の変更を拒否する。
-        before = path.stat()
-        data = path.read_bytes()
-        after = path.stat()
+        data = source_bytes(path)
         digest = sha256(data).hexdigest()
-        if digest != expected or (before.st_size, before.st_mtime_ns) != (
-            after.st_size,
-            after.st_mtime_ns,
-        ):
+        if digest != expected:
             raise ValueError(
-                "Landing file changed or does not match its completion marker."
+                "Landing file does not match its completion marker."
             )
         yield RawFile(path, relative, data, digest)
