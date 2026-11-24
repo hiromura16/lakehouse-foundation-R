@@ -27,6 +27,10 @@ from native.storage import (
 from scripts.landing_contract import source_rows
 from scripts.raw_file_input import ready_files
 
+IMAGE_SUFFIXES = frozenset({".png", ".jpg", ".jpeg", ".webp"})
+IMAGE_FORMATS = ("PNG", "JPEG", "WEBP")
+IMAGE_PIXELS_LIMIT = 32_000_000
+
 
 def resolve_source(relative):
     """相対pathから、固定6契約または正式なGUI増分名を照合する。
@@ -69,6 +73,53 @@ def receipt_outcome(relative, data):
     return None
 
 
+def image_details(data):
+    """画像の寸法と型を検査し、失敗時は有限な理由コードを返す。"""
+    try:
+        with Image.open(BytesIO(data), formats=IMAGE_FORMATS) as decoded:
+            width, height = decoded.size
+            if width < 1 or height < 1 or width * height > IMAGE_PIXELS_LIMIT:
+                return None, "IMAGE_DIMENSIONS_LIMIT"
+            mime = Image.MIME[decoded.format]
+            decoded.verify()
+        # Pillowのverifyは形式によって画素を展開しない。
+        # 先頭画像を展開できるかも確かめてから画像一覧に載せる。
+        with Image.open(BytesIO(data), formats=IMAGE_FORMATS) as decoded:
+            decoded.load()
+    except Image.DecompressionBombError:
+        return None, "IMAGE_DIMENSIONS_LIMIT"
+    except (OSError, SyntaxError, ValueError):
+        return None, "IMAGE_CORRUPT_OR_UNSUPPORTED"
+    return {"width": str(width), "height": str(height), "mime": mime}, None
+
+
+def discard_image_entry(table, relative):
+    """正・隔離間を移るとき、そのpathの直前の値を退ける。"""
+    filter_by_path = EqualTo("path", relative)
+    if (
+        table.current_snapshot() is not None
+        and table.scan(
+            row_filter=filter_by_path, limit=1, selected_fields=("path",)
+        )
+        .to_arrow()
+        .num_rows
+    ):
+        table.delete(delete_filter=filter_by_path)
+
+
+def record_image(cat, prefix, meta, detail, reason):
+    """原本は共有したまま、画像として使える版と隔離理由を分ける。"""
+    images = cat.load_table(f"{schema(prefix, 'bronze')}.images")
+    issues = cat.load_table(f"{schema(prefix, 'quarantine')}.image_files")
+    relative = meta["path"]
+    if reason:
+        overwrite(issues, [{**meta, "reason": reason}], "path", relative)
+        discard_image_entry(images, relative)
+    else:
+        overwrite(images, [{**meta, **detail}], "path", relative)
+        discard_image_entry(issues, relative)
+
+
 def ingest(directory=Path("/landing"), prefix="", *, lane="all"):
     """ready付き原本を照合し、原本・業務文字列・完了台帳を保存する。
 
@@ -101,11 +152,25 @@ def ingest(directory=Path("/landing"), prefix="", *, lane="all"):
         if previous and previous[0]["sha256"] == digest:
             skipped += 1
             continue
+        bucket = os.environ["S3_BUCKET_RAW"]
+        key = (
+            ("verify/" + prefix if prefix else "raw/")
+            + digest
+            + "/"
+            + sha256(relative.encode()).hexdigest()
+        )
+        uri = "s3://" + bucket + "/" + key
+        is_image = path.suffix.lower() in IMAGE_SUFFIXES
+        details, image_reason = (
+            image_details(data) if is_image else (None, None)
+        )
+        mime = details["mime"] if details else "application/octet-stream"
+        # 工程3: 内容とpathのhashで原本を識別し、同名fileの旧版もS3へ残す。
+        # 業務ファイルは列検査が失敗した場合も、照合済みの原本を保つ。
+        S3.put_object(Bucket=bucket, Key=key, Body=data, ContentType=mime)
         source = resolve_source(relative)
-        rows = []
         if source:
-            # 業務契約へ一致する素材だけを解釈し、型の妥当性はSilverへ委ねる。
-            # 未知のCSV等は任意表へせず、下段の原本保存と台帳登録だけを行う。
+            # 列の妥当性はここで、型・業務ルールの妥当性はSilverで確かめる。
             rows = source_rows(path.suffix, data, source["columns"])
             stamp = datetime.now(timezone.utc).isoformat()
             rows = [
@@ -120,27 +185,6 @@ def ingest(directory=Path("/landing"), prefix="", *, lane="all"):
                 }
                 for row in rows
             ]
-        bucket = os.environ["S3_BUCKET_RAW"]
-        key = (
-            ("verify/" + prefix if prefix else "raw/")
-            + digest
-            + "/"
-            + sha256(relative.encode()).hexdigest()
-        )
-        uri = "s3://" + bucket + "/" + key
-        mime = "application/octet-stream"
-        image = None
-        if path.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}:
-            # verify後のdecoderは再利用せず、寸法取得は別に開き直す。
-            with Image.open(BytesIO(data)) as decoded:
-                decoded.verify()
-            with Image.open(BytesIO(data)) as decoded:
-                image = (decoded.width, decoded.height)
-                mime = Image.MIME.get(decoded.format, mime)
-        # 工程3: 内容とpathのhashで原本を識別し、同名fileの旧版もS3へ残す。
-        # 以降で失敗しても原本は残り得るが、完了台帳を先に進めない。
-        S3.put_object(Bucket=bucket, Key=key, Body=data, ContentType=mime)
-        if source:
             table = cat.load_table(
                 schema(prefix, "bronze") + "." + source["table"]
             )
@@ -152,14 +196,8 @@ def ingest(directory=Path("/landing"), prefix="", *, lane="all"):
             "mime": mime,
             "bytes": str(len(data)),
         }
-        if image:
-            table = cat.load_table(schema(prefix, "bronze") + ".images")
-            overwrite(
-                table,
-                [{**meta, "width": str(image[0]), "height": str(image[1])}],
-                "path",
-                relative,
-            )
+        if is_image:
+            record_image(cat, prefix, meta, details, image_reason)
         # 工程4: 業務行/画像metadataのcommit後、最後にfile完了を確定する。
         # 1表ずつはatomicでも、S3と複数表をまとめたtransactionではない。
         overwrite(files, [meta], "path", relative)

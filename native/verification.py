@@ -17,6 +17,53 @@ from native.landing import ingest
 from native.storage import ROOT, S3, catalog, schema
 
 
+def image_fixture(path, data):
+    """検査用の1枚と、それに対応する完了印を更新する。"""
+    path.write_bytes(data)
+    digest = sha256(data).hexdigest()
+    path.with_name(path.name + ".ready").write_text(digest + "\n")
+    return digest
+
+
+def image_raw(record):
+    """検査用画像の原本を、記録された版の位置から読み取る。"""
+    uri = urlsplit(record["s3_uri"])
+    with S3.get_object(Bucket=uri.netloc, Key=uri.path.lstrip("/"))[
+        "Body"
+    ] as stream:
+        return stream.read()
+
+
+def verify_image_replacement(cat, prefix, path, good_bytes, first_record):
+    """破損版を保全し、同じ場所に正常版を再送して画像一覧を回復する。"""
+    bronze = schema(prefix, "bronze") + ".images"
+    quarantine = schema(prefix, "quarantine") + ".image_files"
+    root = path.parent.parent
+    rejected = b"invalid inspection image"
+    bad_hash = image_fixture(path, rejected)
+    if ingest(root, prefix)["imported"] != 1:
+        raise AssertionError("破損画像の原本を保全できませんでした。")
+    if cat.load_table(bronze).scan().to_arrow().num_rows:
+        raise AssertionError("破損した新しい版が画像一覧に残りました。")
+    (issue,) = cat.load_table(quarantine).scan().to_arrow().to_pylist()
+    if (
+        issue["sha256"] != bad_hash
+        or issue["reason"] != "IMAGE_CORRUPT_OR_UNSUPPORTED"
+        or image_raw(issue) != rejected
+        or image_raw(first_record) != good_bytes
+    ):
+        raise AssertionError("画像の隔離理由または原本の版が一致しません。")
+
+    image_fixture(path, good_bytes)
+    if ingest(root, prefix)["imported"] != 1:
+        raise AssertionError("画像の正常版を再受理できませんでした。")
+    if cat.load_table(quarantine).scan().to_arrow().num_rows:
+        raise AssertionError("修復した画像の隔離が解消されませんでした。")
+    (restored,) = cat.load_table(bronze).scan().to_arrow().to_pylist()
+    if restored != first_record:
+        raise AssertionError("画像の正常版を再現できませんでした。")
+
+
 def verify(*, transform, run_query):
     """専用namespaceで固定合成素材・画像・再実行の期待値を照合する。
 
@@ -51,23 +98,18 @@ def verify(*, transform, run_query):
             image_path = Path(directory) / "images" / "inspection.png"
             image_path.parent.mkdir()
             Image.new("RGB", (4, 4), color="gray").save(image_path)
-            image_hash = sha256(image_path.read_bytes()).hexdigest()
-            image_path.with_name(image_path.name + ".ready").write_text(
-                image_hash + "\n"
-            )
+            image_bytes = image_path.read_bytes()
+            image_hash = image_fixture(image_path, image_bytes)
             first = ingest(Path(directory), prefix)
             transform(prefix)
             image_table = cat.load_table(schema(prefix, "bronze") + ".images")
             image_record = image_table.scan().to_arrow().to_pylist()[0]
-            image_uri = urlsplit(image_record["s3_uri"])
-            with S3.get_object(
-                Bucket=image_uri.netloc,
-                Key=image_uri.path.lstrip("/"),
-            )["Body"] as stream:
-                original = stream.read()
-            if sha256(original).hexdigest() != image_hash:
-                raise AssertionError("Stored image bytes do not match.")
-            result["checks"].append("image original bytes and hash preserved")
+            if sha256(image_raw(image_record)).hexdigest() != image_hash:
+                raise AssertionError("保存した画像と原本のSHA-256が違います。")
+            verify_image_replacement(
+                cat, prefix, image_path, image_bytes, image_record
+            )
+            result["checks"].append("画像の原本・破損版・修復版を照合")
             checks = json.loads(
                 (ROOT / "medallion/expected-demo.json").read_text()
             )["checks"]

@@ -222,6 +222,16 @@ def ensure_tables(prefix=""):
                 properties={"format-version": "2"},
             )
 
+    # 画像として解釈できなかった原本も、台帳から参照できるよう理由を保全する。
+    image_issues = schema(prefix, "quarantine") + ".image_files"
+    if not cat.table_exists(image_issues):
+        fields = ("path", "sha256", "s3_uri", "mime", "bytes", "reason")
+        cat.create_table(
+            image_issues,
+            schema=pa.schema([(name, pa.string()) for name in fields]),
+            properties={"format-version": "2"},
+        )
+
 
 def overwrite(table, rows, column, value):
     """指定列の値に一致する範囲を、渡された行集合へ置き換える。
