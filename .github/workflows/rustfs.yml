@@ -7,6 +7,7 @@ on:  # yamllint disable-line rule:truthy
       - compose.storage.rustfs.yaml
       - native/**
       - tests/integration/native/rustfs_storage.py
+      - tests/integration/native/rustfs_archive.py
       - tests/integration/native/snapshot_evidence.py
       - .github/workflows/rustfs.yml
   pull_request:
@@ -15,6 +16,7 @@ on:  # yamllint disable-line rule:truthy
       - compose.storage.rustfs.yaml
       - native/**
       - tests/integration/native/rustfs_storage.py
+      - tests/integration/native/rustfs_archive.py
       - tests/integration/native/snapshot_evidence.py
       - .github/workflows/rustfs.yml
   workflow_dispatch:
@@ -42,7 +44,7 @@ jobs:
             -f compose.yaml -f compose.storage.rustfs.yaml pull \
             storage catalog-db catalog catalog-migrate
           docker compose -p native-rustfs-ci --env-file "$stage/site.env" build lakehouse
-      - name: 認証、条件付き書込、公開、再起動後のRawとGoldを照合
+      - name: 認証、256 MiB原本の保全、再起動後のRawとGoldを照合
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -55,6 +57,9 @@ jobs:
           "${dc[@]}" exec -T lakehouse python -m native.api verify
           python3 scripts/generate-demo.py --output "$stage/landing" --seed 42 --orders 20 --days 7 --scenario edge
           "${dc[@]}" exec -T lakehouse python -m native.api medallion
+          python3 tests/integration/native/rustfs_archive.py seed "$stage/landing"
+          "${dc[@]}" exec -T lakehouse python - before \
+            < tests/integration/native/rustfs_archive.py > "$stage/archive-before.json"
           "${dc[@]}" exec -T lakehouse python - --files-only \
             < tests/integration/native/snapshot_evidence.py > "$stage/before.json"
           "${dc[@]}" down --timeout 30
@@ -62,6 +67,10 @@ jobs:
           "${dc[@]}" up -d --no-build --pull never --wait --wait-timeout 160 lakehouse
           "${dc[@]}" exec -T lakehouse python - --files-only \
             < tests/integration/native/snapshot_evidence.py > "$stage/after.json"
+          "${dc[@]}" exec -T lakehouse python - after \
+            < tests/integration/native/rustfs_archive.py > "$stage/archive-after.json"
+          cmp "$stage/archive-before.json" "$stage/archive-after.json"
+          cat "$stage/archive-after.json"
           cmp "$stage/before.json" "$stage/after.json"
           cat "$stage/after.json"
       - name: 失敗したジョブの分類と発生箇所を記録

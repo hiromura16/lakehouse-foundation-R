@@ -68,6 +68,14 @@ docker compose --env-file "$site" -p "$project" \
 S3の匿名・誤認証は403、原本の条件付き書込の条件不一致は412。正常な条件のみ
 更新を許可します。合成の受入11件に加え、6業務入力から得たGold14行とRaw6件の
 SHA-256、Iceberg公開世代は、同じvolumeで再起動後も一致しました。
+追加のCI受入では、上限ちょうど256 MiBの合成原本を操作API経由で保全します。
+`If-None-Match` の衝突、誤ったSHA-256、不在と上限超過をそれぞれ照合します。
+同じvolumeで再起動し、再送でS3オブジェクトとIceberg台帳の版を追加せず、
+原本の保存長、SHA-256、台帳のスナップショットが一致することを確認します。
+再起動前後の全バイトは各1 MiBずつ読み、保存時のメタデータと独立にSHA-256を
+計算します。検証用には原本の着地と保存で各256 MiBの領域を使います。
+[隔離受入の実行手順](../../.github/workflows/rustfs.yml) · [S3の条件付き作成・チェックサム](https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html)
+
 単一ノード、単一ディスクの試験です。企業利用ではIAM・TLS、監視、
 複数ノードの障害復旧、データ移行を別の環境で確認します。
 [公式S3互換性の範囲](https://docs.rustfs.com/en/reference/s3-compatibility)

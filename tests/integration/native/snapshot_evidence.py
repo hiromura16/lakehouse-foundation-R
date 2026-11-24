@@ -7,7 +7,8 @@ from hashlib import sha256
 from urllib.parse import urlsplit
 from uuid import UUID
 
-from native import api, engine
+from native import api, archive, engine
+from scripts.raw_file_input import MAX_BYTES as LANDING_MAX_BYTES
 
 
 def digest(value):
@@ -16,6 +17,28 @@ def digest(value):
         value, default=api.json_value, sort_keys=True, separators=(",", ":")
     )
     return sha256(encoded.encode()).hexdigest()
+
+
+def raw_sha256(s3, record):
+    """通常原本・大容量原本を、それぞれの上限内で分割して照合する。"""
+    location = urlsplit(record["s3_uri"])
+    size = int(record["bytes"])
+    is_archive = record["path"].startswith(archive.DIRECTORY + "/")
+    limit = archive.MAX_BYTES if is_archive else LANDING_MAX_BYTES
+    assert 0 <= size <= limit
+    result = s3.get_object(
+        Bucket=location.netloc, Key=location.path.lstrip("/")
+    )
+    checksum = sha256()
+    read_bytes = 0
+    with result["Body"] as body:
+        assert result["ContentLength"] == size
+        while chunk := body.read(archive.CHUNK_BYTES):
+            read_bytes += len(chunk)
+            assert read_bytes <= size
+            checksum.update(chunk)
+    assert read_bytes == size
+    return checksum.hexdigest()
 
 
 def evidence(*, files_only=False, physical=False):
@@ -30,12 +53,7 @@ def evidence(*, files_only=False, physical=False):
     assert 6 <= len(files) < 64
     expected = {}
     for record in files:
-        location = urlsplit(record["s3_uri"])
-        result = core.S3.get_object(
-            Bucket=location.netloc, Key=location.path.lstrip("/")
-        )
-        with result["Body"] as body:
-            actual = sha256(body.read(16 * 1024 * 1024 + 1)).hexdigest()
+        actual = raw_sha256(core.S3, record)
         assert actual == record["sha256"]
         expected[record["path"]] = actual
     report = {
