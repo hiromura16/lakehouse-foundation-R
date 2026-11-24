@@ -3,6 +3,8 @@
 services:
   storage: !override
     image: docker.io/rustfs/rustfs:1.0.6@sha256:ee717072290bec9b11abfc0365f8310b00df1cd9b3639943edae47bdef05044a
+    networks:
+      writer: {}
     restart: unless-stopped
     mem_limit: 768m
     environment:
@@ -35,6 +37,18 @@ services:
 
 networks:
   default:
+    internal: true
+  writer:
+    internal: true
+  catalog_db:
+    internal: true
+  catalog_view:
+    internal: true
+  probes:
+    internal: true
+  api_origin:
+    internal: true
+  metrics_view:
     internal: true
 
 volumes:

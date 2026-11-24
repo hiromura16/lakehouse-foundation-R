@@ -5,6 +5,8 @@ x-tool-logging: &tool-logging
 
 services:
   tools-db:
+    networks:
+      automation_db: {}
     image: postgres:18.6-alpine@sha256:300ebd02c6d4de9ee27ad7f6855d5d21b4d3a4a5117767c1197d284c635d9736
     environment:
       POSTGRES_DB: automation
@@ -22,6 +24,9 @@ services:
     logging: *tool-logging
 
   n8n:
+    networks:
+      automation_db: {}
+      automation_apps: {}
     image: ${COMPOSE_PROJECT_NAME:-lakehouse-r}-n8n
     pull_policy: build
     build:
@@ -69,6 +74,8 @@ services:
     logging: *tool-logging
 
   openobserve:
+    networks:
+      tools_apps: {}
     build:
       context: .
       dockerfile: infra/openobserve/Dockerfile
@@ -109,6 +116,9 @@ services:
     logging: *tool-logging
 
   observe-forwarder:
+    networks:
+      tools_apps: {}
+      metrics_view: {}
     profiles: [tools-metrics]
     image: prom/prometheus:v3.16.0@sha256:89c1a644817e9ad70fa2af76c84898e327c1de7063735f962e8313b1e28672c3
     user: "${LANDING_UID}:${LANDING_GID}"
@@ -131,6 +141,8 @@ services:
     logging: *tool-logging
 
   influxdb3:
+    networks:
+      tools_apps: {}
     build:
       context: .
       dockerfile: native/tools/influx.Dockerfile
@@ -165,6 +177,8 @@ services:
     logging: *tool-logging
 
   influx-explorer:
+    networks:
+      tools_apps: {}
     image: docker.io/influxdata/influxdb3-ui:1.11.2@sha256:7bc3e9caf1c2334a301bfc6b08eb6012cb5b33db9f0f0dd8f86d9b3553343e86
     command: ["--mode=query"]
     environment:
@@ -178,6 +192,9 @@ services:
     logging: *tool-logging
 
   tools-portal:
+    networks:
+      tools_apps: {}
+      automation_apps: {}
     image: ${COMPOSE_PROJECT_NAME:-lakehouse-r}-tools-portal
     pull_policy: build
     build:
@@ -207,10 +224,26 @@ services:
     mem_limit: 96m
     logging: *tool-logging
 
+  read-api:
+    networks:
+      automation_apps:
+        aliases: [lakehouse]
+
+  health-relay:
+    networks:
+      tools_apps: {}
+      automation_apps: {}
+
   prometheus:
     build:
       args:
         TOOL_TARGETS: '1'
+
+networks:
+  automation_db:
+    internal: true
+  automation_apps:
+  tools_apps:
 
 configs:
   tools-ports:

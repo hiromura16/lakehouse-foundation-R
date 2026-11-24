@@ -111,13 +111,29 @@ Dockerイメージの実行設定には渡しません。ミラーのファイ�
 再ビルドします。確認は会社側で公開してよい情報に絞り、認証ファイルは
 Gitやログに残さないでください。
 
-Composeの実行環境でBakeを選択していて、外部の会社CAやミラーファイルに
-対して `additional privileges requested: ... fs.read=...` が出る場合は、
-Composeを起動するプロセスで `COMPOSE_BAKE=false` を設定し、標準の
-BuildKit経路で再実行します。Dokployでは対象リリースのCompose実行方式を
-管理者が確認します。Bakeを組織で使い続ける場合、読取許可は承認済みの
-個別ファイルに絞ります。[ComposeとBake](https://docs.docker.com/compose/how-tos/dependent-images/#build-with-bake)
-· [Bakeの読取許可](https://docs.docker.com/reference/cli/docker/buildx/bake/#allow)
+Compose 5系と新しいBuildxの組み合わせでは、Gitの作業ディレクトリ
+外に置いた会社CAやミラーファイルのビルドで、`additional privileges
+requested: ... fs.read=...` が出る場合があります。ビルドを担当する
+管理者は、`docker compose build --print` で対象サービスの計画を生成し、
+`docker buildx bake --load --allow fs.read=対象ファイル` へ渡します。
+許可引数は外部の入力ファイルごとに指定します。配備時は構築済みの
+同じプロジェクト名を選び、`up --no-build --pull missing` で使います。
+Dokployがこの組み合わせを使う場合は、配備先で事前ビルドを行い、
+同じApp Name・Composeファイル・Environmentで **Run Command** に
+`--no-build --pull missing` を指定します。
+[Composeのビルド計画](https://docs.docker.com/reference/cli/docker/compose/build/)
+· [Bakeのファイル読取許可](https://docs.docker.com/reference/cli/docker/buildx/bake/#allow)
+
+会社CAだけを追加する場合の例です。ミラーを使う場合は、秘密ファイルの
+内容を表示せず、承認されたパスをそれぞれ独立した `--allow` へ追加します。
+
+**Bash / Zsh共通**
+
+```bash
+docker compose --env-file "$site" -p "$project" build --print lakehouse |
+  docker buildx bake --file - --load \
+    --allow "fs.read=/absolute/path/to/company-public-chain.pem"
+```
 
 [uvのpip設定](https://docs.astral.sh/uv/reference/settings/#pip) · [uvの認証形式](https://docs.astral.sh/uv/concepts/authentication/http/#netrc-files) · [Dockerのビルド用secret](https://docs.docker.com/build/building/secrets/)
 

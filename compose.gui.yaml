@@ -5,6 +5,8 @@ services:
       LAKEKEEPER__UI__LAKEKEEPER_URL: ${LAKEHOUSE_CATALOG_URL:-http://localhost:18504}
 
   data-browser:
+    networks:
+      gui_apps: {}
     build:
       context: .
       dockerfile: native/gui/Dockerfile
@@ -44,6 +46,10 @@ services:
       retries: 10
 
   ops-proxy:
+    networks:
+      gui_apps: {}
+      catalog_view: {}
+      metrics_view: {}
     # 公開の経路設定を組み込み、認証は非公開ファイルとして別途マウントする。
     image: ${COMPOSE_PROJECT_NAME:-lakehouse-r}-ops-proxy
     pull_policy: build
@@ -89,7 +95,19 @@ services:
       timeout: 4s
       retries: 10
 
+  read-api:
+    networks:
+      gui_apps:
+        aliases: [lakehouse]
+
+  health-relay:
+    networks:
+      gui_apps: {}
+
   prometheus:
     build:
       args:
         GUI_TARGETS: '1'
+
+networks:
+  gui_apps:

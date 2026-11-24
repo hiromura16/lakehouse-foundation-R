@@ -10,7 +10,10 @@
   labels: {app: Lakehouse, module: http_ready}
 - targets: [http://prometheus:9090/-/ready]
   labels: {app: Prometheus, module: http_ready}
-- targets: [http://grafana:3000/api/health]
-  labels: {app: Grafana, module: http_ready}
+- targets: [http://health-relay:8120/grafana]
+  labels:
+    app: Grafana
+    module: http_ready
+    instance: http://grafana:3000/api/health
 - targets: [blackbox:9115]
   labels: {app: Blackbox, module: tcp_connect}

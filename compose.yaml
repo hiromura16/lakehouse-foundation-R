@@ -20,10 +20,27 @@ x-configured-image: &configured-image
   context: .
   dockerfile: native/Dockerfile.configured
 
+# 2つのNginx入口は、固定ルートだけをプロキシする。
+x-private-proxy: &private-proxy
+  restart: unless-stopped
+  entrypoint: [nginx]
+  command: [-g, daemon off;]
+  user: "${LANDING_UID}:${LANDING_GID}"
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  tmpfs: ["/tmp:size=32m,mode=1777"]
+  mem_limit: 64m
+  logging: *logging
+  labels:
+    traefik.enable: 'false'
+
 x-no-proxy: &no-proxy "localhost,127.0.0.1,::1,catalog,catalog-db,storage,lakehouse,prometheus,grafana,blackbox,${NO_PROXY:-${no_proxy:-}}"
 
 services:
   catalog-db:
+    networks:
+      catalog_db: {}
     image: postgres:18.6-alpine@sha256:300ebd02c6d4de9ee27ad7f6855d5d21b4d3a4a5117767c1197d284c635d9736
     restart: unless-stopped
     logging: *logging
@@ -42,6 +59,8 @@ services:
       retries: 24
 
   catalog-migrate:
+    networks:
+      catalog_db: {}
     image: quay.io/lakekeeper/catalog:v0.14.3@sha256:0009e7ccb26db811b8fc485974b624a999fd096f4da549a8704d3121dc20e98a
     command: [migrate]
     logging: *logging
@@ -51,6 +70,10 @@ services:
         condition: service_healthy
 
   catalog:
+    networks:
+      catalog_db: {}
+      writer: {}
+      catalog_view: {}
     image: quay.io/lakekeeper/catalog:v0.14.3@sha256:0009e7ccb26db811b8fc485974b624a999fd096f4da549a8704d3121dc20e98a
     command: [serve]
     restart: unless-stopped
@@ -67,6 +90,8 @@ services:
       retries: 30
 
   storage:
+    networks:
+      writer: {}
     image: chrislusf/seaweedfs:4.53@sha256:972ba30c529dfc72a6a12ed427e94d99c7b6a6e59d97bfa52be0a849f43e2cc9
     restart: unless-stopped
     logging: *logging
@@ -90,6 +115,10 @@ services:
       - storage:/data
 
   lakehouse:
+    networks:
+      writer: {}
+      api_origin:
+        aliases: [lakehouse-origin]
     image: ${COMPOSE_PROJECT_NAME:-lakehouse-r}-lakehouse
     pull_policy: build
     build:
@@ -144,6 +173,10 @@ services:
       retries: 45
 
   blackbox:
+    networks:
+      catalog_db: {}
+      writer: {}
+      probes: {}
     image: ${COMPOSE_PROJECT_NAME:-lakehouse-r}-blackbox
     pull_policy: build
     build:
@@ -160,6 +193,10 @@ services:
       retries: 12
 
   prometheus:
+    networks:
+      probes: {}
+      api_origin: {}
+      metrics_view: {}
     image: ${COMPOSE_PROJECT_NAME:-lakehouse-r}-prometheus
     pull_policy: build
     build:
@@ -182,6 +219,8 @@ services:
       retries: 12
 
   grafana:
+    networks:
+      metrics_view: {}
     image: ${COMPOSE_PROJECT_NAME:-lakehouse-r}-grafana
     pull_policy: build
     build:
@@ -210,6 +249,51 @@ services:
       retries: 24
     ports:
       - "127.0.0.1:${LAKEHOUSE_GRAFANA_PORT:-18501}:3000"
+
+  read-api:
+    <<: *private-proxy
+    image: ${COMPOSE_PROJECT_NAME:-lakehouse-r}-read-api
+    pull_policy: build
+    build:
+      <<: *configured-image
+      target: read-api
+    networks:
+      api_origin: {}
+      probes: {}
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:8080/_gateway-health]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  health-relay:
+    <<: *private-proxy
+    image: ${COMPOSE_PROJECT_NAME:-lakehouse-r}-health-relay
+    pull_policy: build
+    build:
+      <<: *configured-image
+      target: health-relay
+    networks:
+      probes: {}
+      catalog_view: {}
+      metrics_view: {}
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:8120/_relay-health]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+networks:
+  catalog_db:
+    internal: true
+  writer:
+    internal: true
+  catalog_view:
+    internal: true
+  probes:
+    internal: true
+  api_origin:
+  metrics_view:
 
 configs:
   storage-auth:

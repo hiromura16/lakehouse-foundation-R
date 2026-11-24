@@ -1,11 +1,26 @@
 # 追加ツールを有効にした環境だけでPrometheusへ登録する。
-- targets: [http://n8n:5678/healthz/readiness]
-  labels: {app: n8n, module: http_ready}
-- targets: [http://openobserve:5080/healthz]
-  labels: {app: OpenObserve, module: http_ready}
-- targets: [http://influxdb3:8181/health]
-  labels: {app: InfluxDB 3, module: http_ready}
-- targets: [http://influx-explorer:8080/]
-  labels: {app: InfluxDB Explorer, module: http_ready}
-- targets: [http://tools-portal:8060/_health]
-  labels: {app: 運用ポータル, module: http_ready}
+- targets: [http://health-relay:8120/n8n]
+  labels:
+    app: n8n
+    module: http_ready
+    instance: http://n8n:5678/healthz/readiness
+- targets: [http://health-relay:8120/openobserve]
+  labels:
+    app: OpenObserve
+    module: http_ready
+    instance: http://openobserve:5080/healthz
+- targets: [http://health-relay:8120/influxdb]
+  labels:
+    app: InfluxDB 3
+    module: http_ready
+    instance: http://influxdb3:8181/health
+- targets: [http://health-relay:8120/explorer]
+  labels:
+    app: InfluxDB Explorer
+    module: http_ready
+    instance: http://influx-explorer:8080/
+- targets: [http://health-relay:8120/tools]
+  labels:
+    app: 運用ポータル
+    module: http_ready
+    instance: http://tools-portal:8060/_health

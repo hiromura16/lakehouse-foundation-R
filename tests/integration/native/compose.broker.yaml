@@ -1,6 +1,13 @@
 # 合成試験専用。JVM不要のブローカーとトピックは試験後に破棄できる。
 services:
+  # 合成イベントを送る受入試験だけが、lakehouseから試験brokerへ直接接続する。
+  lakehouse:
+    networks:
+      cdc_egress: {}
+
   test-broker:
+    networks:
+      cdc_egress: {}
     image: docker.redpanda.com/redpandadata/redpanda:v26.3.1@sha256:260532f70fd840bf2159106bd4ef900f199c1f5ca2a23cb362642320513b90f5
     command:
       - redpanda

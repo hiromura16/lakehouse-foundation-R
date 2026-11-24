@@ -2,6 +2,9 @@
 # Debeziumコネクターは上流で管理し、この構成から書き込まない。
 services:
   native-cdc:
+    networks:
+      writer: {}
+      cdc_egress: {}
     image: ${COMPOSE_PROJECT_NAME:-lakehouse-r}-lakehouse
     pull_policy: never
     command: [python, -m, native.cdc]
@@ -54,3 +57,6 @@ services:
         read_only: true
         bind:
           create_host_path: false
+
+networks:
+  cdc_egress:

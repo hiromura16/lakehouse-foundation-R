@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 # 合成したTLSの発行者と、実際に生成したIcebergのGoldを照合する。
 set -Eeuo pipefail
-# 生成したCAはcheckoutの外に置く。標準BuildKitで必要なファイルだけを渡す。
-export COMPOSE_BAKE=false
 
 docker_cmd=(docker)
 if [[ "${1:-}" == --sudo ]]; then
@@ -72,13 +70,21 @@ printf '%s\n' LAKEHOUSE_API_PORT=0 CF_EDGE_HTTPS_PROXY= \
   "CF_EDGE_READER_FILE=$stage/edge-reader" "CF_EDGE_POLICY_FILE=$fixture/policy.json" \
   "CF_TUNNEL_TOKEN_FILE=$stage/synthetic-tunnel" >> "$site"
 
+build_images() {
+  # v5ではBakeがファイルごとの許可を求める。公開CAだけを明示的に渡す。
+  "${suite[@]}" build --print "$@" |
+    "${docker_cmd[@]}" buildx bake --file - --load --allow "fs.read=$stage/ca.pem"
+}
+
 "${suite[@]}" config --quiet
-"${suite[@]}" up -d --build --wait --wait-timeout 180 lakehouse
+build_images lakehouse
+"${suite[@]}" up -d --no-build --pull missing --wait --wait-timeout 180 lakehouse
 python3 scripts/generate-demo.py --output "$landing" --seed 42 --orders 20 --days 7 --scenario edge
 "${suite[@]}" exec -T lakehouse python -m native.api medallion
 "${suite[@]}" exec -T lakehouse python -m native.api gold factory_daily_production --limit 20 > "$fixture/gold.json"
 "$check_python" tests/integration/edge/live_acceptance.py "$fixture" --prepare
-"${suite[@]}" up -d --build --wait --wait-timeout 90 edge-gold
+build_images edge-gold read-api
+"${suite[@]}" up -d --no-build --pull missing --wait --wait-timeout 90 edge-gold
 binding=$(wait_for_edge)
 "$check_python" tests/integration/edge/live_acceptance.py "$fixture" --port "${binding##*:}"
 

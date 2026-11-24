@@ -15,7 +15,10 @@ services:
         CORPORATE_CA_SHA256: ${CORPORATE_CA_SHA256:-}
       secrets: [corporate-ca, python-index-config, python-index-auth]
     user: "${LANDING_UID}:${LANDING_GID}"
-    networks: [default, edge]
+    networks: [edge_read, edge]
+    depends_on:
+      read-api:
+        condition: service_healthy
     environment:
       HTTPS_PROXY: ${CF_EDGE_HTTPS_PROXY:-}
     secrets: [edge-policy, edge-reader-token]
@@ -31,6 +34,11 @@ services:
       retries: 6
     labels:
       traefik.enable: 'false'
+
+  read-api:
+    networks:
+      edge_read:
+        aliases: [lakehouse]
 
   cloudflared:
     image: docker.io/cloudflare/cloudflared:2026.11.2@sha256:55c7e3e8d89d5e8d20b75a82f3602cbf98e06db406e73e282073cfdc5a9a3af6
@@ -51,6 +59,8 @@ services:
 
 networks:
   edge:
+  edge_read:
+    internal: true
 
 secrets:
   tunnel-token:

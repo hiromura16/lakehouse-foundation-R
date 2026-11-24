@@ -26,6 +26,8 @@
 
 n8nの永続状態は専用PostgreSQLに分離します。InfluxDBの測定点は時系列の調査用データです。業務集計の公開範囲と版はIcebergのGoldで管理します。n8n CommunityとInfluxDB 3 Explorerは独自の利用条件があるため、会社で有効にする前に採用版の契約を確認します。[各コンポーネントの配布条件](REFERENCES.md#追加機能の配布条件) · [InfluxDB 3 Core](https://docs.influxdata.com/influxdb3/core/)
 
+n8nから見える `lakehouse:8080` は、許可した読取GET専用のゲートウェイです。付属フローの `/health` はそのまま使えます。Goldの取得には読取トークンが必要です。書込ジョブの `POST /run` は、VMのループバック側から操作トークンで実行します。
+
 ![9サービスの応答と作業別ナビゲーションを示す運用ポータルの実画面](images/operations-portal.png)
 
 ## 起動する
@@ -53,7 +55,7 @@ docker compose --env-file "$site" --env-file "$tools/tools.env" \
 
 1. n8nの画面でワークフローを作り、メニューの **Import from File** から [疎通確認のJSON](../../native/tools/health-workflow.json) を選択します。
 2. **Execute workflow** を押し、最後のステップで `ready: true` と `blocked: false` を確認します。フローには内部APIのヘルス確認だけが含まれます。
-3. 日程実行や書き込みを追加する場合は、用途別の認証と権限を決め、試験環境で同じ処理が再実行される場合を確認します。
+3. 日程実行を追加する場合は、用途別の認証と権限を決め、試験環境で同じ処理が再実行される場合を確認します。
 
 ## OpenObserveに監視メトリクスを送る
 

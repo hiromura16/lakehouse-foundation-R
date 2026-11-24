@@ -42,6 +42,12 @@ USER 472
 FROM docker.io/library/nginx:stable-alpine@sha256:8eb2b5540eae779603cc3db84b3986a15ecb5308b54303146eee9837c137b51a AS ops-proxy
 COPY --chmod=644 native/gui/nginx.conf native/gui/lakehouse-proxy.conf /etc/nginx/
 
+FROM docker.io/library/nginx:stable-alpine@sha256:8eb2b5540eae779603cc3db84b3986a15ecb5308b54303146eee9837c137b51a AS read-api
+COPY --chmod=644 native/network/read-api.conf /etc/nginx/nginx.conf
+
+FROM docker.io/library/nginx:stable-alpine@sha256:8eb2b5540eae779603cc3db84b3986a15ecb5308b54303146eee9837c137b51a AS health-relay
+COPY --chmod=644 native/network/health-relay.conf /etc/nginx/nginx.conf
+
 FROM docker.io/library/nginx:stable-alpine@sha256:8eb2b5540eae779603cc3db84b3986a15ecb5308b54303146eee9837c137b51a AS tools-portal
 COPY --chmod=644 native/tools/nginx.conf /etc/nginx/nginx.conf
 COPY --chmod=644 native/tools/portal/index.html native/tools/portal/portal.css native/tools/portal/portal.js /usr/share/nginx/html/

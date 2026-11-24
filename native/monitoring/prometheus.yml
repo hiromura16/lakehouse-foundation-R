@@ -32,7 +32,9 @@ scrape_configs:
         target_label: __param_target
       - source_labels: [module]
         target_label: __param_module
-      - source_labels: [__param_target]
+      # リレーを使う監視も、従来のinstanceラベルで履歴を引き継ぐ。
+      - source_labels: [instance, __param_target]
+        regex: ';(.+)'
         target_label: instance
       - target_label: __address__
         replacement: blackbox:9115

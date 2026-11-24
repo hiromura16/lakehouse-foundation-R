@@ -16,6 +16,8 @@
 
 工場内の入力、SQL処理、Icebergの保存はオンプレで実行します。拠点外からの読取はCloudflare Accessを通し、承認したGoldの固定世代・列だけを返す連携サービスを使います。管理画面、工場のDB、Kafka、SMBは工場側のネットワークと権限で運用します。
 
+トンネルは既存の `edge-gold` へ接続します。連携サービスは専用の読取ネットワークでGold APIのゲートウェイを参照します。接続先で見える `lakehouse:8080` は読取GET専用で、書込ワーカー、ストレージ、カタログ、PostgreSQLは工場側のネットワークに分かれます。
+
 ```mermaid
 flowchart LR
     subgraph Factory["工場オンプレ"]
