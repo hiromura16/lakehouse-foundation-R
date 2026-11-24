@@ -52,7 +52,7 @@ services:
     <<: *evaluation
     profiles: [timeseries]
     image: greptime/greptimedb:v1.3.0@sha256:d8a199398da2b105e6cb3a168f249ecbbc078893abff5ea668bd59e05f1027df
-    command: [standalone, start, "--http-addr=0.0.0.0:4000", "--data-home=/greptimedb_data"]
+    command: [standalone, start, "--http-addr=0.0.0.0:4000", "--grpc-bind-addr=0.0.0.0:4001", "--data-home=/greptimedb_data"]
     ports: ["127.0.0.1:${EVAL_GREPTIME_PORT:-18603}:4000"]
     volumes: [greptime:/greptimedb_data]
     mem_limit: 1g

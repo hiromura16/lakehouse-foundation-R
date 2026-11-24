@@ -1,0 +1,20 @@
+# Kafkaの合成トピックを受け、他の業務テーブルと分離した時系列DBへ送る。
+data_dir = "/var/lib/vector"
+
+[sources.factory_sensor]
+type = "kafka"
+bootstrap_servers = "broker:9092"
+topics = ["foundation-r-evaluation-sensors"]
+group_id = "foundation-r-evaluation-greptime"
+auto_offset_reset = "earliest"
+decoding.codec = "influxdb"
+
+[sinks.sensor_store]
+type = "greptimedb_metrics"
+inputs = ["factory_sensor"]
+endpoint = "greptime:4001"
+dbname = "public"
+acknowledgements.enabled = true
+buffer.type = "disk"
+buffer.max_size = 268435488
+buffer.when_full = "block"

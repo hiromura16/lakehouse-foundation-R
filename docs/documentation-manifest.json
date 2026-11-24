@@ -327,6 +327,25 @@
         "docs/native/ACCEPTANCE.md"
       ],
       "status": "active"
+    },
+    {
+      "path": "docs/native/TELEMETRY.md",
+      "title": "工場テレメトリの接続と受入",
+      "purpose": "設備のMQTTを集め、Kafka経由の再送とGreptimeDBの時系列検索を検証します。",
+      "audience": [
+        "基盤構築担当",
+        "運用担当"
+      ],
+      "when_to_use": "合成の設備テレメトリを隔離環境で検証するとき。",
+      "category": "03 データ・操作",
+      "prerequisites": [
+        "docs/native/START.md"
+      ],
+      "next": [
+        "docs/native/SOURCES.md",
+        "docs/native/ACCEPTANCE.md"
+      ],
+      "status": "active"
     }
   ]
 }

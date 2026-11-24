@@ -34,6 +34,7 @@ Dokployの **Projects → Create Service → Compose** から、公開GitHubの 
 | ブラウザーで公開した集計を確認する | [集計結果の確認と接続先一覧](docs/native/GUI.md) |
 | アプリの状態を見る、ダッシュボードを変更する | [Grafana運用監視](docs/native/MONITORING.md) |
 | ファイル、SQL Server、外部Kafkaを接続する | [入出力契約と接続方法](docs/native/SOURCES.md) |
+| 工場のMQTT計測と停止中の再送を試す | [設備テレメトリの接続と受入](docs/native/TELEMETRY.md) |
 | 自動化・調査・時系列を追加する | [n8n、OpenObserve、InfluxDB、運用ポータル](docs/native/TOOLS.md) |
 | 導入と運用を説明する | [説明スライドとPowerPoint](docs/native/PRESENTATION.md) |
 | オンプレのGoldをCloudflare Accessで提供する | [オンプレとCloudflare](docs/native/CLOUDFLARE.md) |

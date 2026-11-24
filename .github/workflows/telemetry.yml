@@ -1,0 +1,32 @@
+name: 工場MQTTの隔離受入
+
+on:  # yamllint disable-line rule:truthy
+  push:
+    paths:
+      - compose.evaluation.yaml
+      - compose.telemetry.yaml
+      - native/telemetry/**
+      - tests/integration/telemetry/**
+      - .github/workflows/telemetry.yml
+  pull_request:
+    paths:
+      - compose.evaluation.yaml
+      - compose.telemetry.yaml
+      - native/telemetry/**
+      - tests/integration/telemetry/**
+      - .github/workflows/telemetry.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mqtt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: MQTTの認証・停止中の再送・時系列保存の検査
+        run: python3 tests/integration/telemetry/acceptance.py

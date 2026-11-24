@@ -48,6 +48,7 @@
 
 | 文書 | 何のために読むか | 読むタイミング | 区分 |
 | --- | --- | --- | --- |
+| [工場テレメトリの接続と受入](<native/TELEMETRY.md>) | 設備のMQTTを集め、Kafka経由の再送とGreptimeDBの時系列検索を検証します。 | 合成の設備テレメトリを隔離環境で検証するとき。 | active |
 | [合成入力を最初に作る](<../samples/README.md>) | 実データを使わずに最初の6契約素材を生成し、出力と後続処理の境界を確認する。 | 空の検証用landingに小さい固定条件の合成入力を初めて用意するとき。 | active |
 
 ### 04 配備・接続
@@ -115,6 +116,7 @@
 | [公式リファレンスと採用バージョン](<native/REFERENCES.md>) | 固定した版と公式仕様への参照を調べます。 |
 | [ファイル・SQL Server・Kafkaの入力契約](<native/SOURCES.md>) | ファイル・SQLバッチ・Kafka・設備の入力契約を確認します。 |
 | [Foundation Rの初回導入と操作](<native/START.md>) | 会社VMにDokployで配備し、合成データから業務集計までを確認します。 |
+| [工場テレメトリの接続と受入](<native/TELEMETRY.md>) | 設備のMQTTを集め、Kafka経由の再送とGreptimeDBの時系列検索を検証します。 |
 | [運用ポータルと追加ツール](<native/TOOLS.md>) | n8n、OpenObserve、InfluxDBの設置と初回操作を確認します。 |
 
 ### 評価・報告担当
@@ -132,6 +134,7 @@
 | --- | --- |
 | [目的・読者から探す文書マニフェスト](<DOCUMENTATION-MANIFEST.md>) | 公開Markdown全件の固有の目的・読者・読む時点を、目的別と読者別に引く。 |
 | [オンプレとCloudflareをつなぐ](<native/CLOUDFLARE.md>) | Cloudflare TunnelとAccessで承認済みGoldを読み取る経路を配備します。 |
+| [工場テレメトリの接続と受入](<native/TELEMETRY.md>) | 設備のMQTTを集め、Kafka経由の再送とGreptimeDBの時系列検索を検証します。 |
 | [運用ポータルと追加ツール](<native/TOOLS.md>) | n8n、OpenObserve、InfluxDBの設置と初回操作を確認します。 |
 
 ### 開発・設計担当

@@ -1,0 +1,6 @@
+# 購読者と送信者の役割を分け、合成トピックに限定する。
+user collector
+topic read factory/measurements/evaluation
+
+user simulator
+topic write factory/measurements/evaluation

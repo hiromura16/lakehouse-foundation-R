@@ -1,0 +1,58 @@
+# 独立した合成MQTT試験。compose.evaluation.yamlと合わせて使う。
+x-telemetry: &telemetry
+  profiles: [telemetry]
+  security_opt: [no-new-privileges:true]
+  labels:
+    traefik.enable: 'false'
+  logging:
+    driver: json-file
+    options: {max-size: 10m, max-file: '2'}
+
+services:
+  mosquitto:
+    <<: *telemetry
+    image: docker.io/library/eclipse-mosquitto:2.0.23@sha256:6a332cc7a8dbe011cbc076180cbb76b37c6f0f55809682ea08e7980ef0112ad9
+    configs:
+      - source: mqtt-settings
+        target: /mosquitto/config/mosquitto.conf
+      - source: mqtt-acl
+        target: /etc/foundation/mqtt.acl
+    secrets: [mqtt-passwords]
+    volumes: [mqtt-state:/mosquitto/data]
+    mem_limit: 128m
+
+  telegraf:
+    <<: *telemetry
+    image: docker.io/library/telegraf:1.40.3@sha256:695045186c69152ff71827ec0c4f40216fb10491597af71c00195d98be8c39f2
+    depends_on: [mosquitto, broker]
+    configs:
+      - source: telegraf-settings
+        target: /etc/telegraf/telegraf.conf
+    environment:
+      MQTT_COLLECTOR_PASSWORD: ${MQTT_COLLECTOR_PASSWORD:?隔離ブローカー用のパスワードが必要です}
+    mem_limit: 256m
+
+  vector:
+    <<: *telemetry
+    image: docker.io/timberio/vector:0.62.0-debian@sha256:6266b1d35c844918ff1c48ea2ec4f57c2b0664c46f3e17fc2418d5dda1692068
+    depends_on: [broker, greptime]
+    command: ["--config", /etc/vector/vector.toml]
+    configs:
+      - source: vector-settings
+        target: /etc/vector/vector.toml
+    volumes: [vector-sensor-state:/var/lib/vector]
+    mem_limit: 384m
+
+configs:
+  mqtt-settings: {file: ./native/telemetry/mosquitto.conf}
+  mqtt-acl: {file: ./native/telemetry/mqtt.acl}
+  telegraf-settings: {file: ./native/telemetry/telegraf.toml}
+  vector-settings: {file: ./native/telemetry/vector.toml}
+
+secrets:
+  mqtt-passwords:
+    file: ${MQTT_PASSWORD_HASH_FILE:?隔離ブローカー用の秘密ファイルが必要です}
+
+volumes:
+  mqtt-state:
+  vector-sensor-state:

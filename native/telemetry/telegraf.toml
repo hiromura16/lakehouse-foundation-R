@@ -1,0 +1,27 @@
+# Telegrafは型を確定した合成のLine ProtocolをKafkaへ運ぶ。
+[agent]
+  interval = "2s"
+  flush_interval = "2s"
+  omit_hostname = true
+  metric_batch_size = 100
+  metric_buffer_limit = 1000
+
+[[inputs.mqtt_consumer]]
+  servers = ["tcp://mosquitto:1883"]
+  topics = ["factory/measurements/evaluation"]
+  username = "collector"
+  password = "${MQTT_COLLECTOR_PASSWORD}"
+  qos = 1
+  persistent_session = true
+  client_id = "foundation-r-evaluation-collector"
+  max_undelivered_messages = 1000
+  data_format = "influx"
+  topic_tag = ""
+
+[[outputs.kafka]]
+  brokers = ["broker:9092"]
+  topic = "foundation-r-evaluation-sensors"
+  required_acks = -1
+producer_timestamp = "now"
+routing_tag = "device"
+  data_format = "influx"
