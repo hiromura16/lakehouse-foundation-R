@@ -334,13 +334,17 @@ def verify(docker, root, *, opcua=False, nisshi=False):
             opcua_acceptance(docker, project, run, root, http, endpoint)
             return
         run("up", "-d", "telegraf", timeout=300)
-        until(
-            lambda: (
-                "Connected" in run("logs", "telegraf").stdout
-                and "[inputs.mqtt_consumer]" in run("logs", "telegraf").stdout
-            ),
-            "MQTT購読",
-        )
+
+        def mqtt_connected():
+            """収集器が認証済みのMQTTセッションを確認してから送信する。"""
+            response = run("logs", "telegraf")
+            log = response.stdout + response.stderr
+            return any(
+                "Connected" in line and "[inputs.mqtt_consumer]" in line
+                for line in log.splitlines()
+            )
+
+        until(mqtt_connected, "MQTT購読")
         assert publish(9, 99.0, user=None, check=False).returncode != 0
         denied = publish(9, 99.0, user="collector", check=False)
         # MQTT 5のPUBACKで拒否されてもCLIが0を返す版がある。
@@ -369,6 +373,13 @@ def verify(docker, root, *, opcua=False, nisshi=False):
             if opcua
             else ["vector", "mosquitto", "telegraf"]
         )
+        states = run("ps", "--all", "--format", "json", check=False)
+        for line in states.stdout.splitlines():
+            try:
+                row = json.loads(line)
+            except ValueError:
+                continue
+            print(row.get("Service"), row.get("State"), row.get("ExitCode"))
         logs = run("logs", "--tail", "20", *services, check=False)
         error_log = (
             error.stderr or ""

@@ -25,20 +25,32 @@ permissions:
   contents: read
 
 jobs:
-  mqtt:
+  equipment:
+    name: ${{ matrix.scenario }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - scenario: MQTTとRedpanda
+            script: tests/integration/telemetry/acceptance.py
+            args: ''
+          - scenario: OPC UAとRedpanda
+            script: tests/integration/telemetry/acceptance.py
+            args: --opcua
+          - scenario: Modbus TCP
+            script: tests/integration/modbus/acceptance.py
+            args: ''
+          - scenario: MQTTとNisshi
+            script: tests/integration/telemetry/acceptance.py
+            args: --nisshi
+          - scenario: OPC UAとNisshi
+            script: tests/integration/telemetry/acceptance.py
+            args: --nisshi --opcua
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
-      - name: MQTTの認証・停止中の再送・時系列保存の検査
-        run: python3 tests/integration/telemetry/acceptance.py
-      - name: OPC UA暗号化と読取権限・時刻・品質の検査
-        run: python3 tests/integration/telemetry/acceptance.py --opcua
-      - name: Modbus保持レジスタの読取専用と欠測・鮮度の検査
-        run: python3 tests/integration/modbus/acceptance.py
-      - name: Rust製Kafka互換ブローカーでMQTTからGreptimeDBまでを検査
-        run: python3 tests/integration/telemetry/acceptance.py --nisshi
-      - name: Rust製Kafka互換ブローカーでOPC UAからGreptimeDBまでを検査
-        run: python3 tests/integration/telemetry/acceptance.py --nisshi --opcua
+      - name: 合成設備と保存先で値・時刻・権限を照合
+        run: python3 "${{ matrix.script }}" ${{ matrix.args }}

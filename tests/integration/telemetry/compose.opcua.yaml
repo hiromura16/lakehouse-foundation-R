@@ -31,7 +31,10 @@ services:
       - source: opcua-settings
         target: /etc/telegraf/telegraf.conf
     secrets: [client-cert, client-key, remote-cert]
-    mem_limit: 256m
+    environment:
+      GOMAXPROCS: "1"
+    mem_limit: 384m
+    cpus: 1.0
 
 configs:
   opcua-settings:

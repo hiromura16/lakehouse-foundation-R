@@ -24,13 +24,20 @@ services:
   telegraf:
     <<: *telemetry
     image: docker.io/library/telegraf:1.40.3@sha256:695045186c69152ff71827ec0c4f40216fb10491597af71c00195d98be8c39f2
+    # この収集経路はICMPと特権ポートを使わない。権限追加を行う上流ラッパーを経由しない。
+    entrypoint: [/usr/bin/telegraf]
+    command: ["--config", /etc/telegraf/telegraf.conf]
+    user: telegraf
+    cap_drop: [ALL]
     depends_on: [mosquitto, broker]
     configs:
       - source: telegraf-settings
         target: /etc/telegraf/telegraf.conf
     environment:
+      GOMAXPROCS: "1"
       MQTT_COLLECTOR_PASSWORD: ${MQTT_COLLECTOR_PASSWORD:?隔離ブローカー用のパスワードが必要です}
-    mem_limit: 256m
+    mem_limit: 384m
+    cpus: 1.0
 
   vector:
     <<: *telemetry
