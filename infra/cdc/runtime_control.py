@@ -1,9 +1,10 @@
-"""Serve a secret-free status cache and enqueue fixed CDC rebuild requests.
+"""秘密を含まない状態キャッシュを返し、固定CDCの再構築要求を受け付ける。
 
-The HTTP thread never touches SQLite, Kafka or Iceberg. The consumer main
-thread owns those handles and takes queued work between bounded poll batches.
-HTTP 202 acknowledges only a process-local queue; clients poll the matching
-request ID and never treat acceptance as completed materialization.
+HTTPスレッドからSQLite、Kafka、Icebergにはアクセスしない。
+これらはコンシューマーのメインスレッドが保持し、上限内でバッチを
+処理する間にキューにある要求を取り出す。
+HTTP 202は当該プロセスのキューへの受付を示す。呼出元は対応する
+要求IDの状態を後から取得し、派生表の構築が完了したか確認する。
 """
 
 import copy
@@ -16,19 +17,19 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
 class ObjectPairs(list):
-    """Distinguish JSON objects from arrays while retaining duplicate keys."""
+    """重複するキーを残したまま、JSONのオブジェクトと配列を区別する。"""
 
 
 def observed_at():
-    """Format an observation time without disclosing source clock details."""
+    """ソース時計の詳細を公開せず、観測時刻を整形する。"""
     return datetime.now(timezone.utc).isoformat()
 
 
 class Control:
-    """Exchange immutable snapshots and one queued request between threads."""
+    """不変の状態スナップショットと1件の待機要求をスレッド間で受け渡す。"""
 
     def __init__(self, mode, token, tables):
-        """Require internal authentication before opening a status listener."""
+        """状態確認用の待受を開始する前に、内部認証を必須にする。"""
         if not isinstance(token, str) or not re.fullmatch(
             r"[A-Za-z0-9]{20,128}", token
         ):
@@ -50,12 +51,15 @@ class Control:
         }
 
     def snapshot(self):
-        """Copy only cached metadata; no SQL or broker request occurs here."""
+        """キャッシュ済みの情報だけをコピーする。
+
+        SQLとブローカーへのアクセスはメインスレッドで行う。
+        """
         with self.lock:
             return copy.deepcopy(self.status)
 
     def update(self, **values):
-        """Publish a main-thread observation without accepting extra fields."""
+        """余分な項目を受け付けず、メインスレッドの観測結果を公開する。"""
         with self.lock:
             if not values.keys() <= self.status.keys():
                 raise ValueError("Unknown CDC status cache field.")
@@ -63,7 +67,7 @@ class Control:
             self.status["observation_time"] = observed_at()
 
     def enqueue(self):
-        """Queue one rebuild, rejecting conflicts and query blockers."""
+        """再構築要求を1件だけ登録し、競合やクエリ保留時は拒否する。"""
         with self.lock:
             if self.status["mode"] != "fixed-demo":
                 return 409, {"error_code": "CDC_REBUILD_NOT_SUPPORTED"}
@@ -88,7 +92,7 @@ class Control:
             }
 
     def take_rebuild(self):
-        """Let the main thread claim one queued request between batches."""
+        """バッチの合間に、メインスレッドが待機要求を1件受け取る。"""
         with self.lock:
             request = self.status["rebuild"]
             if request is None or request["status"] != "queued":
@@ -101,7 +105,7 @@ class Control:
     def finish_rebuild(
         self, request_id, *, succeeded, snapshot_id=None, error_code=None
     ):
-        """Publish a terminal result for the same accepted request ID."""
+        """受付時と同じ要求IDで、処理が終了した結果を公開する。"""
         with self.lock:
             request = self.status["rebuild"]
             if request is None or request["request_id"] != request_id:
@@ -116,7 +120,7 @@ class Control:
             self.status["observation_time"] = observed_at()
 
     def dispatch(self, method, path, authorization, body=b""):
-        """Validate a fixed internal request before it can change the queue."""
+        """キューを変更する前に、所定の形式の内部要求を検証する。"""
         if not self.authenticated(authorization):
             return 401, {"error_code": "AUTH_REQUIRED"}
         if method == "GET" and path == "/status":
@@ -127,8 +131,8 @@ class Control:
             return 400, {"error_code": "INVALID_REBUILD_REQUEST"}
         try:
             pairs = json.loads(body, object_pairs_hook=ObjectPairs)
-            # A pair list rejects duplicate keys and strict bool avoids 1/true
-            # equivalence. Nested/arbitrary configuration is never accepted.
+            # キーと値の組の一覧で重複キーを拒否し、boolの型を厳密に確認して
+            # 1とtrueの同一視を避ける。入れ子や任意の設定は受け付けない。
             valid = (
                 isinstance(pairs, ObjectPairs)
                 and len(pairs) == 1
@@ -142,7 +146,7 @@ class Control:
         return self.enqueue()
 
     def authenticated(self, authorization):
-        """Compare Bearer auth safely, including invalid Unicode input."""
+        """不正なUnicode入力も考慮し、Bearer認証を安全に比較する。"""
         if not isinstance(authorization, str):
             return False
         try:
@@ -154,22 +158,22 @@ class Control:
 
 
 def start_server(control, *, host="0.0.0.0", port=8001):
-    """Start the internal container listener without publishing a host port."""
+    """ホストへポートを公開せず、コンテナ内部の待受を開始する。"""
 
     class Handler(BaseHTTPRequestHandler):
-        """Adapt HTTP transport to the pure, testable control dispatcher."""
+        """HTTP通信を、単体で検証可能な制御処理へつなぐ。"""
 
         def setup(self):
-            """Bound reads and retain standard HTTP header parser limits."""
+            """読取の上限を設け、標準のHTTPヘッダー解析の制限を維持する。"""
             self.request.settimeout(5)
             super().setup()
 
         def log_message(self, *_):
-            """Never log peer addresses, authentication or request bodies."""
+            """接続元のアドレス、認証情報、要求の本文をログに出さない。"""
             pass
 
         def handle_request(self):
-            """Bound input and expose only application-owned JSON output."""
+            """入力に上限を設け、アプリが定義したJSONだけを返す。"""
             try:
                 authorization = self.headers.get("Authorization", "")
                 if not control.authenticated(authorization):
@@ -200,12 +204,12 @@ def start_server(control, *, host="0.0.0.0", port=8001):
         do_POST = handle_request
 
     class Server(ThreadingHTTPServer):
-        """Keep client handling bounded to daemon threads and silent errors."""
+        """接続処理をデーモンスレッドに限定し、通信エラーの詳細は出さない。"""
 
         daemon_threads = True
 
         def handle_error(self, *_):
-            """Suppress transport tracebacks with private peer details."""
+            """非公開の接続情報を含み得る通信例外のスタックトレースを出さない。"""
             pass
 
     server = Server((host, port), Handler)

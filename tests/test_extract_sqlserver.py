@@ -1,4 +1,4 @@
-"""Check the read-only SQL bridge with recorded queries and temporary files."""
+"""記録したクエリと一時ファイルで、読取専用のSQL連携を試す。"""
 
 import importlib.util
 import json
@@ -26,7 +26,7 @@ EXAMPLE = json.loads(
 
 
 class SourceCursor:
-    """Return the requested synthetic source rows, recording every query."""
+    """要求された合成ソース行を返し、すべてのクエリを記録する。"""
 
     def __init__(self, data):
         self.data = data
@@ -55,7 +55,7 @@ class SourceCursor:
 
 
 class SourceConnection:
-    """Provide a recording cursor without any commit or mutation interface."""
+    """コミットや変更機能を持たない、記録用カーソルを提供する。"""
 
     def __init__(self, data):
         self.recorder = SourceCursor(data)
@@ -69,7 +69,7 @@ class SourceConnection:
 
 
 class SourceExtractionTests(unittest.TestCase):
-    """Check SELECT-only extraction and bounded landing publication."""
+    """SELECTだけの抽出と、上限付きの着地公開を確認する。"""
 
     def settings(self):
         return {

@@ -1,3 +1,3 @@
-"""Shared wire-size bound for streaming capture and immutable-log replay."""
+"""ストリーミング取得と不変ログの再生に共通する配送サイズの上限。"""
 
 MAX_RECORD_BYTES = 16 * 1024 * 1024

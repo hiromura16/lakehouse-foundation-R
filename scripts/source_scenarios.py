@@ -1,4 +1,4 @@
-"""Deterministic synthetic anomalies; no I/O or downstream execution."""
+"""入出力や後段処理を行わず、再現可能な合成異常データを生成する。"""
 
 import copy
 import csv
@@ -214,7 +214,7 @@ CONFLICTS = [
 
 
 def catalog():
-    """Describe real mutations and current downstream expectations."""
+    """実際に加える変更と、現在想定している後段処理の結果を説明する。"""
     result = []
     for category, definitions in [
         ("row", ROW_SCENARIOS),
@@ -243,7 +243,7 @@ def catalog():
 
 
 def presets():
-    """Return compatible examples; GUI selections remain explicit."""
+    """組み合わせ可能な例を返す。GUIでは利用者が明示して選択する。"""
     definitions = [
         ("clean", "正常データ", "clean", []),
         ("legacy_edge", "従来のedgeデータ", "edge", []),
@@ -296,7 +296,7 @@ def validate_selection(
     allow_file_faults=False,
     anomaly_rate=10,
 ):
-    """Reject unknown, repeated, incompatible or unconsented selections."""
+    """未知、重複、互いに適用不可、または未同意の選択を拒否する。"""
     if not isinstance(anomalies, (list, tuple)) or not all(
         isinstance(item, str) for item in anomalies
     ):
@@ -327,7 +327,7 @@ def validate_selection(
 
 
 def _chosen(rows, rate, seed, batch, identifier, minimum=1):
-    """Pick stable row positions using an independent RNG per scenario."""
+    """シナリオごとに独立した乱数生成器を使い、対象行を再現できるようにする。"""
     if not rows:
         return []
     material = f"{seed}:{batch}:{identifier}".encode()
@@ -337,13 +337,13 @@ def _chosen(rows, rate, seed, batch, identifier, minimum=1):
 
 
 def _shift(value, **delta):
-    """Move a valid source timestamp while retaining ISO-8601 UTC output."""
+    """有効なソース時刻をずらし、出力にはISO 8601のUTC表記を維持する。"""
     stamp = datetime.fromisoformat(value)
     return (stamp + timedelta(**delta)).isoformat().replace("+00:00", "Z")
 
 
 def apply_rows(data, anomalies, anomaly_rate=10, seed=42, batch=1):
-    """Copy raw rows, then apply selected transformations in sorted order."""
+    """元の行を複製し、選択した変換を並べ替えた順番で適用する。"""
     result = copy.deepcopy(data)
     changes = []
     tables = {item[0]: item[2] for item in ROW_SCENARIOS}
@@ -427,7 +427,7 @@ def apply_rows(data, anomalies, anomaly_rate=10, seed=42, batch=1):
 
 
 def apply_files(payloads, anomalies):
-    """Return immutable-publishable bytes and intentional marker policies."""
+    """公開後に変更しないバイト列と、意図的に選んだ完了印の方針を返す。"""
     result = dict(payloads)
     markers = {}
     faults = []
@@ -472,7 +472,7 @@ def apply_files(payloads, anomalies):
 
 
 def ready_payload(payload, policy=None):
-    """Return a truthful marker, an intentionally wrong one, or no marker."""
+    """正しい完了印、意図的に誤った完了印、または完了印なしのいずれかを返す。"""
     if policy == "missing_ready":
         return None
     digest = sha256(payload).hexdigest()
@@ -482,10 +482,10 @@ def ready_payload(payload, policy=None):
 
 
 def synthetic_png(seed, size=96):
-    """Produce the same artificial RGB fixture as the source GUI."""
+    """ソースGUIと同じ人工的なRGBテスト画像を生成する。"""
 
     def chunk(kind, payload):
-        """Encode one PNG chunk without an image-library dependency."""
+        """画像ライブラリを使わず、PNGチャンクを1つ符号化する。"""
         checksum = zlib.crc32(kind + payload) & 0xFFFFFFFF
         return (
             struct.pack("!I", len(payload))

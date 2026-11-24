@@ -1,14 +1,14 @@
-"""Own a fixed, synthetic SQL Server source without granting runtime DDL.
+"""実行時のDDL権限を付与せず、固定構成の合成SQL Serverデータソースを管理する。
 
-The six business tables mirror the Landing contracts. SQL ``updated_at`` is a
-server UTC watermark; the original business revision stays in original_values.
-Unrepresentable non-key scalars become typed NULL while the complete original
-JSON remains available to Bronze/quarantine. A missing or oversized key is
-rejected because a stable primary key cannot be invented safely.
+6つの業務表はLandingの契約に対応する。SQLの updated_at はサーバー側の
+UTCウォーターマークであり、元の業務上の更新版は original_values に残す。
+キー以外の値がSQLの型で表せない場合は型付きNULLにし、元のJSON全体を
+Bronzeと隔離処理で使えるようにする。安定した主キーを安全に補えないため、
+主キーが欠落または長さを超過した行は拒否する。
 
-Only the DBA SQL files create objects or grant permissions. Runtime writers
-must pass configuration, ownership, effective-permission and explicit-consent
-checks before any DML. Driver errors are replaced with fixed safe messages.
+オブジェクトの作成と権限の付与はDBA用SQLだけが行う。実行時の書込元は
+DMLの前に、設定、所有権、実効権限、明示的な同意を確認する。
+ドライバーの例外は機密情報を含まない固定メッセージに置き換える。
 """
 
 import hmac
@@ -57,9 +57,9 @@ CAPTURE_INSTANCES = {
     for name, item in TABLES.items()
 }
 SYSTEM_DATABASES = {"master", "model", "msdb", "tempdb"}
-# These are schema-contained OBJECT securables, not an applicability matrix
-# for individual permission names. fn_my_permissions supplies the permissions
-# that actually apply to each kind, including CLR routines and synonyms.
+# スキーマ内のオブジェクトに対する権限監査の対象型を列挙する。
+# 各型で実際に有効な権限は fn_my_permissions で取得する。
+# この取得結果にはCLRルーチンとシノニムに対する権限も含まれる。
 PERMISSION_OBJECT_TYPES = (
     "U",
     "V",
@@ -79,9 +79,9 @@ PERMISSION_OBJECT_TYPES = (
     "R",
     "D",
 )
-# Child constraints, DML triggers and internal metadata cannot receive
-# independent OBJECT grants. Standalone legacy defaults (D, parent=0) remain
-# audited. Unknown visible user-object kinds are refused for manual review.
+# 子制約、DMLトリガー、内部メタデータには独立したOBJECT権限を付与できない。
+# 従来形式の独立した既定値（Dかつ parent=0）は監査対象に含める。
+# 未知のユーザーオブジェクト型は拒否し、手動監査を求める。
 NON_GRANTABLE_CHILD_TYPES = (
     "C",
     "D",
@@ -117,11 +117,11 @@ TEXT_LENGTHS = {
 
 
 class SqlServerError(ValueError):
-    """Carry only application-owned, private-value-free failure messages."""
+    """アプリが定義した機密値を含まない失敗メッセージだけを保持する。"""
 
 
 def endpoint(values, prefix):
-    """Return an internal comparison tuple; never return it through an API."""
+    """内部比較用のタプルを返す。APIの応答には含めない。"""
     return (
         values.get(prefix + "_HOST", ""),
         values.get(prefix + "_PORT", "1433"),
@@ -130,11 +130,11 @@ def endpoint(values, prefix):
 
 
 def validate_settings(values, *, consent=False, role="demo"):
-    """Validate fixed boundaries without connecting or interpreting env code.
+    """接続と環境設定のコード評価を行わず、固定ソースの境界を検証する。
 
-    Consent is checked again by each write operation. Read-only diagnostics
-    may inspect configuration before the user consents to changing SQL rows.
-    The source reader and control writer share an endpoint, never credentials.
+    各書込操作でも同意を確認する。読取専用の診断ではSQL行の変更に
+    同意する前でも設定を調べられる。ソース読取元と制御情報の書込元は
+    接続先を共有し、認証情報にはそれぞれ別のものを使う。
     """
     if role not in {"demo", "source", "control"} or type(consent) is not bool:
         raise SqlServerError("Invalid fixed SQL operation role or consent.")
@@ -174,9 +174,9 @@ def validate_settings(values, *, consent=False, role="demo"):
                 "Complete the selected fixed SQL credentials."
             )
     if role == "control":
-        # A missing comparison identity is not proof of separate principals.
-        # Only usernames are needed here; DEMO credentials stay excluded from
-        # the batch reader/control configuration passed by SettingsStore.
+        # 比較用の識別情報が欠けると、別のプリンシパルか確認できない。
+        # 比較にはユーザー名だけを使う。DEMOの認証情報は、SettingsStoreが渡す
+        # バッチ読取元と制御情報の設定から引き続き除外する。
         principals = [
             selected.get(key, "")
             for key in (
@@ -245,12 +245,13 @@ def validate_settings(values, *, consent=False, role="demo"):
 
 @contextmanager
 def connection(values, role="demo"):
-    """Use encrypted process-local FreeTDS settings and role-specific auth.
+    """プロセス内だけで有効なFreeTDS暗号化設定と役割別の認証情報を使う。
 
-    Certificate trust is verified by default. Explicit private PoC trust=true
-    retains encryption but skips chain/name validation; it is never inferred
-    from connection failures. The source role always requests read_only=True.
-    All mutations remain uncommitted until the caller explicitly commits.
+    既定では証明書の信頼性を検証する。非公開の概念実証で
+    trust=true を明示すると、暗号化は維持したまま証明書チェーンと
+    名前の検証を省略する。接続の失敗からこの指定を推定しない。
+    ソース読取元は常に read_only=True を指定する。
+    変更は呼出元が明示的に確定するまで未コミットのままにする。
     """
     selected = validate_settings(values, role=role)
     prefix = "DEMO_SQLSERVER" if role == "demo" else "SOURCE_SQLSERVER"
@@ -325,8 +326,9 @@ def connection(values, role="demo"):
                 try:
                     handle.close()
                 except Exception:
-                    # A close error must not replace a safe failure with raw
-                    # driver text or skip restoration of process TLS settings.
+                    # 接続を閉じる際の例外で、安全な失敗メッセージが
+                    # ドライバーの例外文に置き換わるのを防ぐ。
+                    # プロセス内のTLS設定の復元は続ける。
                     pass
             for key, value in previous.items():
                 if value is None:
@@ -336,7 +338,10 @@ def connection(values, role="demo"):
 
 
 def table_name(contract):
-    """Quote only a tracked table; no user schema/table/SQL is accepted."""
+    """管理対象の表名だけを引用する。
+
+    利用者が指定するスキーマ名・表名・SQLは受け取らない。
+    """
     if contract not in TABLES:
         raise SqlServerError("Only the six fixed source tables are allowed.")
     item = TABLES[contract]
@@ -344,7 +349,7 @@ def table_name(contract):
 
 
 def ownership(cursor, values, role="demo"):
-    """Compare the connected database and immutable marker in constant time."""
+    """接続先データベースと変更不可の識別印を一定時間で比較する。"""
     prefix = "DEMO_SQLSERVER" if role == "demo" else "SOURCE_SQLSERVER"
     cursor.execute("SELECT DB_NAME()")
     row = cursor.fetchone()
@@ -378,10 +383,11 @@ def ownership(cursor, values, role="demo"):
 
 
 def side_effects_safe(cursor, role="demo"):
-    """Trust only the exact DBA-installed, read-only dbo metadata checker.
+    """DBAが設置した所定の読取専用dboメタデータ確認手続きだけを信頼する。
 
-    Caller metadata can omit inbound legacy FKs. Never fall back to the
-    caller's catalog views if this checker is missing, changed or fails.
+    呼出元のメタデータからは、既存の表からこの表を参照する外部キーが
+    見えない場合がある。所定の手続きが未設置、変更済み、または失敗の場合に、
+    呼出元のカタログビューへ切り替えることはしない。
     """
     if role == "source":
         return True
@@ -411,10 +417,10 @@ def side_effects_safe(cursor, role="demo"):
 
 
 def source_permissions_safe(cursor):
-    """Check only the fixed reader boundary, not unrelated DB objects.
+    """所定の読取元に許可された境界だけを確認する。
 
-    The caller has already rejected broad DB/server roles and capabilities.
-    This is not proof of database-wide least privilege; DBA audit is separate.
+    呼出元はデータベースやサーバーの広範なロールと権限をすでに拒否している。
+    データベース全体の最小権限の確認は、DBAによる別の監査で行う。
     """
     cursor.execute("SELECT IS_MEMBER(N'lh_demo_reader')")
     if cursor.fetchone() != (1,):
@@ -436,7 +442,7 @@ def source_permissions_safe(cursor):
         )
         if cursor.fetchone() != (1,):
             return False
-        # Effective rows include column-only grants and role inheritance.
+        # 実効権限の一覧には、列単位の付与とロールから継承した権限を含む。
         cursor.execute(
             "SELECT permission_name FROM sys.fn_my_permissions(%s,N'OBJECT')",
             (name,),
@@ -456,7 +462,7 @@ def source_permissions_safe(cursor):
             for row in permissions
         ):
             return False
-        # TOP (0) validates object/column SELECT without disclosing data.
+        # TOP (0) はデータを開示せず、表と列のSELECT権限を確認する。
         qualified = ".".join("[" + part + "]" for part in name.split("."))
         cursor.execute("SELECT TOP (0) * FROM " + qualified)
         cursor.fetchall()
@@ -464,13 +470,14 @@ def source_permissions_safe(cursor):
 
 
 def permissions_safe(cursor, role="demo", *, full_audit=False):
-    """Fail closed on broad roles, dangerous grants or unrelated object access.
+    """広範なロール、危険な権限、管理対象外へのアクセスを検出したら拒否する。
 
-    The writer's legacy grants are inspected, never revoked. A separate
-    control principal is limited to watermark DML plus installation SELECT.
-    Source readers use the fixed boundary unless full_audit is requested.
-    Full audit is a separate conservative DBA diagnostic, not startup policy.
-    Metadata visibility is evaluated as the actual connected principal.
+    書込元に以前から付与されている権限は調べるだけで、取り消さない。
+    別の制御用プリンシパルには、ウォーターマークのDMLと
+    設置情報のSELECTだけを許可する。
+    ソース読取元は full_audit の指定時を除き、所定の境界だけを確認する。
+    全件監査はDBA向けの個別診断として厳格に実施し、起動時は適用しない。
+    メタデータの可視性は実際に接続したプリンシパルの権限で評価する。
     """
     roles = [
         "db_owner",
@@ -578,8 +585,8 @@ def permissions_safe(cursor, role="demo", *, full_audit=False):
         "o.is_ms_shipped=0 AND NOT (COALESCE(o.parent_object_id,0)>0 "
         "AND COALESCE(o.type,'') IN (" + child_types + "))"
     )
-    # A future or unsupported securable must not fall outside a finite audit
-    # list and silently pass. Refuse it without trying inapplicable grants.
+    # 将来追加される型や未対応の権限対象が、固定の監査一覧から漏れて
+    # 通過するのを防ぐ。適用できるか不明な権限を試さず、その型を拒否する。
     cursor.execute(
         "SELECT TOP (1) o.object_id FROM sys.objects o WHERE "
         + eligible
@@ -589,11 +596,11 @@ def permissions_safe(cursor, role="demo", *, full_audit=False):
     if cursor.fetchone():
         return False
     for operation, allowed in allowed_by_operation.items():
-        # Calling HAS_PERMS_BY_NAME with a guessed permission/object pairing
-        # can produce NULL for an unsupported permission, or miss CLR/synonym
-        # grants when the type list is incomplete. Audit effective rows,
-        # including column grants. OUTER APPLY also retains an empty/failed
-        # lookup as NULL, so incomplete metadata cannot silently pass.
+        # 権限とオブジェクト型の組合せを推測して HAS_PERMS_BY_NAME を呼ぶと、
+        # 未対応の組合せでNULLを返したり、不完全な型一覧からCLRやシノニムの
+        # 権限が漏れたりする。列の権限を含めた実効権限を監査する。
+        # OUTER APPLY は結果が空または取得できない行もNULLとして残すため、
+        # 不完全なメタデータが見過ごされない。
         clause = "p.permission_name IS NULL OR (p.permission_name=%s"
         arguments = [operation]
         if allowed:
@@ -619,9 +626,9 @@ def permissions_safe(cursor, role="demo", *, full_audit=False):
         )
         if cursor.fetchone():
             return False
-    # Object probes miss column-only grants, including those inherited
-    # through roles and column GRANT overriding an object-level DENY.
-    # Evaluate effective permissions, not only direct catalog grants.
+    # オブジェクト単位の確認では、列だけに付与された権限を見落とす。
+    # ロールから継承した権限や、オブジェクトのDENYに優先する列のGRANTも含む。
+    # カタログに直接記録された付与とあわせて、継承を含む実効権限を評価する。
     for operation in ("SELECT", "UPDATE"):
         if operation not in allowed_by_operation:
             continue
@@ -653,7 +660,7 @@ def permissions_safe(cursor, role="demo", *, full_audit=False):
         )
         if cursor.fetchone():
             return False
-    # Effective schema-wide DDL remains unsafe even in an empty schema.
+    # スキーマ全体への実効DDL権限は、空のスキーマでも許容しない。
     cursor.execute(
         "SELECT TOP (1) s.schema_id FROM sys.schemas s WHERE s.name "
         "NOT IN (N'sys',N'INFORMATION_SCHEMA') AND "
@@ -703,7 +710,7 @@ def permissions_safe(cursor, role="demo", *, full_audit=False):
 
 
 def diagnose(values):
-    """Return only allowlisted state, never connection names or driver text."""
+    """許可リストにある状態だけを返し、接続名やドライバーの例外文は返さない。"""
     result = {
         "connected": False,
         "ownership": False,
@@ -755,7 +762,7 @@ def diagnose(values):
                 result["tables"][name]["cdc_enabled"] = bool(
                     cursor.fetchone()[0]
                 )
-                # Capture metadata may be unavailable to the narrow writer.
+                # 権限を限定した書込元にはCDCの取得情報が見えない場合がある。
                 try:
                     cursor.execute(
                         "SELECT capture_instance FROM cdc.change_tables WHERE "
@@ -770,13 +777,13 @@ def diagnose(values):
                 except Exception:
                     pass
     except Exception:
-        # Unknown diagnostic fields stay false/None; never invent success.
+        # 確認できない診断項目はFalseまたはNoneのままにする。
         return result
     return result
 
 
 def timestamp(value):
-    """Preserve seven fractional digits while normalizing ISO text to UTC."""
+    """ISO形式の時刻をUTCへ正規化する際に、小数秒7桁を保つ。"""
     if not isinstance(value, str):
         raise ValueError("Timestamp must be an ISO string.")
     matched = re.fullmatch(
@@ -799,7 +806,7 @@ def timestamp(value):
 
 
 def normalized_value(column, value):
-    """Return one SQL-compatible scalar; keep the original separately."""
+    """SQL互換のスカラー値を1つ返し、元の値は別に保持する。"""
     if value is None:
         return None
     try:
@@ -828,14 +835,15 @@ def normalized_value(column, value):
             return timestamp(value)
         text = str(value)
         limit = TEXT_LENGTHS.get(column, 160)
-        # SQL nvarchar lengths count UTF-16 code units, not Python codepoints.
+        # SQLのnvarcharの長さはUTF-16コード単位で数える。
+        # Pythonのコードポイント数とは異なる。
         return text if len(text.encode("utf-16-le")) // 2 <= limit else None
     except (ValueError, TypeError, InvalidOperation, OverflowError):
         return None
 
 
 def original_json(row):
-    """Serialize originals deterministically, preserving NULL and decimals."""
+    """NULLと小数を保持し、元の値を毎回同じ形式に直列化する。"""
 
     def scalar(value):
         if isinstance(value, Decimal):
@@ -862,7 +870,7 @@ def original_json(row):
 
 
 def prepare_data(data):
-    """Validate six contracts and collapse PK revisions deterministically."""
+    """6つの契約を検証し、同じ主キーの改訂を一定の規則で集約する。"""
     if not isinstance(data, dict) or set(data) != set(TABLES):
         raise SqlServerError(
             "Supply all six fixed source contracts exactly once."
@@ -917,7 +925,7 @@ def prepare_data(data):
 
 
 def check_writer(cursor, values):
-    """Check ownership and narrow effective permissions before any DML."""
+    """DMLを行う前に、所有権と限定された実効権限を確認する。"""
     ownership(cursor, values)
     if not permissions_safe(cursor):
         raise SqlServerError(
@@ -928,7 +936,7 @@ def check_writer(cursor, values):
 
 
 def record_run(cursor, run_id, seed, scenario, days, count, target):
-    """Record completion inside the same transaction as the source writes."""
+    """ソースへの書込と同じトランザクション内で完了を記録する。"""
     cursor.execute(
         "IF NOT EXISTS (SELECT 1 FROM [lh_demo_ctl].[demo_runs] "
         "WITH (UPDLOCK, HOLDLOCK) WHERE run_id=%s) INSERT INTO "
@@ -956,7 +964,7 @@ def record_run(cursor, run_id, seed, scenario, days, count, target):
 def write_data(
     data, values, *, run_id, seed=42, scenario="clean", days=7, consent=False
 ):
-    """Commit owned synthetic rows and skip identical replayed records."""
+    """管理対象の合成行を確定し、再実行で内容が同じ行は処理を省く。"""
     if consent is not True:
         raise SqlServerError(
             "Explicit GUI/API consent is required for fixed SQL writes."
@@ -1004,9 +1012,10 @@ def write_data(
                     (key,),
                 )
                 prior = cursor.fetchone()
-                # SQL collations may compare case, accents or trailing spaces
-                # as equal. Never update an equivalent-but-different physical
-                # PK while recording another key in original_values.
+                # SQLの照合は、大文字小文字、アクセント、末尾の空白が
+                # 異なる値を同じと判定する場合がある。
+                # 値が異なる物理主キーの行は更新せず、original_values に
+                # 別のキーが記録されるのを防ぐ。
                 if prior and prior[0] != key:
                     raise SqlServerError(
                         "A SQL-collation key collision was refused; existing "
@@ -1063,7 +1072,7 @@ def write_data(
 
 
 def mutate(values, action, *, run_id, consent=False):
-    """Apply I/U/D only to the run's deterministic CDC test product."""
+    """この実行のために決まるCDC検証用の商品だけにI/U/Dを適用する。"""
     if (
         consent is not True
         or not isinstance(action, str)

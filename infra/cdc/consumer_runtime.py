@@ -1,8 +1,9 @@
-"""Coordinate main-thread CDC processing with a read-only HTTP status cache.
+"""メインスレッドのCDC処理と、HTTPで参照できる状態キャッシュを調停する。
 
-Kafka, SQLite and Iceberg are accessed only by the consumer main thread.
-Rebuild is an explicit queued maintenance operation. Failed raw validation or
-derived materialization never advances the active checkpoint or Kafka ack.
+Kafka、SQLite、Icebergへアクセスするのはコンシューマーのメインスレッドだけ。
+再構築は明示的に要求をキューへ登録する保守操作である。
+Rawの検証や派生表の構築に失敗した場合は、
+現在の完了位置とKafkaの配送確認を進めない。
 """
 
 from cdc_replay import RebuildError, rebuild
@@ -11,7 +12,7 @@ from state import State, assignment_offset
 
 
 class Runtime:
-    """Own broker/state transitions while HTTP only reads cached metadata."""
+    """ブローカーと状態の遷移を管理し、HTTPにはキャッシュ済み情報を渡す。"""
 
     def __init__(
         self,
@@ -51,13 +52,13 @@ class Runtime:
         self.observe()
 
     def blocked(self):
-        """Retain query cancellation blockers across process restarts."""
+        """プロセスを再起動しても、クエリ取消が未確定という状態を保持する。"""
         return self.state.get("blocked") == "true" or bool(
             self.admin.STATE.get("blocked")
         )
 
     def assign(self, client, partitions):
-        """Check retained broker history before selecting a resume position."""
+        """再開位置を選ぶ前に、ブローカーに残る履歴範囲を確認する。"""
         bounds = {}
         for partition in partitions:
             if partition.topic not in self.topics:
@@ -93,7 +94,7 @@ class Runtime:
         self.observe()
 
     def partition_status(self):
-        """Observe checkpoints and broker bounds without private names."""
+        """非公開名を含めずに、完了位置とブローカーの履歴範囲を観測する。"""
         result = []
         for partition in self.partitions:
             target = self.topics.get(partition.topic)
@@ -132,7 +133,7 @@ class Runtime:
         return result
 
     def observe(self, *, busy=False):
-        """Refresh the cache on this thread, never from the HTTP handler."""
+        """状態キャッシュは、メインスレッドでのみ更新する。"""
         blocked = self.blocked()
         pending = self.fixed and bool(
             self.state.get("rebuild_pending")
@@ -144,7 +145,7 @@ class Runtime:
         )
         initialized = bool(self.state.get("initialized"))
         generation = bool(self.state.completed_offsets())
-        # An empty readable file is not an observed materialized generation.
+        # 読取可能な空ファイルだけでは、派生済みの世代を確認できない。
         partitions = self.partition_status()
         observed = (
             initialized
@@ -166,7 +167,7 @@ class Runtime:
         )
 
     def resume_plan(self, candidate):
-        """Validate candidate offsets against currently assigned Kafka data."""
+        """候補のオフセットを、現在割り当てられたKafkaデータに照らす。"""
         assigned = {(item.topic, item.partition) for item in self.partitions}
         plan = []
         for (
@@ -182,7 +183,7 @@ class Runtime:
         return plan
 
     def reopen_active_state(self):
-        """Reopen the active generation after close/publication errors."""
+        """接続終了や公開に失敗した後、現在の世代を開き直す。"""
         path, identity = self.state.path, self.state.identity
         try:
             self.state.connection.close()
@@ -191,7 +192,7 @@ class Runtime:
         self.state = State(path, identity)
 
     def handle_rebuild(self):
-        """Pause delivery, rebuild local state, then acknowledge Kafka."""
+        """配送を一時停止し、ローカル状態の再構築後にKafkaへ確認を返す。"""
         request_id = self.control.take_rebuild()
         if request_id is None:
             return False
@@ -211,8 +212,8 @@ class Runtime:
                 materialize=self.materialize,
                 validate_resume=self.resume_plan,
             )
-            # The local generation is now durable. Failures below never roll
-            # it back: startup resumes the validated local checkpoint.
+            # この時点でローカル世代は永続化済み。以降の失敗で後戻りさせない。
+            # 起動時は、検証済みのローカル完了位置から再開する。
             plan = self.resume_plan(self.state)
             for partition in plan:
                 self.broker.seek(partition)
@@ -227,7 +228,7 @@ class Runtime:
             self.control.update(last_success=observed_at())
             self.observe()
         except Exception as error:
-            # A candidate/old connection may have been closed for publication.
+            # 公開のため、候補または旧世代の接続は閉じている場合がある。
             self.reopen_active_state()
             blocked = self.blocked()
             code = (
@@ -257,7 +258,7 @@ class Runtime:
         return True
 
     def process(self, records):
-        """Process one bounded batch or halt fixed-source delivery."""
+        """上限内のバッチを1つ処理し、異常時は固定ソースの配送を止める。"""
         self.observe(busy=True)
         self.state.last_raw_appended = 0
         counted = False

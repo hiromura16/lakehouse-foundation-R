@@ -1,10 +1,10 @@
-"""Create one SQL Server CDC connector or confirm an identical configuration.
+"""SQL ServerのCDCコネクターを1件作成し、既存時は設定の一致を確認する。
 
-Read private settings and a validated six-table mapping, then contact the
-internal or loopback Kafka Connect REST endpoint. A missing connector is
-created with POST. An existing connector must match every configured value;
-this command never updates/deletes it or resets offsets or schema history.
-Database CDC enablement and permissions remain separate DBA operations.
+非公開設定と検証済みの6表の対応を読み、内部またはloopbackの
+Kafka Connect RESTエンドポイントへ接続する。未作成の場合はPOSTする。
+既存コネクターは設定値すべての一致を求める。この処理はコネクターの更新、
+削除、オフセットやスキーマ履歴のリセットを行わない。
+データベース側のCDC有効化と権限の設定はDBAが別途行う。
 """
 
 import argparse
@@ -21,11 +21,11 @@ from fixed_source import EXTRA_COLUMNS, preflight, validate_mapping
 
 
 def configuration(values, mapping):
-    """Build a TLS-required connector using validated table/column lists.
+    """検証した表・列一覧から、TLSを必須にしたコネクター設定を作る。
 
-    Credentials remain Connect environment references in the returned config.
-    Host names and database names are still private configuration values, so
-    the full result must not be copied into public logs or documentation.
+    返す設定では認証情報をConnect側の環境変数参照として保持する。
+    ホスト名とデータベース名は非公開の設定値なので、
+    設定全体を公開ログや文書へ掲載しない。
     """
     fixed = values.get("CDC_SOURCE_MODE") == "fixed-demo"
     if fixed:
@@ -72,8 +72,8 @@ def configuration(values, mapping):
             "_history_" + values["CDC_TOPIC_PREFIX"]
         ),
         "snapshot.mode": "initial",
-        # The fixed PoC favors a linear baseline over concurrent source writes.
-        # Exclusive snapshot locks last until the initial snapshot completes.
+        # 固定構成の概念実証では、書込の並行性より基準の一貫性を優先する。
+        # 初回スナップショットが完了するまで排他ロックを保持する。
         "snapshot.isolation.mode": "exclusive" if fixed else "read_committed",
         "include.schema.changes": "false",
         "tombstones.on.delete": "true",
@@ -118,8 +118,8 @@ def configuration(values, mapping):
         result["driver.hostNameInCertificate"] = hostname
     agent = values.get("CDC_SQLSERVER_AGENT_STATUS_QUERY", "")
     if agent:
-        # A database administrator may expose a signed read-only status UDF.
-        # Do not accept arbitrary SQL through a shared configuration field.
+        # DBAが署名済みで読取専用の状態確認UDFを公開している場合がある。
+        # 共有の設定項目で任意のSQLを受け付けない。
         if not re.fullmatch(
             r"SELECT \[#db\]\.\[?[A-Za-z_][A-Za-z0-9_]*\]?"
             r"\.\[?[A-Za-z_][A-Za-z0-9_]*\]?\(\)",
@@ -132,14 +132,15 @@ def configuration(values, mapping):
 
 
 def register(values, mapping, endpoint):
-    """Wait for Connect, then create once or accept an exact existing match.
+    """Connectの起動を待ち、1回だけ作成するか既存設定の一致を確認する。
 
-    Readiness is retried for up to 180 seconds on connection errors. HTTP or
-    configuration errors stop the operation. Existing configs allow only an
-    equal extra name field; drift is rejected without PUT, PATCH or DELETE.
+    接続エラーは起動確認として180秒まで再試行する。
+    HTTPや設定の異常では停止する。
+    既存設定にConnectが同じ値の name を追加した場合だけ許容する。
+    他の差分は拒否し、PUT、PATCH、DELETEを発行しない。
     """
     if values.get("CDC_SOURCE_MODE") == "fixed-demo":
-        # Refuse before any Connect POST if SQL ownership/read scope differs.
+        # SQLの所有権か読取範囲が異なる場合、ConnectにPOSTする前に拒否する。
         preflight(values, mapping)
     opener = build_opener(ProxyHandler({}))
     name = values["CDC_CONNECTOR_NAME"]
@@ -157,7 +158,7 @@ def register(values, mapping, endpoint):
                 raise ValueError("Invalid Kafka Connect connector list.")
             break
         except HTTPError:
-            # Authentication and HTTP failures need review, not a create retry.
+            # 認証やHTTPの異常は確認が必要なため、作成を再試行しない。
             raise RuntimeError(
                 "Kafka Connect discovery was rejected."
             ) from None
@@ -174,8 +175,8 @@ def register(values, mapping, endpoint):
             current = json.load(reply)
         if not isinstance(current, dict):
             raise ValueError("Invalid existing connector configuration.")
-        # Connect may add its own name property. Only that exact value may be
-        # removed; every other key and value must match without coercion.
+        # Connectが name を追加する場合は、一致する値だけ除外できる。
+        # 他のキーと値は、型変換をせず厳密に一致する必要がある。
         if "name" in current:
             if current["name"] != name:
                 raise ValueError("Existing connector name did not match.")
@@ -206,7 +207,7 @@ def register(values, mapping, endpoint):
 
 
 def main():
-    """Register without displaying credentials or private database names."""
+    """認証情報や非公開のデータベース名を表示せずに登録する。"""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--env-file",

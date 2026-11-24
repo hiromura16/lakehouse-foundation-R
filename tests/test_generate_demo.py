@@ -1,4 +1,4 @@
-"""Test source generation with temporary files and a recording SQL driver."""
+"""一時ファイルとSQL操作を記録するドライバーで、ソース生成を試す。"""
 
 import importlib.util
 import json
@@ -20,7 +20,7 @@ SPEC.loader.exec_module(GENERATOR)
 
 
 class RecordingCursor:
-    """Record SQL and supply metadata/count query results."""
+    """SQLを記録し、メタデータや件数を問い合わせた結果を返す。"""
 
     def __init__(self, existing_schema=False):
         self.statements = []
@@ -45,7 +45,7 @@ class RecordingCursor:
 
 
 class RecordingConnection:
-    """Track transaction disposition without opening a database connection."""
+    """データベースに接続せず、トランザクションの結果を記録する。"""
 
     def __init__(self, existing_schema=False):
         self.recorder = RecordingCursor(existing_schema)
@@ -66,7 +66,7 @@ class RecordingConnection:
 
 
 class SourceGeneratorTests(unittest.TestCase):
-    """Check source realism, repeatability and SQL write boundaries."""
+    """ソースの現実性、再現性とSQL書込の境界を確認する。"""
 
     def test_clean_references_and_multiple_children(self):
         data = GENERATOR.build_data(scenario="clean")

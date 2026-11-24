@@ -1,4 +1,4 @@
-"""Test authenticated CDC queue/cache semantics without binding a TCP port."""
+"""TCPを待ち受けずに、認証付きCDCキューとキャッシュの動作を試す。"""
 
 import io
 import json
@@ -15,7 +15,7 @@ from cdc_fixtures import MAPPING  # noqa: E402
 
 
 class ControlTests(unittest.TestCase):
-    """Acceptance is a queued request, never a materialization success."""
+    """受付時点では要求がキューに入り、派生表の構築は未完了である。"""
 
     def setUp(self):
         self.token = "t" * 64
@@ -124,13 +124,13 @@ class ControlTests(unittest.TestCase):
         captured = {}
 
         class Server:
-            """Capture the handler class without opening a real listener."""
+            """実際には待ち受けず、HTTPハンドラーのクラスを取得する。"""
 
             def __init__(self, address, handler):
                 captured.update(address=address, handler=handler)
 
             def serve_forever(self):
-                """The mocked thread never starts this function."""
+                """模擬スレッドから、この関数は起動されない。"""
                 raise AssertionError("No server may run in this unit test.")
 
         with (

@@ -1,4 +1,4 @@
-"""Check CDC ordering, replay recovery, deletion, and source isolation."""
+"""CDCの順序、再生による復旧、削除、ソースの分離を確認する。"""
 
 import importlib.util
 import json
@@ -18,10 +18,10 @@ import state  # noqa: E402
 
 
 class CdcStateTests(unittest.TestCase):
-    """Exercise durable recovery rather than only generated SQL strings."""
+    """生成SQLに加えて、永続化済みデータからの復旧を試す。"""
 
     def setUp(self):
-        """Prepare a minimal product mapping and isolated SQLite volume."""
+        """最小限の商品対応表と、隔離したSQLiteボリュームを用意する。"""
         self.temporary = tempfile.TemporaryDirectory()
         self.path = Path(self.temporary.name) / "state.sqlite3"
         self.store = state.State(self.path, {"source": "test"})
@@ -36,7 +36,7 @@ class CdcStateTests(unittest.TestCase):
         os.environ["CDC_SQLSERVER_DATABASE"] = "lh_cdc_demo_test"
 
     def tearDown(self):
-        """Close durable handles and restore process environment."""
+        """永続ストアの接続を閉じ、プロセスの環境を元に戻す。"""
         self.store.connection.close()
         self.temporary.cleanup()
         if self.previous_database is None:
@@ -45,7 +45,7 @@ class CdcStateTests(unittest.TestCase):
             os.environ["CDC_SQLSERVER_DATABASE"] = self.previous_database
 
     def record(self, offset, operation="c", sequence=1, name="Part"):
-        """Represent a real SQL Server envelope with ordered LSN components."""
+        """SQL Server形式のイベント本体を、順序付きのLSN要素で表現する。"""
         row = dict(
             zip(
                 self.contract["columns"],
@@ -83,13 +83,13 @@ class CdcStateTests(unittest.TestCase):
         }
 
     def stage(self, record):
-        """Apply one envelope through the production state implementation."""
+        """本体の状態管理を使って、イベント本体を1件適用する。"""
         self.store.stage(
             record, "erp_products", self.mapping, self.contract["columns"]
         )
 
     def test_lsn_order_wins_over_delivery_and_updated_at(self):
-        """An older replay cannot replace a newer database revision."""
+        """古いイベントを再生しても、新しいデータベースの改訂を置き換えない。"""
         self.stage(self.record(2, "u", 3, "New"))
         self.stage(self.record(3, "u", 2, "Old"))
         self.assertEqual(
@@ -97,20 +97,20 @@ class CdcStateTests(unittest.TestCase):
         )
 
     def test_delete_keeps_version_against_old_insert(self):
-        """A replayed insert cannot resurrect a newer SQL deletion."""
+        """古いINSERTを再生しても、新しいSQL削除が取り消されない。"""
         self.stage(self.record(0))
         self.stage(self.record(1, "d", 3))
         self.stage(self.record(2, "c", 2))
         self.assertEqual(self.store.rows("erp_products"), [])
 
     def test_new_insert_after_delete_is_visible(self):
-        """A later source reinsert creates a live current-state row."""
+        """ソースで後から再挿入すると、現行の行が作成される。"""
         self.stage(self.record(1, "d", 3))
         self.stage(self.record(2, "c", 4, "Reinserted"))
         self.assertEqual(len(self.store.rows("erp_products")), 1)
 
     def test_snapshot_cannot_replace_streaming_change(self):
-        """Streaming LSNs remain newer than delayed snapshot reads."""
+        """遅れて取得したスナップショットより、ストリーミングのLSNが新しい。"""
         self.stage(self.record(0, "u", 2, "Live"))
         self.stage(self.record(1, "r", 8, "Snapshot"))
         self.assertEqual(
@@ -118,7 +118,7 @@ class CdcStateTests(unittest.TestCase):
         )
 
     def test_replayed_event_keeps_first_ingestion_metadata(self):
-        """Reprocessing the same version does not change Bronze metadata."""
+        """同じ版を再処理しても、Bronzeメタデータは変わらない。"""
         record = self.record(0)
         self.stage(record)
         first = self.store.rows("erp_products")
@@ -127,7 +127,7 @@ class CdcStateTests(unittest.TestCase):
         self.assertEqual(self.store.rows("erp_products"), first)
 
     def test_staged_change_does_not_advance_completed_offset(self):
-        """Durable row staging alone cannot acknowledge Kafka messages."""
+        """行の準備と永続化だけでは、Kafkaへの配送確認は行えない。"""
         record = self.record(0)
         self.stage(record)
         self.assertEqual(self.store.offset(record["topic"], 0), -1)
@@ -135,7 +135,7 @@ class CdcStateTests(unittest.TestCase):
         self.assertEqual(self.store.offset(record["topic"], 0), 0)
 
     def test_state_survives_restart_with_delete_marker(self):
-        """Restart recovery retains tombstones and completed offsets."""
+        """再起動からの復旧で、削除の印と完了オフセットを保持する。"""
         record = self.record(0, "d", 3)
         self.stage(record)
         self.store.complete([record])
@@ -146,12 +146,12 @@ class CdcStateTests(unittest.TestCase):
         self.assertEqual(self.store.offset(record["topic"], 0), 0)
 
     def test_different_source_cannot_reuse_state(self):
-        """A changed database identity requires a different durable volume."""
+        """データベースの識別情報が異なる場合は、別の永続ボリュームを使う。"""
         with self.assertRaises(ValueError):
             state.State(self.path, {"source": "another"})
 
     def test_invalid_key_or_lsn_is_rejected(self):
-        """Invalid business keys and streaming positions stop work."""
+        """業務キーかストリーミングの位置が不正なら処理を止める。"""
         record = self.record(0)
         record["key"] = '{"other":"P1"}'
         with self.assertRaises(ValueError):
@@ -164,18 +164,18 @@ class CdcStateTests(unittest.TestCase):
             self.stage(record)
 
     def test_raw_retention_precedes_current_and_checkpoint(self):
-        """A failed medallion keeps raw data without advancing offsets."""
+        """メダリオンの失敗時は原本を保持し、オフセットを進めない。"""
         record = self.record(0)
         admin = SimpleNamespace(catalog=lambda: None, STATE={"blocked": False})
         observed = []
 
         def raw(catalog, records):
-            """Observe the required raw-first write boundary."""
+            """原本の書込が先に確定することを観測する。"""
             observed.append(("raw", len(self.store.rows("erp_products"))))
             return 1
 
         def fail(admin, store):
-            """Fail after state staging but before completed checkpoint."""
+            """現在値の準備後、完了位置の確定前に失敗させる。"""
             observed.append(("materialize", len(store.rows("erp_products"))))
             raise RuntimeError("simulated SQL failure")
 
@@ -210,7 +210,7 @@ class CdcStateTests(unittest.TestCase):
         self.assertEqual(len(self.store.rows("erp_products")), 1)
 
     def test_uncertain_cancel_persists_blocked_state(self):
-        """Restart cannot silently clear an unknown running SQL query."""
+        """再起動しても、実行状態が不明なSQLクエリの保留を解除しない。"""
         record = self.record(0)
         admin = SimpleNamespace(catalog=lambda: None, STATE={"blocked": True})
         with (
@@ -231,7 +231,7 @@ class CdcStateTests(unittest.TestCase):
         self.assertEqual(self.store.offset(record["topic"], 0), -1)
 
     def test_tombstone_raw_is_not_discarded(self):
-        """Null Kafka values remain distinct raw records with exact offsets."""
+        """KafkaのNULL値も、正確なオフセット付きの個別のRaw行として残る。"""
         record = self.record(4)
         record["value"] = None
         rows = consumer.raw_rows([record])
@@ -241,7 +241,7 @@ class CdcStateTests(unittest.TestCase):
         )
 
     def test_logical_dates_and_timestamp_serialization(self):
-        """Known typed source fields become parseable contract strings."""
+        """既知の型付きソース項目を、契約で解析できる文字列に変換する。"""
         self.assertEqual(state.text_value(0, "planned_date"), "1970-01-01")
         self.assertEqual(
             state.text_value(1000, "updated_at"), "1970-01-01T00:00:01+00:00"
@@ -250,10 +250,10 @@ class CdcStateTests(unittest.TestCase):
 
 
 class CdcSafetyTests(unittest.TestCase):
-    """Exercise source and SQL-write boundaries before opening connections."""
+    """接続を開く前に、ソースとSQL書込の境界を試す。"""
 
     def test_retention_and_broker_reset_never_skip_history(self):
-        """Both fresh and resumed consumers require their next exact offset."""
+        """初回と再開時のどちらも、正確な次のオフセットを要求する。"""
         self.assertEqual(state.assignment_offset(-1, 0, 0), 0)
         self.assertEqual(state.assignment_offset(4, 0, 5), 5)
         with self.assertRaises(RuntimeError):
@@ -264,7 +264,7 @@ class CdcSafetyTests(unittest.TestCase):
             state.assignment_offset(9, 0, 5)
 
     def test_connector_limits_columns_and_keeps_password_references(self):
-        """Capture selects declared columns and requires verified TLS."""
+        """宣言した列だけを取得し、証明書を検証するTLSを必須にする。"""
         import connector
 
         values = config.settings(
@@ -299,7 +299,7 @@ class CdcSafetyTests(unittest.TestCase):
         self.assertTrue(all(item.startswith("dbo\\.") for item in selected))
 
     def test_certificate_exception_is_demo_loopback_only(self):
-        """Company sources cannot enable the test certificate bypass."""
+        """会社側ソースでは、試験用の証明書検証省略を有効にできない。"""
         values = {
             "CDC_SQLSERVER_HOST": "company.example",
             "CDC_SQLSERVER_DATABASE": "company",
@@ -319,7 +319,7 @@ class CdcSafetyTests(unittest.TestCase):
         )
 
     def test_fixed_dml_rejects_unowned_or_company_database(self):
-        """Company names and prefixes alone cannot authorize writes."""
+        """会社側の名前と接頭辞だけで書込を許可することはない。"""
         specification = importlib.util.spec_from_file_location(
             "cdc_demo", ROOT / "scripts/cdc-demo.py"
         )

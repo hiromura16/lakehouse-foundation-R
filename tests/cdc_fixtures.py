@@ -1,4 +1,4 @@
-"""Synthetic fixed-CDC fixtures without a driver or real connection values."""
+"""ドライバーや実接続情報を使わず、固定CDCの合成試験データを用意する。"""
 
 import calendar
 import copy
@@ -9,7 +9,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
-# Skip only an absent optional package; keep broken installs as errors.
+# 任意パッケージが無いときだけスキップし、導入済みの破損は異常とする。
 try:
     import pyarrow as pa
 except ModuleNotFoundError as error:
@@ -57,7 +57,7 @@ def record(
     name="日本語の製品",
     key=None,
 ):
-    """Represent typed CDC fields plus authoritative original business JSON."""
+    """CDCの型付き項目と、業務上の正本になる元のJSONを表す。"""
     item = MAPPING[target]
     columns = list(item["columns"])
     primary = columns[0]
@@ -115,7 +115,7 @@ def record(
 
 
 def change_envelope(original, change):
-    """Edit only a synthetic envelope and keep the Kafka identity stable."""
+    """合成イベントだけを変更し、Kafka上の識別情報は保つ。"""
     result = dict(original)
     envelope = json.loads(result["value"])
     change(envelope)
@@ -124,12 +124,12 @@ def change_envelope(original, change):
 
 
 def complete_history():
-    """Give each fixed table a source snapshot event at offset zero."""
+    """固定の各表に、オフセット0のスナップショットイベントを用意する。"""
     return [record(target) for target in MAPPING]
 
 
 class ReplayTable:
-    """Model pinned Iceberg scans with Arrow, without loading a real SDK."""
+    """実SDKを読み込まず、固定世代のIceberg読取をArrowで再現する。"""
 
     def __init__(self, records, identity):
         self.properties = {"lakehouse.fixed-cdc.identity": identity}
@@ -138,16 +138,16 @@ class ReplayTable:
         self.set_records(records)
 
     def set_records(self, records):
-        """Replace a synthetic snapshot as an explicit test fixture edit."""
+        """合成スナップショットを明示的に差し替える。"""
         self.rows = consumer.raw_rows(records, fixed=True)
         self.pinned = copy.deepcopy(self.rows)
 
     def current_snapshot(self):
-        """Return a stable public snapshot identifier."""
+        """変わらない公開スナップショット識別子を返す。"""
         return SimpleNamespace(snapshot_id=self.snapshot_id)
 
     def scan(self, *, snapshot_id, selected_fields, limit, row_filter=None):
-        """Honor the selected snapshot, projection, predicate and row bound."""
+        """指定したスナップショット、列、条件、行数上限を読取に反映する。"""
         self.calls.append((snapshot_id, selected_fields, limit))
         if snapshot_id != self.snapshot_id:
             raise AssertionError("Replay did not use the pinned snapshot.")
@@ -166,29 +166,29 @@ class ReplayTable:
 
 
 class ReplayCatalog:
-    """Expose only the isolated fixed raw table to a replay test."""
+    """再生試験には隔離した固定CDCのRaw表だけを見せる。"""
 
     def __init__(self, table):
         self.table = table
 
     def table_exists(self, name):
-        """Keep the generic raw namespace outside this fixture."""
+        """汎用CDCのRaw名前空間は試験対象から除外する。"""
         return name == "sqlcdc_events.events"
 
     def load_table(self, name):
-        """Refuse accidental reads or writes to another table."""
+        """別の表への意図しない読取・書込を拒否する。"""
         if name != "sqlcdc_events.events":
             raise AssertionError("Unexpected replay table.")
         return self.table
 
 
 def partition(topic, number, offset=None):
-    """Represent the small TopicPartition interface without a Kafka client."""
+    """Kafkaクライアントを使わず、必要なTopicPartitionの属性を表す。"""
     return SimpleNamespace(topic=topic, partition=number, offset=offset)
 
 
 class Broker:
-    """Observe main-thread delivery operations without a network connection."""
+    """ネットワークに接続せず、メインスレッドの配送操作を観測する。"""
 
     def __init__(self, records):
         self.bounds = {}
@@ -202,12 +202,12 @@ class Broker:
         self.fail_commit = False
 
     def get_watermark_offsets(self, item, timeout):
-        """Return the explicitly observed test broker bounds."""
+        """明示的に設定した試験ブローカーのオフセット範囲を返す。"""
         del timeout
         return self.bounds[(item.topic, item.partition)]
 
     def assign(self, items):
-        """Record assignment positions without reading any event."""
+        """イベントを読まずに、割り当てられた位置を記録する。"""
         self.calls.append(
             (
                 "assign",
@@ -216,19 +216,19 @@ class Broker:
         )
 
     def pause(self, items):
-        """Record a main-thread pause before maintenance starts."""
+        """保守開始前のメインスレッドによる一時停止を記録する。"""
         self.calls.append(("pause", len(items)))
 
     def resume(self, items):
-        """Record a resume only after local publication and broker ack."""
+        """ローカル公開とブローカーへの配送確認の後に再開を記録する。"""
         self.calls.append(("resume", len(items)))
 
     def seek(self, item):
-        """Record the exact next delivery position selected by local state."""
+        """ローカル状態から選んだ正確な次の配送位置を記録する。"""
         self.calls.append(("seek", item.topic, item.offset))
 
     def commit(self, *, offsets, asynchronous):
-        """Keep failed acknowledgements distinct from durable local commits."""
+        """配送確認の失敗と、永続化済みのローカル確定を区別する。"""
         if asynchronous:
             raise AssertionError("CDC must use synchronous acknowledgements.")
         self.calls.append(

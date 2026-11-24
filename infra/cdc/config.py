@@ -1,4 +1,4 @@
-"""Validate CDC settings and six explicit source-to-contract mappings."""
+"""CDCの設定と、ソース6表から業務契約への明示的な対応を検証する。"""
 
 import json
 import os
@@ -22,7 +22,7 @@ CONTRACTS = json.loads((ROOT / "medallion/sources.json").read_text())[
 
 
 def read_env(path):
-    """Parse a private external env file literally, never as shell code."""
+    """外部の非公開環境ファイルを、シェルとして評価せずに解析する。"""
     path = Path(path).expanduser().absolute()
     if (
         path.resolve().is_relative_to(ROOT)
@@ -48,7 +48,7 @@ def read_env(path):
 
 
 def settings(values=None, *, require_connector=True):
-    """Select CDC credentials and validate transport and namespace settings."""
+    """CDCの認証情報を選び、通信と名前空間の設定を検証する。"""
     values = dict(os.environ if values is None else values)
     mode = values.setdefault("CDC_SOURCE_MODE", "generic")
     if mode not in {"generic", "fixed-demo"}:
@@ -109,7 +109,7 @@ def settings(values=None, *, require_connector=True):
 
 
 def selected_mapping(values, path):
-    """Use built-in tables for fixed CDC and the original map for generic."""
+    """固定CDCは組み込みの表定義を使い、汎用CDCは既存の対応表を使う。"""
     return (
         table_mapping()
         if values.get("CDC_SOURCE_MODE") == "fixed-demo"
@@ -118,7 +118,7 @@ def selected_mapping(values, path):
 
 
 def reject_duplicate_keys(pairs):
-    """Reject ambiguous duplicate JSON mapping keys."""
+    """解釈が曖昧になるため、対応表のJSONで重複するキーを拒否する。"""
     result = {}
     for key, value in pairs:
         if key in result:
@@ -128,7 +128,7 @@ def reject_duplicate_keys(pairs):
 
 
 def mappings(path):
-    """Accept only six explicit, one-to-one table and column mappings."""
+    """6表すべてについて、表と列の明示的な1対1対応だけを許可する。"""
     path = Path(path)
     if not path.is_file() or path.is_symlink():
         raise ValueError("Provide the private table-map.json file.")
@@ -177,7 +177,7 @@ def mappings(path):
 
 
 def topic_names(values, mapping):
-    """Support SQL Server topic naming with or without its database token."""
+    """データベース名の有無に合わせて、SQL Serverのトピック名を作る。"""
     names = {}
     prefix = values["CDC_TOPIC_PREFIX"]
     database = values["CDC_SQLSERVER_DATABASE"]

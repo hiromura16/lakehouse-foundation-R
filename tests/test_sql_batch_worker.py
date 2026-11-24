@@ -1,7 +1,7 @@
-"""Test batch ordering and failure recovery with an in-memory catalog model.
+"""メモリ上のカタログモデルで、バッチの順序と失敗からの復旧を試す。
 
-The model verifies application decisions and commit ordering. It does not
-simulate Iceberg concurrency, SQL Server, Trino execution or real S3 storage.
+アプリの判断とコミット順序を検証するモデルである。
+Icebergの並行処理、SQL Server、Trinoの実行、実際のS3は対象外とする。
 """
 
 import copy
@@ -30,34 +30,34 @@ SOURCE_UPDATED = "2026-04-01T11:00:00.7654321Z"
 
 
 class Arrow:
-    """Keep nullable Python rows exact for the catalog-decision model."""
+    """カタログの判断試験で、NULLを含むPythonの行をそのまま保持する。"""
 
     def __init__(self, rows):
         self.rows = copy.deepcopy(rows)
 
     def to_pylist(self):
-        """Return independent rows like a materialized Arrow table."""
+        """実体化したArrow表と同様に、互いに独立した行を返す。"""
         return copy.deepcopy(self.rows)
 
     @property
     def num_rows(self):
-        """Expose only row count, without inventing engine-level validation."""
+        """行数だけを公開し、エンジンが検証したようには扱わない。"""
         return len(self.rows)
 
 
 class Schema:
-    """Represent declared column names; the runtime uses real Arrow types."""
+    """宣言した列名を表す。実行環境では実際のArrow型を使う。"""
 
     def __init__(self, fields=()):
         self.fields = list(fields)
 
     def as_arrow(self):
-        """Return this lightweight schema to the fake Arrow constructor."""
+        """模擬Arrowのコンストラクターに、この簡易スキーマを渡す。"""
         return self
 
 
 class Table:
-    """Record independent commits so partial failures remain observable."""
+    """コミットを個別に記録し、途中失敗を確認できるようにする。"""
 
     def __init__(self, name, schema, events):
         self.name = name
@@ -68,23 +68,23 @@ class Table:
         self.fail_append = False
 
     def schema(self):
-        """Expose the declared fake schema."""
+        """宣言された模擬スキーマを返す。"""
         return self.declared
 
     def scan(self, *, limit=None):
-        """Respect bounded scans and return a stable result view."""
+        """スキャン上限を守り、毎回同じ見え方の結果を返す。"""
         rows = self.rows if limit is None else self.rows[:limit]
         return SimpleNamespace(to_arrow=lambda: Arrow(rows))
 
     def overwrite(self, arrow):
-        """Commit one table independently, or fail before that commit."""
+        """1表だけを独立して確定するか、その確定前に失敗する。"""
         self.events.append("overwrite:" + self.name)
         if self.fail_overwrite:
             raise RuntimeError("synthetic-private-storage-error")
         self.rows = arrow.to_pylist()
 
     def append(self, arrow):
-        """Append one metadata commit without changing existing records."""
+        """既存レコードを変更せず、メタデータのコミットを1件追記する。"""
         self.events.append("append:" + self.name)
         if self.fail_append:
             raise RuntimeError("synthetic-private-ledger-error")
@@ -92,7 +92,7 @@ class Table:
 
 
 class Catalog:
-    """Keep only the catalog operations the production loader actually uses."""
+    """本体のローダーで実際に利用するカタログ操作だけを備える。"""
 
     def __init__(self, events):
         self.namespaces = set()
@@ -100,32 +100,32 @@ class Catalog:
         self.events = events
 
     def namespace_exists(self, name):
-        """Check the fake namespace set."""
+        """模擬の名前空間集合を確認する。"""
         return name in self.namespaces
 
     def create_namespace(self, name):
-        """Record namespace creation as a mutation."""
+        """名前空間の作成を変更として記録する。"""
         self.events.append("namespace:" + name)
         self.namespaces.add(name)
 
     def table_exists(self, name):
-        """Check tracked fake tables."""
+        """管理対象の模擬テーブルを確認する。"""
         return name in self.tables
 
     def create_table(self, name, *, schema, properties):
-        """Create an empty table using the real caller's declared fields."""
+        """実際の呼出元が宣言した項目で空表を作る。"""
         if properties != {"format-version": "2"}:
             raise AssertionError("Unexpected table version")
         self.events.append("table:" + name)
         self.tables[name] = Table(name, schema, self.events)
 
     def load_table(self, name):
-        """Fail if the application tries to read an undeclared table."""
+        """アプリが未宣言の表を読もうとしたら失敗する。"""
         return self.tables[name]
 
 
 def document(keys=("K1",)):
-    """Create six contracts; vary products for reconciliation tests."""
+    """6件の契約を作り、再照合の試験に使う商品を変更する。"""
     tables = {}
     for contract in CONTRACTS:
         name = contract["table"]
@@ -168,7 +168,7 @@ def document(keys=("K1",)):
 
 
 def incremental_document(baseline, *, keys=("K1",), observed=LATER):
-    """Build an overlap-window contract from a known completed snapshot."""
+    """既知の完了済みスナップショットから重複期間の契約を作る。"""
     body = document(keys)
     body.update(
         mode="incremental",
@@ -188,7 +188,7 @@ def incremental_document(baseline, *, keys=("K1",), observed=LATER):
 
 
 class SnapshotWorkerTests(unittest.TestCase):
-    """Exercise source identity, completion and deterministic replay."""
+    """ソース識別、完了、同じ結果を返す再実行を試す。"""
 
     def setUp(self):
         temporary = tempfile.TemporaryDirectory(prefix="sql-worker-test-")
@@ -205,7 +205,7 @@ class SnapshotWorkerTests(unittest.TestCase):
         )
 
         def ensure(prefix):
-            """Prepare only the isolated SQL Bronze schemas."""
+            """隔離したSQL Bronzeスキーマだけを準備する。"""
             self.assertEqual(prefix, "sql_")
             for source in CONTRACTS:
                 name = "sql_bronze." + source["table"]
@@ -223,7 +223,7 @@ class SnapshotWorkerTests(unittest.TestCase):
                     )
 
         def medallion(prefix):
-            """Record a derived-stage boundary without executing SQL."""
+            """SQLを実行せず、派生処理段階への到達を記録する。"""
             self.assertEqual(prefix, "sql_")
             self.events.append("medallion")
             return {"sql_statements": 14}
@@ -243,7 +243,7 @@ class SnapshotWorkerTests(unittest.TestCase):
         )
 
     def publish(self, body):
-        """Publish synthetic bytes following the API transport contract."""
+        """APIの受け渡し契約に従い、合成バイト列を公開する。"""
         payload = json.dumps(
             body, ensure_ascii=False, sort_keys=True, separators=(",", ":")
         ).encode()
@@ -256,7 +256,7 @@ class SnapshotWorkerTests(unittest.TestCase):
         return batch_id
 
     def load(self, body=None, observed=OBSERVED):
-        """Run the production loader against the declared in-memory catalog."""
+        """宣言したメモリ内カタログで、本体のローダーを実行する。"""
         return WORKER.load(
             self.admin,
             self.publish(body or document()),

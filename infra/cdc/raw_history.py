@@ -22,7 +22,7 @@ BODY_COLUMNS = (
 
 
 class RebuildError(ValueError):
-    """Retain only a fixed diagnostic code; source payloads stay private."""
+    """固定の診断コードだけを保持し、ソースのペイロードは非公開にする。"""
 
     def __init__(self, code):
         self.code = code
@@ -43,7 +43,7 @@ def open_raw_snapshot(catalog, read_identity):
 
 
 def raw_headers(table, snapshot_id, topics, completed, *, maximum=MAX_EVENTS):
-    """Validate bounded identities and coverage before changing any state."""
+    """状態を変更する前に、上限内の識別情報と履歴の網羅性を確認する。"""
     rows = (
         table.scan(
             snapshot_id=snapshot_id,
@@ -111,7 +111,7 @@ def raw_headers(table, snapshot_id, topics, completed, *, maximum=MAX_EVENTS):
 
 
 def read_record(table, snapshot_id, header):
-    """Fetch one pinned payload at a time and preserve NULL versus empty."""
+    """固定したペイロードを1件ずつ取得し、NULLと空を区別して保持する。"""
     from pyiceberg.expressions import EqualTo
 
     rows = (

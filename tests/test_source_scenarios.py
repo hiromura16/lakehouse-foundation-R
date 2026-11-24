@@ -1,4 +1,4 @@
-"""Check anomaly effects and backward compatibility without downstream I/O."""
+"""後段の入出力を行わず、異常の効果と後方互換性を試す。"""
 
 import contextlib
 import copy
@@ -21,7 +21,7 @@ SCENARIOS = GENERATOR.SCENARIOS
 
 
 class ScenarioTests(unittest.TestCase):
-    """Exercise real row/file faults and the unchanged published fixture."""
+    """行とファイルの異常を発生させ、既存の公開用試験データも確認する。"""
 
     def setUp(self):
         self.data = GENERATOR.build_data(scenario="clean")

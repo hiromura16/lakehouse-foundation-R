@@ -1,4 +1,4 @@
-"""Test pinned-raw recovery with real SQLite/Arrow and mocked services."""
+"""SQLite・Arrowと模擬サービスで、固定Rawからの再構築を試す。"""
 
 import copy
 import sys
@@ -26,7 +26,7 @@ from cdc_fixtures import (  # noqa: E402
 
 
 class RawRebuildTests(unittest.TestCase):
-    """Keep active state and mark partial derived outputs on failure."""
+    """失敗時には現行状態を保持し、派生出力の途中状態を記録する。"""
 
     def setUp(self):
         temporary = tempfile.TemporaryDirectory(prefix="cdc-raw-rebuild-")
@@ -54,7 +54,7 @@ class RawRebuildTests(unittest.TestCase):
         sys.modules.update(modules)
 
         def restore():
-            """Preserve lazy Arrow/pandas imports while restoring our stubs."""
+            """差し替えた依存を元に戻し、Arrowとpandasの遅延読込は維持する。"""
             for name, module in previous.items():
                 if module is None:
                     sys.modules.pop(name, None)
@@ -64,7 +64,7 @@ class RawRebuildTests(unittest.TestCase):
         self.addCleanup(restore)
 
     def rebuild(self, **options):
-        """Run the real state/file protocol with only derived SQL mocked."""
+        """派生SQLだけを模擬し、本体の状態とファイルの確定手順を実行する。"""
         active, snapshot = cdc_replay.rebuild(
             self.admin,
             self.store,

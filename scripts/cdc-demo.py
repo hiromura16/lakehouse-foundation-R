@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Provision an isolated synthetic CDC database or apply fixed source DML.
+"""隔離した合成CDCデータベースを準備するか、所定のソースDMLを適用する。
 
-This helper never starts Kafka, Debezium, a worker, or any downstream job.
-Normal company source databases cannot pass the demo ownership checks.
+Kafka、Debezium、ワーカー、その他の後段ジョブは起動しない。
+通常の会社データベースは、デモ専用の所有権検査を通過できない。
 """
 
 import argparse
@@ -26,7 +26,7 @@ DEMO_PREFIX = "lh_cdc_demo_"
 
 
 def generator():
-    """Reuse synthetic records without invoking the source generator CLI."""
+    """ソース生成CLIを起動せず、合成レコードを再利用する。"""
     specification = importlib.util.spec_from_file_location(
         "cdc_demo_generator", ROOT / "scripts/generate-demo.py"
     )
@@ -36,9 +36,7 @@ def generator():
 
 
 def validate_admin(values, trust_local_test):
-    """Validate separate demo provisioning credentials and explicit TLS
-    trust.
-    """
+    """デモ準備専用の認証情報と、明示的なTLS信頼設定を検証する。"""
     for key in ["HOST", "USER", "PASSWORD"]:
         if not values.get("DEMO_SQLSERVER_" + key):
             raise ValueError("Complete separate DEMO_SQLSERVER settings.")
@@ -55,9 +53,7 @@ def validate_admin(values, trust_local_test):
 
 @contextmanager
 def connect(values, database, trust_local_test=False):
-    """Require encrypted FreeTDS sessions with normal CA and hostname
-    checks.
-    """
+    """暗号化したFreeTDS接続と、通常のCA・ホスト名の検証を要求する。"""
     host, port = validate_admin(values, trust_local_test)
     if database != "master" and not re.fullmatch(
         DEMO_PREFIX + r"[0-9a-f]{16}", database
@@ -135,14 +131,14 @@ def connect(values, database, trust_local_test=False):
 
 
 def quote(identifier):
-    """Quote only simple fixed or generated SQL identifiers."""
+    """固定または自動生成した単純なSQL識別子だけを引用する。"""
     if not IDENTIFIER.fullmatch(identifier):
         raise ValueError("Invalid demo SQL identifier.")
     return "[" + identifier + "]"
 
 
 def private_output(path, text):
-    """Create a private external output without overwriting prior settings."""
+    """以前の設定を上書きせず、外部に非公開の出力ファイルを作る。"""
     path = Path(path).expanduser().absolute()
     if path.resolve().is_relative_to(ROOT) or any(
         part.is_symlink() for part in (path, *path.parents)
@@ -159,8 +155,9 @@ def private_output(path, text):
 
 
 def create_demo(values, output, trust_local_test=False):
-    """Create one new DB, primary-key tables, capture role, and CDC
-    instances.
+    """DBを1つ作成する。
+
+    主キー付きの表と、CDCのキャプチャーロール・インスタンスを作る。
     """
     validate_admin(values, trust_local_test)
     output = Path(output).expanduser().absolute()
@@ -179,9 +176,9 @@ def create_demo(values, output, trust_local_test=False):
         "CDC_DEMO_OWNERSHIP_TOKEN": token,
         "CDC_TEST_TRUST_SERVER_CERTIFICATE": str(trust_local_test).lower(),
     }
-    # Save recovery information before creating any server object. Failure
-    # Keep a failed new demo DB for administrator review.
-    # Automatic DROP is deliberately unavailable.
+    # サーバーにオブジェクトを作る前に復旧情報を保存する。
+    # 失敗した新規デモDBは、管理者が確認できるよう残す。
+    # 自動DROPの機能は設けない。
     private_output(
         output,
         "\n".join(key + "=" + value for key, value in private.items()) + "\n",
@@ -192,7 +189,8 @@ def create_demo(values, output, trust_local_test=False):
         if cursor.fetchone()[0] is not None:
             raise RuntimeError("Generated demo database unexpectedly exists.")
         cursor.execute("CREATE DATABASE " + quote(database))
-        # The new login receives no instance-wide permission or server role.
+        # 新規ログインへインスタンス全体の権限を付与しない。
+        # サーバーロールにも追加しない。
         cursor.execute(
             "CREATE LOGIN " + quote(reader) + " WITH PASSWORD = %s, "
             "DEFAULT_DATABASE = " + quote(database) + ", CHECK_POLICY = ON",
@@ -270,9 +268,10 @@ def create_demo(values, output, trust_local_test=False):
                     for row in data[contract["table"]]
                 ],
             )
-        # Fresh database CDC needs no independent capture. The first enable
-        # creates shared jobs normally; NULL drop-pending is healthy only when
-        # its source still exists and is tracked. Never repair metadata/jobs.
+        # 新規DBのCDCに独立したキャプチャーは不要。初回有効化で
+        # 共有ジョブを作成する。削除保留の値がNULLの場合は、
+        # 元表が存在し追跡されているときにだけ正常と判定する。
+        # メタデータやジョブの修復は行わない。
         cursor.execute(
             "IF EXISTS (SELECT 1 FROM cdc.change_tables ct "
             "LEFT JOIN sys.tables src ON src.object_id=ct.source_object_id "
@@ -306,7 +305,7 @@ def create_demo(values, output, trust_local_test=False):
 
 
 def scenario_rows():
-    """Define six linked source-only records for repeatable CDC scenarios."""
+    """再現可能なCDC試験向けに、ソース内で関連する6件のデータを定義する。"""
     stamp = "2026-02-01T08:00:00+00:00"
     return {
         "erp_products": [
@@ -355,7 +354,7 @@ def scenario_rows():
 
 
 def apply_scenario(values, action, trust_local_test=False):
-    """Apply only fixed INSERT, UPDATE, or DELETE to an owned dedicated DB."""
+    """所有を確認した専用DBに、所定のINSERT、UPDATE、DELETEだけを適用する。"""
     if action not in {"insert", "update", "delete"}:
         raise ValueError("Choose insert, update, or delete.")
     database = values.get("CDC_SQLSERVER_DATABASE", "")
@@ -444,9 +443,7 @@ def apply_scenario(values, action, trust_local_test=False):
 
 
 def main():
-    """Require explicit permission flags for new DB preparation or fixed
-    DML.
-    """
+    """DBの新規準備や所定のDMLには、許可フラグの明示を要求する。"""
     parser = argparse.ArgumentParser(
         description=__doc__,
         epilog=(

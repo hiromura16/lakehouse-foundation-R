@@ -1,13 +1,14 @@
-"""Read the fixed SQL source and hand an immutable batch to the worker.
+"""固定構成のSQLソースを読み、変更不可のバッチをワーカーに渡す。
 
-This module runs in the control API, where pymssql and private SOURCE settings
-are available. The worker receives only a content ID and a server-observation
-timestamp. It never receives source credentials or connects to SQL Server.
+このモジュールは、pymssqlと非公開のSOURCE設定を使える制御APIで動く。
+ワーカーが受け取るのは内容IDとサーバーでの観測時刻だけ。
+ソースの認証情報やSQL Serverへの接続は制御API側にとどめる。
 
-Snapshots hold shared locks on the six owned PoC tables in one bounded
-SERIALIZABLE transaction. This deliberately favors a coherent, small PoC
-snapshot over concurrency; it can block writers and is not a large-source
-extraction strategy. No database option or source object is changed.
+スナップショットは、上限を設けた1つのSERIALIZABLEトランザクションで
+概念実証用の管理対象6表に共有ロックを保持する。一貫性を優先する小規模な
+スナップショット向けの構成で、書込を待たせる場合がある。
+利用範囲は概念実証規模のデータソースとする。
+データベースの設定やソースのオブジェクトは変更しない。
 """
 
 import importlib
@@ -36,12 +37,12 @@ TIMESTAMP = re.compile(
 
 
 class BatchError(ValueError):
-    """Carry fixed, non-private errors across the source/API boundary."""
+    """ソースとAPIの境界では、非公開情報を含まない固定の例外文だけを渡す。"""
 
 
 @lru_cache(maxsize=1)
 def source_adapter():
-    """Reuse the fixed writer's process-local FreeTDS lock and module."""
+    """固定ソース書込元のプロセス内FreeTDSロックとモジュールを再利用する。"""
     scripts = str(ROOT / "scripts")
     if scripts not in sys.path:
         sys.path.insert(0, scripts)
@@ -49,10 +50,10 @@ def source_adapter():
 
 
 def canonical_timestamp(value):
-    """Preserve all datetime2(7) digits from SQL CONVERT text, in UTC.
+    """SQLのCONVERTが返すUTC時刻から、datetime2(7)の全桁を保持する。
 
-    datetime is used only to validate the calendar and clock. Formatting never
-    round-trips through Python's microsecond representation or a float.
+    datetimeは日付と時刻の妥当性確認にだけ使う。形式変換の際は、
+    Pythonのマイクロ秒表現や浮動小数点数を経由しない。
     """
     if not isinstance(value, str):
         raise BatchError("SQL timestamps must be precision-preserving text.")
@@ -69,7 +70,7 @@ def canonical_timestamp(value):
 
 
 def apply_identifier(batch_id, observed_at):
-    """Identify an observation separately from its stable source content."""
+    """ソース内容を表す安定したIDと、個々の観測を別々に識別する。"""
     if not isinstance(batch_id, str) or not re.fullmatch(
         r"[0-9a-f]{64}", batch_id
     ):
@@ -81,7 +82,7 @@ def apply_identifier(batch_id, observed_at):
 
 
 def unique_json(pairs):
-    """Reject ambiguous duplicate keys in original-value source JSON."""
+    """元の値を収めたソースJSONに重複するキーがあれば拒否する。"""
     result = {}
     for key, value in pairs:
         if key in result:
@@ -91,7 +92,7 @@ def unique_json(pairs):
 
 
 def original_values(payload, columns, primary_key, actual_key):
-    """Keep NULL, empty strings and invalid original scalars distinct."""
+    """NULL、空文字列、変換できない元のスカラー値を区別する。"""
     if (
         not isinstance(payload, str)
         or len(payload.encode("utf-8")) > MAX_ORIGINAL_BYTES
@@ -118,7 +119,7 @@ def original_values(payload, columns, primary_key, actual_key):
 
 
 def source_identity(values):
-    """Hash the approved endpoint and installation without exporting them."""
+    """承認済みの接続先と設置情報をハッシュ化し、元の値は外部に出さない。"""
     fields = (
         values["SOURCE_SQLSERVER_HOST"].casefold(),
         str(int(values.get("SOURCE_SQLSERVER_PORT", "1433"))),
@@ -131,7 +132,7 @@ def source_identity(values):
 
 
 def batch_policy(values):
-    """Bound the explicitly documented overlap and visibility safety window."""
+    """文書化した重複読取期間と可視性確認のための待機期間に上限を設ける。"""
     result = []
     for key, default, minimum, maximum in (
         ("SOURCE_SQLSERVER_BATCH_OVERLAP_SECONDS", "300", 1, 86400),
@@ -151,7 +152,7 @@ def batch_policy(values):
 
 
 def subtract_seconds(value, seconds):
-    """Subtract whole seconds while preserving the seventh fractional digit."""
+    """小数秒の7桁目を保持したまま、整数秒を差し引く。"""
     value = canonical_timestamp(value)
     try:
         shifted = datetime.fromisoformat(value[:19]) - timedelta(
@@ -165,7 +166,7 @@ def subtract_seconds(value, seconds):
 
 
 def validate_checkpoints(checkpoints, tables, *, required=False):
-    """Refuse partial, unknown or internally inconsistent control rows."""
+    """一部欠落、状態不明、または内部で矛盾する制御行を拒否する。"""
     if (
         not isinstance(checkpoints, dict)
         or (checkpoints and set(checkpoints) != set(tables))
@@ -205,7 +206,7 @@ def validate_checkpoints(checkpoints, tables, *, required=False):
 
 
 def safe_landing(path):
-    """Require an external landing directory without symlink parents."""
+    """シンボリックリンクの親を持たない外部の着地ディレクトリを要求する。"""
     path = Path(path).expanduser().absolute()
     if (
         path.resolve().is_relative_to(ROOT)
@@ -217,7 +218,10 @@ def safe_landing(path):
 
 
 def publish_exact(path, payload):
-    """Publish once atomically; reuse an existing byte-identical file only."""
+    """ファイルを不可分に1回だけ公開する。
+
+    既存ファイルは、内容がバイト単位で一致する場合だけ再利用する。
+    """
     if path.is_symlink():
         raise BatchError("SQL batch files must not be symlinks.")
     if path.exists():
@@ -241,14 +245,14 @@ def publish_exact(path, payload):
         try:
             os.link(temporary, path, follow_symlinks=False)
         except FileExistsError:
-            # Another producer may have published the same immutable content.
+            # 別の生成元が同じ変更不可の内容をすでに公開している場合がある。
             publish_exact(path, payload)
     finally:
         temporary.unlink(missing_ok=True)
 
 
 def read_snapshot(values, adapter, max_rows, *, checkpoints=None):
-    """Read six full tables or a bounded overlap window under shared locks."""
+    """共有ロックを保持し、6表の全件または上限付きの重複読取期間を読む。"""
     if type(max_rows) is not int or not 1 <= max_rows <= MAX_ROWS:
         raise BatchError("SQL snapshot row limit must be 1..100000.")
     selected = adapter.validate_settings(values, role="source")
@@ -262,8 +266,8 @@ def read_snapshot(values, adapter, max_rows, *, checkpoints=None):
         "mode": "incremental" if checkpoints is not None else "snapshot",
         "tables": {},
     }
-    # Reserve ample JSON framing overhead while checking rows as they arrive.
-    # The final exact byte check remains mandatory before file publication.
+    # 到着した行を検証する段階で、JSONの構造に必要な余裕を確保する。
+    # ファイルを公開する直前にも、実際のバイト数を必ず確認する。
     budget = MAX_BYTES - 32768
     with adapter.connection(selected, role="source") as connection:
         cursor = connection.cursor()
@@ -272,8 +276,8 @@ def read_snapshot(values, adapter, max_rows, *, checkpoints=None):
         adapter.ownership(cursor, selected, role="source")
         if not adapter.permissions_safe(cursor, role="source"):
             raise BatchError("The source reader must remain read-only.")
-        # Acquire all table S locks first. Once the final lock is acquired,
-        # every table remains unchanged until the read transaction finishes.
+        # 先に全表の共有ロックを取得する。最後のロックを取った後は、
+        # 読取トランザクションが完了するまでどの表の内容も変わらない。
         for name, table in adapter.TABLES.items():
             primary_key = table["pk"]
             cursor.execute(
@@ -307,8 +311,9 @@ def read_snapshot(values, adapter, max_rows, *, checkpoints=None):
                     if checkpoint["timestamp"]
                     else "0001-01-01T00:00:00.0000000Z"
                 )
-                # The overlap cursor starts before all valid ASCII keys at
-                # its timestamp. The persisted high cursor still includes PK.
+                # 重複読取のカーソルは開始時刻に置く。
+                # 同じ時刻の有効なASCIIキーは、すべてカーソルより後に並ぶ。
+                # 永続化する終了側のカーソルには引き続き主キーを含める。
                 predicate = (
                     " WHERE ([updated_at] > CONVERT(datetime2(7), %s, 126) "
                     "OR ([updated_at] = CONVERT(datetime2(7), %s, 126) AND ["
@@ -324,8 +329,9 @@ def read_snapshot(values, adapter, max_rows, *, checkpoints=None):
             expected = cursor.fetchone()[0]
             if type(expected) is not int or not 0 <= expected <= max_rows:
                 raise BatchError("SQL snapshot exceeds its table row limit.")
-            # Check large nvarchar(max) values before fetching any into the
-            # 512 MiB API container; fixed typed columns are bounded by DDL.
+            # 大きなnvarchar(max)は取得前に検査する。
+            # これにより、512 MiBのAPIコンテナに過大な値が入るのを防ぐ。
+            # 固定型の列にはDDLによる上限がある。
             cursor.execute(
                 "SELECT TOP (1) 1 FROM "
                 + origin
@@ -391,8 +397,8 @@ def read_snapshot(values, adapter, max_rows, *, checkpoints=None):
                     rows.append(row)
             if len(rows) != expected:
                 raise BatchError("SQL snapshot row counts did not agree.")
-            # SQL BIN2 ordering is explicit; sorting also makes fake-reader
-            # fixtures and repeat exports independent of driver fetch chunks.
+            # SQL側ではBIN2の順序を明示する。模擬読取の試験データと再出力が
+            # ドライバーの取得単位に依存しないよう、受け取った行も並べ替える。
             rows.sort(key=lambda row: row["source_pk"])
             document["tables"][name] = {
                 "schema": table["schema"],
@@ -400,14 +406,18 @@ def read_snapshot(values, adapter, max_rows, *, checkpoints=None):
                 "primary_key": table["pk"],
                 "rows": rows,
             }
-        connection.commit()  # Release read locks; no source DML was issued.
+        # ソースへのDMLは発行していない。読取ロックだけを解放する。
+        connection.commit()
     return document, observed_at
 
 
 def prepare_snapshot(
     values, landing, *, adapter=None, max_rows=MAX_ROWS, checkpoints=None
 ):
-    """Publish a complete snapshot or internal checkpointed window document."""
+    """全件スナップショットか、内部用の期間データを公開する。
+
+    内部用の期間データにはチェックポイントを含める。
+    """
     landing = safe_landing(landing)
     adapter = adapter or source_adapter()
     try:
@@ -466,7 +476,7 @@ def prepare_snapshot(
 
 
 def validate_acknowledgement(result, prepared):
-    """Require the exact completed observation before reporting success."""
+    """対応する観測が正確に完了したことを確認してから、成功を返す。"""
     if (
         not isinstance(result, dict)
         or result.get("completed") is not True
@@ -509,11 +519,11 @@ def validate_acknowledgement(result, prepared):
 
 
 def inspect_checkpoints(values, *, adapter=None):
-    """Read actual control positions without updates or source escalation.
+    """更新やソースの権限昇格を行わず、現在の制御位置を読み取る。
 
-    This explicit diagnostic uses the narrow control principal, not the
-    SOURCE reader. It neither acquires update locks nor initializes missing
-    rows. Hidden, partial or mixed-generation metadata is a safe failure.
+    この診断は、権限を限定した専用の制御用プリンシパルで行う。
+    更新ロックの取得や不足行の初期化は行わない。メタデータを参照できない、
+    一部が欠けている、または世代が混在する場合は異常として終了する。
     """
     configured = [
         bool(values.get("SOURCE_SQLSERVER_CONTROL_" + suffix))
@@ -564,11 +574,11 @@ def inspect_checkpoints(values, *, adapter=None):
 
 @contextmanager
 def checkpoint_lease(values, adapter):
-    """Hold a narrow control transaction until worker acknowledgement.
+    """ワーカーの応答確認まで、権限を限定した制御トランザクションを保持する。
 
-    UPDLOCK/HOLDLOCK includes the empty-key range, serializing first snapshot
-    initialization as well as updates. The source reader uses another login
-    and connection; it never executes the DML below.
+    UPDLOCK/HOLDLOCKはキーが存在しない範囲も対象にする。このため、
+    更新と同じく初回スナップショットの初期化も直列化される。
+    ソース読取元は別のログインと接続を使用し、以下のDMLは実行しない。
     """
     selected = adapter.validate_settings(values, role="control")
     with adapter.connection(selected, role="control") as handle:
@@ -605,7 +615,10 @@ def checkpoint_lease(values, adapter):
 
 
 def advance_checkpoints(handle, cursor, before, prepared):
-    """CAS all six positions in one transaction after exact worker success."""
+    """ワーカーが対象観測の成功を返した後、6表の制御位置を更新する。
+
+    1つのトランザクションで、現在値が取得時の値と一致することを確認する。
+    """
     for name, position in prepared["_watermarks"].items():
         stamp = position["timestamp"]
         sql_stamp = stamp[:-1] if stamp else None
@@ -657,7 +670,7 @@ def advance_checkpoints(handle, cursor, before, prepared):
 def run_checkpointed(
     values, landing, worker_callback, adapter, max_rows, mode
 ):
-    """Keep callback failures outside driver exception redaction."""
+    """コールバックの失敗は、ドライバー例外の機密情報除去処理の外に置く。"""
     callback_error = None
     failure = None
     result = None
@@ -678,8 +691,8 @@ def run_checkpointed(
                         prepared["batch_id"], prepared["observed_at"]
                     )
                 except Exception as error:
-                    # Preserve a controlled unknown-worker-outcome exception.
-                    # Keep unknown worker outcomes distinct from SQL failures.
+                    # ワーカーの結果が不明なら、専用の例外を保持する。
+                    # ワーカーの結果不明とSQLの失敗を区別する。
                     callback_error = error
                     raise BatchError(
                         "The worker did not acknowledge the SQL batch."
@@ -710,7 +723,7 @@ def run_checkpointed(
 def run_snapshot(
     values, landing, worker_callback, *, adapter=None, max_rows=MAX_ROWS
 ):
-    """Read, publish and explicitly request the separate downstream action."""
+    """読取と公開を行い、別の後段処理を明示的に要求する。"""
     if any(
         values.get("SOURCE_SQLSERVER_CONTROL_" + suffix)
         for suffix in ("USER", "PASSWORD")
@@ -736,11 +749,11 @@ def run_snapshot(
 def run_incremental(
     values, landing, worker_callback, *, adapter=None, max_rows=MAX_ROWS
 ):
-    """Merge a bounded window; physical deletes require full reconciliation.
+    """上限付きの期間を差分反映する。物理削除には全件照合が必要になる。
 
-    Timestamp+PK is not a commit LSN. Updates that commit after the overlap
-    window has passed can still be missed. Use full snapshots or CDC to close
-    that gap; this function never advertises complete change capture.
+    時刻と主キーの組は、コミットLSNのようにコミット順を示さない。
+    重複読取期間が過ぎた後にコミットした更新は取りこぼす場合がある。
+    その差を埋めるには全件スナップショットかCDCを使う。
     """
     batch_policy(values)
     return run_checkpointed(

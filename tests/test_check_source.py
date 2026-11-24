@@ -1,4 +1,4 @@
-"""Test publication checks with synthetic values and temporary Git state."""
+"""合成データと一時Git状態を使って、公開前の検査を試す。"""
 
 import argparse
 import importlib.util
@@ -17,7 +17,7 @@ sys.modules[SPEC.name] = MODULE
 SPEC.loader.exec_module(MODULE)
 
 
-# Synthetic public fixtures; Vision files need not exist on main.
+# 公開用の合成試験データ。mainにVisionのファイルがある必要はない。
 CATALOG_EXAMPLE = json.dumps(
     {
         "lan_host": ".".join(("192", "0", "2", "4")),
@@ -60,10 +60,10 @@ SAIL_EXAMPLE = (
 
 
 class PublicationChecks(unittest.TestCase):
-    """Exercise leak detection without including real private values."""
+    """実際の機密値を含めず、漏えい検出を試す。"""
 
     def inspect(self, root, *options):
-        """Run the same public CLI as CI and capture value-free diagnostics."""
+        """CIと同じ公開CLIを使い、値を含まない診断を取得する。"""
         return subprocess.run(
             [sys.executable, str(CHECKER), "--root", str(root), *options],
             capture_output=True,
@@ -72,7 +72,7 @@ class PublicationChecks(unittest.TestCase):
         )
 
     def commit(self, root, message):
-        """Create only local synthetic commits with explicit test metadata."""
+        """明示的な試験用メタデータで、ローカルに合成コミットだけを作る。"""
         subprocess.run(
             ["git", "-C", str(root), "add", "--all"],
             check=True,
@@ -201,7 +201,7 @@ class PublicationChecks(unittest.TestCase):
             self.assertIn("concrete-ipv4-address", result.stdout)
 
     def test_network_constants_and_hosts_are_distinct(self):
-        """Allow documented ranges while rejecting specific nonlocal hosts."""
+        """文書化した範囲は許可し、範囲外の具体的なホストを拒否する。"""
         self.assertTrue(MODULE.permitted_ip("127.0.0.1"))
         self.assertTrue(MODULE.permitted_ip("0.0.0.0"))
         self.assertTrue(MODULE.permitted_ip("172.30.0.0/16"))
@@ -213,7 +213,7 @@ class PublicationChecks(unittest.TestCase):
         self.assertFalse(MODULE.permitted_ip(host + "/32"))
 
     def test_svg_geometry_decimal_sequences_are_not_addresses(self):
-        """Accept compressed SVG numbers without weakening other formats."""
+        """他形式の検査を維持しつつ、圧縮表記のSVG数値を許可する。"""
         host = ".".join(["203", "0", "113", "71"])
         text = (
             '<svg xmlns="http://www.w3.org/2000/svg"\n'
@@ -232,7 +232,7 @@ class PublicationChecks(unittest.TestCase):
         )
 
     def test_svg_links_text_and_non_geometry_keep_address_detection(self):
-        """Scrub actual geometry attributes, never links, text or comments."""
+        """実際の図形属性だけを除去し、リンク、文字列、コメントは保持する。"""
         host = ".".join(["203", "0", "113", "71"])
         fragments = [
             '<a href="http://' + host + '/"/>',
@@ -272,7 +272,7 @@ class PublicationChecks(unittest.TestCase):
             )
 
     def test_svg_geometry_keeps_full_secret_and_deny_checks(self):
-        """Inspect original geometry for credentials, deny terms and tokens."""
+        """元の図形属性に認証情報、拒否対象の語句、トークンがあるか調べる。"""
         secret = "123456789" * 3
         denied = ".".join(["203", "0", "113", "71"])
         token = "ghp_" + "A" * 36
@@ -288,7 +288,7 @@ class PublicationChecks(unittest.TestCase):
         self.assertNotIn("concrete-ipv4-address", rules)
 
     def test_tokens_home_paths_and_private_artifacts(self):
-        """Find policy violations without echoing synthetic contents."""
+        """合成した内容を表示せず、ポリシー違反を見つける。"""
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             token = "ghp_" + "A" * 36
@@ -309,7 +309,7 @@ class PublicationChecks(unittest.TestCase):
             self.assertNotIn(home, result.stdout + result.stderr)
 
     def test_only_exact_empty_ca_placeholder_is_allowed(self):
-        """Keep the PEM path ban except for the single zero-byte source."""
+        """唯一許可した0バイトの例を除き、PEMパスを拒否する。"""
         allowed = "infra/proxy/empty-ca.pem"
         self.assertEqual(
             MODULE.scan_blob(allowed, b"", set(), set(), set()), []
@@ -329,7 +329,7 @@ class PublicationChecks(unittest.TestCase):
                 )
 
     def test_placeholder_must_be_zero_bytes_and_keeps_content_checks(self):
-        """Reject whitespace, BOM and secrets rather than skipping the file."""
+        """空白、BOMや機密値を検出したら、そのファイルを拒否する。"""
         name = "infra/proxy/empty-ca.pem"
         token = "ghp_" + "C" * 36
         header = "-----BEGIN " + "RSA PRIVATE " + "KEY-----"
@@ -346,7 +346,7 @@ class PublicationChecks(unittest.TestCase):
         self.assertIn("github-token", {item.rule for item in findings})
 
     def test_placeholder_staged_and_working_contents_are_both_checked(self):
-        """A clean copy cannot hide a changed staged blob, or vice versa."""
+        """作業中とステージ済みのどちらの変更も、もう一方で隠れない。"""
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             subprocess.run(["git", "init", "--quiet", str(root)], check=True)
@@ -367,7 +367,7 @@ class PublicationChecks(unittest.TestCase):
             self.assertIn("private-or-runtime-file", result.stdout)
 
     def test_placeholder_and_other_pem_history_keep_rejections(self):
-        """Allow empty history but reject deleted nonempty and other PEMs."""
+        """空の履歴を許可し、削除済みの非空PEMや別のPEMを拒否する。"""
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             subprocess.run(["git", "init", "--quiet", str(root)], check=True)
@@ -394,7 +394,7 @@ class PublicationChecks(unittest.TestCase):
             self.assertNotIn(token, result.stdout + result.stderr)
 
     def test_external_deny_terms_and_credentials_stay_out_of_output(self):
-        """Load private inputs externally and report only their rule names."""
+        """非公開の入力は外部から読み、検出ルール名だけを返す。"""
         with tempfile.TemporaryDirectory() as directory:
             parent = Path(directory)
             root = parent / "source"
@@ -425,7 +425,7 @@ class PublicationChecks(unittest.TestCase):
             self.assertEqual(result.returncode, 2)
 
     def test_private_scripts_are_not_parsed_as_env_assignments(self):
-        """Keep real env secrets while rejecting shell comparison noise."""
+        """実際の環境変数の秘密値を検出し、シェルの比較式は除外する。"""
         with tempfile.TemporaryDirectory() as directory:
             parent = Path(directory)
             root = parent / "source"
@@ -446,7 +446,7 @@ class PublicationChecks(unittest.TestCase):
             self.assertNotIn(secret, result.stdout + result.stderr)
 
     def test_deleted_history_and_staged_content_are_checked(self):
-        """Detect deleted leaks and staged leaks hidden by clean files."""
+        """削除済みの漏えいと、ステージにだけ残る漏えいを検出する。"""
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             subprocess.run(["git", "init", "--quiet", str(root)], check=True)
@@ -470,7 +470,7 @@ class PublicationChecks(unittest.TestCase):
             self.assertEqual(self.inspect(root).returncode, 1)
 
     def test_binary_files_need_an_explicit_png_allowlist(self):
-        """Reject unreviewed binary sources even with a picture extension."""
+        """画像拡張子を使っていても、未確認のバイナリ入力は拒否する。"""
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "fixture.png").write_bytes(b"\x89PNG\r\n\x1a\n")

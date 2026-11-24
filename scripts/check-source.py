@@ -127,7 +127,7 @@ SVG_GEOMETRY = {
 }
 SVG_PATH_VALUE = re.compile(rb"[MmZzLlHhVvCcSsQqTtAaEe0-9+.,\s-]*")
 SVG_NUMERIC_VALUE = re.compile(rb"[Ee0-9+.,\s-]*")
-# Possessive repeats avoid backtracking over long malformed attributes.
+# 所有的量指定子を使い、不正で長い属性のバックトラックを防ぐ。
 SVG_TRANSFORM_VALUE = re.compile(
     rb"\s*+(?:(?:matrix|translate|scale|rotate|skewX|skewY)"
     rb"\s*+\([Ee0-9+.,\s-]++\)\s*+,?\s*+)*+"
@@ -155,7 +155,7 @@ RULES = {
 
 @dataclass(frozen=True)
 class Finding:
-    """Identify a rule and source location without retaining secret text."""
+    """機密の文字列を保持せず、検出ルールとソース位置を示す。"""
 
     location: str
     line: int
@@ -163,12 +163,12 @@ class Finding:
 
 
 def git(root, *arguments):
-    """Run only read-only Git subcommands and retain stderr locally."""
+    """読取専用のGitサブコマンドだけを実行し、標準エラーは内部に保持する。"""
     environment = dict(os.environ)
-    # Partial-clone object reads must fail locally instead of fetching blobs.
+    # 部分クローンでオブジェクトが欠けても、外部から取得せず失敗にする。
     environment["GIT_NO_LAZY_FETCH"] = "1"
     environment["GIT_TERMINAL_PROMPT"] = "0"
-    # Also forbid transport fallback in Git versions predating that guard.
+    # この抑止機能が無い旧版Gitでも、通信への切り替えを禁止する。
     environment["GIT_ALLOW_PROTOCOL"] = ""
     result = subprocess.run(
         ["git", "--no-pager", "-C", str(root), *arguments],
@@ -183,7 +183,7 @@ def git(root, *arguments):
 
 
 def is_repository(root):
-    """Require this directory itself to be the checkout root."""
+    """指定のディレクトリ自体がチェックアウトのルートであることを求める。"""
     try:
         top = git(root, "rev-parse", "--show-toplevel").decode().strip()
     except (OSError, ValueError):
@@ -192,7 +192,7 @@ def is_repository(root):
 
 
 def external_path(value, root, directory=False):
-    """Reject private inputs located inside the publishable source tree."""
+    """公開対象のソースツリー内にある非公開入力は拒否する。"""
     path = Path(value).expanduser().resolve()
     if path.is_relative_to(root):
         raise ValueError("Private scan inputs must be outside the source.")
@@ -204,7 +204,10 @@ def external_path(value, root, directory=False):
 
 
 def credential_values(value, key=""):
-    """Extract only credential-like JSON leaves, excluding usernames/labels."""
+    """JSONから認証情報に該当する末端の値だけを抽出する。
+
+    ユーザー名とラベルは抽出から除外する。
+    """
     if isinstance(value, dict):
         for name, item in value.items():
             yield from credential_values(item, str(name))
@@ -217,7 +220,7 @@ def credential_values(value, key=""):
 
 
 def private_inputs(args, root):
-    """Load external deny terms and real secrets without displaying them."""
+    """外部の拒否語句と実際の機密値を読み込み、表示はしない。"""
     terms = set()
     secrets = set()
     if args.deny_file:
@@ -261,8 +264,8 @@ def private_inputs(args, root):
                 pass
             for line in text.splitlines():
                 name, separator, value = line.partition("=")
-                # Logs and scripts may contain comparisons such as !=.
-                # Accept an env assignment only when its left side is a key.
+                # ログやスクリプトには != などの比較式が含まれ得る。
+                # 左辺がキーの場合だけ、環境変数の代入として受け付ける。
                 if (
                     separator
                     and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name)
@@ -271,7 +274,7 @@ def private_inputs(args, root):
                     value = value.strip().strip("\"'")
                     if len(value) >= 8:
                         secrets.add(value)
-            # A one-line token file has no assignment or JSON structure.
+            # 1行のトークンファイルには代入文やJSON構造がない。
             value = text.strip()
             if (
                 "\n" not in value
@@ -284,7 +287,7 @@ def private_inputs(args, root):
 
 
 def path_rule(name):
-    """Recognize private/runtime artifacts even when they were force-added."""
+    """強制追加された場合も、非公開ファイルや実行時生成物を識別する。"""
     path = PurePosixPath(name)
     if any(part.casefold() in FORBIDDEN_PARTS for part in path.parts):
         return "private-or-runtime-path"
@@ -302,12 +305,13 @@ def path_rule(name):
 
 
 def permitted_ip(value):
-    """Allow loopback and standard network constants, never private hosts."""
+    """ループバックと標準的なネットワーク定数を許可し、非公開ホストは拒否する。"""
     address_text = value.partition("/")[0]
     try:
         address = ipaddress.ip_address(address_text)
     except ValueError:
-        return True  # A dotted version that is not an IPv4 address.
+        # ドット区切りのバージョン番号として扱う。IPv4アドレスではない。
+        return True
     if address.is_loopback or address == ipaddress.ip_address("0.0.0.0"):
         return True
     if "/" in value:
@@ -324,7 +328,7 @@ def permitted_ip(value):
 
 
 def svg_ip_text(name, text):
-    """Mask valid SVG geometry only for IP scanning, retaining line breaks."""
+    """IP検査時だけ、正しいSVG図形属性を改行を保って伏せる。"""
     if PurePosixPath(name).suffix.casefold() != ".svg":
         return text
     source = text.encode("utf-8")
@@ -333,11 +337,11 @@ def svg_ip_text(name, text):
     root = None
 
     def reject_doctype(*_):
-        """Leave DTD/entity-bearing input fully subject to IP scanning."""
+        """DTDや実体を含む入力は、全体をそのままIP検査に通す。"""
         raise ValueError("SVG geometry masking does not process DTDs.")
 
     def start_element(element, _):
-        """Locate actual XML attributes, excluding comments and text."""
+        """XMLの属性の位置を特定し、コメントと本文は除外する。"""
         nonlocal root
         if root is None:
             root = element
@@ -469,7 +473,7 @@ def example_ip_text(name, text):
 
 
 def scan_text(name, text, terms, secrets):
-    """Report content policy matches without emitting lines or values."""
+    """該当したポリシーを、ソース行や値を表示せずに報告する。"""
     findings = []
     ip_lines = example_ip_text(name, svg_ip_text(name, text)).splitlines()
     for number, line in enumerate(text.splitlines(), 1):
@@ -528,7 +532,7 @@ def scan_blob(name, content, allowed_png, terms, secrets):
 
 
 def index_entries(root):
-    """Read staged paths, modes and blob IDs from the Git index."""
+    """Gitインデックスから、ステージ済みのパス、モード、blob IDを読む。"""
     for record in git(root, "ls-files", "--stage", "-z").split(b"\x00"):
         if record:
             metadata, path = record.split(b"\t", 1)
@@ -539,7 +543,7 @@ def index_entries(root):
 
 
 def source_findings(root, repository, allowed_png, terms, secrets):
-    """Inspect both staged blobs and their current working-tree versions."""
+    """ステージ済みのblobと、現在の作業ツリーの版を両方検査する。"""
     findings = []
     count = 0
     if repository:
@@ -570,7 +574,7 @@ def source_findings(root, repository, allowed_png, terms, secrets):
                         scan_blob(name, current, allowed_png, terms, secrets)
                     )
     else:
-        # Pre-init inspection helps prepare the first clean public commit.
+        # Git初期化前にも検査し、最初の公開コミットの準備に使う。
         for path in sorted(root.rglob("*")):
             name = path.relative_to(root).as_posix()
             if any(part in LOCAL_CACHE_PARTS for part in path.parts):
@@ -588,7 +592,10 @@ def source_findings(root, repository, allowed_png, terms, secrets):
 
 
 def history_findings(root, allowed_png, terms, secrets):
-    """Scan reachable trees and commit/tag metadata without repeating blobs."""
+    """到達可能なツリーとコミット・タグの情報を検査する。
+
+    同じblobを重複して検査しない。
+    """
     findings = []
     seen = set()
     commits = git(root, "rev-list", "--all").decode().splitlines()
@@ -644,7 +651,7 @@ def history_findings(root, allowed_png, terms, secrets):
 
 
 def main():
-    """Run local-only publication checks and print value-free findings."""
+    """ローカルの公開前検査を実行し、値を含まない検出結果を表示する。"""
     parser = argparse.ArgumentParser(
         description=__doc__,
         epilog=(

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Generate synthetic MES/ERP source records.
+"""MES・ERPの合成ソースデータを生成する。
 
-Optionally insert raw strings into a new, isolated SQL schema. This tool
-never connects to or starts a lakehouse, catalog, or deployment service.
+必要に応じて、元の文字列を新しい隔離SQLスキーマに挿入できる。
+レイクハウス、カタログ、デプロイサービスへの接続や起動は行わない。
 """
 
 import argparse
@@ -31,12 +31,12 @@ SCENARIO_SPEC.loader.exec_module(SCENARIOS)
 
 
 def contracts():
-    """Load the checked-in six-source column and filename contract."""
+    """リポジトリに記録した6ソースの列とファイル名の契約を読み込む。"""
     return json.loads(CONTRACT.read_text())["sources"]
 
 
 def timestamp(day, hour=8, minute=0):
-    """Format a deterministic UTC timestamp without consulting the clock."""
+    """現在時刻に依存しないUTCタイムスタンプを一定の形式で返す。"""
     return (
         datetime.combine(day, datetime.min.time(), tzinfo=timezone.utc)
         .replace(hour=hour, minute=minute)
@@ -46,7 +46,7 @@ def timestamp(day, hour=8, minute=0):
 
 
 def build_data(seed=42, orders=20, days=7, scenario="edge"):
-    """Return six reproducible raw-string source datasets without I/O."""
+    """入出力を行わず、再現可能な元の文字列のデータセットを6種返す。"""
     if not 1 <= orders <= 100000 or not 1 <= days <= 366:
         raise ValueError("orders must be 1..100000 and days 1..366.")
     if scenario not in {"clean", "edge"}:
@@ -97,8 +97,8 @@ def build_data(seed=42, orders=20, days=7, scenario="edge"):
                 updated_at=timestamp(day, 7),
             )
         )
-        # Two production records and two partial shipments exercise aggregation
-        # without join multiplication.
+        # 生産記録2件と分割出荷2件を用意する。
+        # 結合で行が増え、集計が過大になる問題を検出する。
         first = good // 2
         for part, quantity in enumerate([first, good - first], 1):
             data["mes_events"].append(
@@ -143,8 +143,8 @@ def build_data(seed=42, orders=20, days=7, scenario="edge"):
             )
         )
     if scenario == "edge":
-        # Exact duplicate, then a later revision. The production quantity must
-        # count once at its latest value.
+        # 同一行を重ねた後に、新しい改訂を置く。
+        # 生産数は最新の値を1回だけ計上する。
         data["mes_events"].append(dict(data["mes_events"][0]))
         revision = dict(data["mes_events"][0])
         revision["good_qty"] = str(int(revision["good_qty"]) + 3)
@@ -152,8 +152,8 @@ def build_data(seed=42, orders=20, days=7, scenario="edge"):
             start + timedelta(days=days + 2), 10
         )
         data["mes_events"].append(revision)
-        # Old event_time with recent updated_at represents a late-arriving
-        # valid observation.
+        # 古い event_time と新しい updated_at を組み合わせ、
+        # 遅れて到着した有効な観測を表す。
         data["mes_events"].append(
             dict(
                 event_id="EV-LATE",
@@ -215,8 +215,7 @@ def build_data(seed=42, orders=20, days=7, scenario="edge"):
                 end_time=timestamp(start, 11),
             )
         )
-    # Keep a fixed on-disk order and enforce the raw-string contract
-    # independently of serialization.
+    # 保存時の行順序を固定し、直列化とは別に元の文字列の契約を検証する。
     for source in contracts():
         columns = source["columns"]
         for row in data[source["table"]]:
@@ -228,7 +227,7 @@ def build_data(seed=42, orders=20, days=7, scenario="edge"):
 
 
 def encoded_sources(data):
-    """Serialize CSV and JSON Lines without converting raw string values."""
+    """元の文字列の値を変換せず、CSVまたはJSON Linesに直列化する。"""
     result = {}
     for source in contracts():
         rows = data[source["table"]]
@@ -251,7 +250,10 @@ def encoded_sources(data):
 
 
 def private_demo_settings(path):
-    """Read private demo credentials and reject company/system databases."""
+    """非公開のデモ用認証情報を読む。
+
+    社内用とシステム用のデータベースは接続先から除外する。
+    """
     path = Path(path).expanduser()
     if (
         path.is_symlink()
@@ -315,7 +317,7 @@ def private_demo_settings(path):
 
 
 def certificate_hostname(values):
-    """Validate an optional expected certificate name, never a TLS bypass."""
+    """任意の証明書名を検証する。TLSによる検証の省略には使わない。"""
     name = values.get("DEMO_SQLSERVER_HOSTNAME_IN_CERTIFICATE", "")
     if not isinstance(name, str) or (
         name and not re.fullmatch(r"[A-Za-z0-9_.-]{1,253}", name)
@@ -325,7 +327,7 @@ def certificate_hostname(values):
 
 
 def write_sql(data, values, allow_insecure_test=False):
-    """Insert raw records into a new schema in a dedicated demo database."""
+    """専用のデモデータベースに新しいスキーマを作り、元の行を挿入する。"""
     host = values["DEMO_SQLSERVER_HOST"]
     if allow_insecure_test:
         try:
@@ -345,8 +347,8 @@ def write_sql(data, values, allow_insecure_test=False):
         )
     expected_hostname = certificate_hostname(values)
     schema = "lh_demo_" + secrets.token_hex(8)
-    # This process-local config enforces encryption and, by default,
-    # certificate/hostname validation.
+    # このプロセス内の設定で暗号化を必須にする。
+    # 既定では証明書とホスト名を検証する。
     with tempfile.TemporaryDirectory(prefix="source-demo-tls-") as directory:
         config = Path(directory) / "freetds.conf"
         trust = ""
@@ -356,7 +358,7 @@ def write_sql(data, values, allow_insecure_test=False):
                 "    check certificate hostname = yes\n"
             )
             if expected_hostname:
-                # Network aliases may differ from the trusted certificate name.
+                # 接続先の別名と、証明書で信頼する名前が異なる場合がある。
                 trust += (
                     "    certificate hostname = " + expected_hostname + "\n"
                 )
@@ -465,7 +467,7 @@ def write_sql(data, values, allow_insecure_test=False):
 
 
 def output_directory(path):
-    """Validate an external output location without touching its contents."""
+    """外部の出力先を、その内容に手を加えずに検証する。"""
     path = Path(path).expanduser().absolute()
     if path.resolve().is_relative_to(ROOT):
         raise ValueError(
@@ -485,7 +487,7 @@ def output_directory(path):
 
 
 def publish_file(path, payload, replace=False):
-    """Publish a complete file atomically and refuse accidental replacement."""
+    """完成したファイルを不可分に公開し、意図しない上書きを拒否する。"""
     path.parent.mkdir(parents=True, exist_ok=True)
     staging = path.with_name(path.name + "." + secrets.token_hex(6) + ".part")
     try:
@@ -500,7 +502,7 @@ def publish_file(path, payload, replace=False):
 
 
 def main(argv=None):
-    """Validate the requested source destination and publish synthetic rows."""
+    """指定されたソースの出力先を検証し、合成データの行を公開する。"""
     parser = argparse.ArgumentParser(
         description=__doc__,
         epilog=(
@@ -742,8 +744,8 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as error:
-        # SQL driver errors may contain server/account details. Do not print
-        # them.
+        # SQLドライバーの例外には、サーバーやアカウントの詳細が含まれ得る。
+        # 例外文は表示から除外する。
         print(
             "Source generation failed: " + str(error)
             if isinstance(error, ValueError)

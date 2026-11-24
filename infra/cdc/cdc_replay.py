@@ -1,13 +1,12 @@
-"""Rebuild fixed CDC state from a bounded, pinned immutable raw snapshot.
+"""上限を設けて固定した不変のRawスナップショットからCDC状態を再構築する。
 
-This operation never reads SQL Server or changes a connector. It requires a
-complete contiguous Kafka delivery history from offset zero for all six
-tables. An empty table with no event is indistinguishable from missing raw
-history, so this version refuses that case instead of inventing a baseline.
+再構築ではSQL Serverへの読取やコネクターの変更を行わない。
+6表すべてについて、オフセット0から欠落のないKafka配送履歴を要求する。
+イベントが一度も無い空表は履歴欠落と区別できないため、基準を作らず拒否する。
 
-Derived tables commit separately. A marker on the old SQLite state is durable
-before materialization starts; an interrupted generation cannot be resumed as
-healthy. Valid local state publication precedes the caller's Kafka ack.
+各派生表は個別にコミットする。派生処理の前に旧SQLite状態へ開始印を
+永続化し、中断した世代を正常と見なして再開するのを防ぐ。
+ローカル状態を正常に公開した後に、呼出元がKafkaへ配送を確認する。
 """
 
 import json
@@ -31,7 +30,7 @@ MAX_BYTES = 128 * 1024 * 1024
 
 
 def flush_sqlite(store):
-    """Close a durable standalone SQLite file before an atomic replacement."""
+    """単一のSQLiteファイルを永続化して閉じ、不可分な差し替えに備える。"""
     store.connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
     store.connection.execute("PRAGMA journal_mode=DELETE")
     store.connection.close()
@@ -43,7 +42,7 @@ def flush_sqlite(store):
 
 
 def copy_diagnostics(original, candidate):
-    """Preserve bounded durable error/rebuild history in the new generation."""
+    """上限付きで永続化した異常と再構築の履歴を新世代へ引き継ぐ。"""
     for table, fields in (
         (
             "processing_errors",
@@ -54,7 +53,7 @@ def copy_diagnostics(original, candidate):
             "request_id,status,raw_snapshot_id,error_code,updated_at",
         ),
     ):
-        # Names/columns are fixed internal SQL, never supplied by a request.
+        # 内部で固定したSQLの表名と列名を使う。要求からは受け取らない。
         cursor = original.connection.execute(
             "SELECT " + fields + " FROM " + table
         )
@@ -85,12 +84,12 @@ def rebuild(
     maximum=MAX_EVENTS,
     byte_limit=MAX_BYTES,
 ):
-    """Validate raw, materialize, then publish one complete local generation.
+    """Rawを検証し、派生表を構築して、完全なローカル世代を公開する。
 
-    The caller holds the consumer directory lock and pauses delivery. SQL
-    cancellation blockers are never cleared here. If validation fails, current
-    rows and completed offsets stay intact. Once materialization starts, the
-    old pending marker remains on failure because derived tables may differ.
+    呼出元はコンシューマーのディレクトリをロックし、配送を一時停止する。
+    この処理ではSQL取消の保留状態を解除しない。検証失敗時は現在値と
+    完了オフセットを保つ。派生処理の開始後に失敗した場合は、
+    派生表の世代が異なり得るため、旧状態の処理中の印を残す。
     """
     if not original.fixed_source or not re.fullmatch(
         r"[0-9a-f]{32}", request_id
@@ -127,8 +126,8 @@ def rebuild(
                 raise RebuildError("CDC_RAW_REBUILD_BYTE_LIMIT")
             target = topics[record["topic"]]
             temporary.stage(record, target, mapping[target], contracts[target])
-        # The hidden candidate can hold checkpoints without acknowledging
-        # delivery. It becomes active only after all derived tables succeed.
+        # 非公開の候補状態に位置を記録しても、配送は未確認のままにする。
+        # 派生表がすべて正常に確定してから、候補を有効にする。
         temporary.complete(headers)
         temporary.set("initialized", "true")
         copy_diagnostics(original, temporary)
@@ -150,9 +149,9 @@ def rebuild(
         temporary.set("rebuild_generation", request_id)
         flush_sqlite(temporary)
         temporary = None
-        # Closing the old connection eliminates live WAL sidecars before
-        # replacement. The active file's pending marker survives any crash
-        # before os.replace, so startup cannot trust a mixed derived state.
+        # 旧接続を閉じ、使用中のWAL付随ファイルがない状態で差し替える。
+        # os.replace 前に停止した場合、現在のファイルには処理中の印が残る。
+        # 起動時に、派生表の世代が混在する状態を正常と見なすのを防ぐ。
         flush_sqlite(original)
         os.replace(temporary_path, original.path)
         published = True
@@ -166,8 +165,8 @@ def rebuild(
     except Exception:
         if temporary is not None:
             temporary.connection.close()
-        # The caller reopens the active path if a filesystem error happened
-        # after close/publication; a valid published checkpoint is retained.
+        # 接続終了や公開の直後にファイルシステムの異常が起きた場合は、
+        # 呼出元が現行パスを開き直す。正常に公開した完了位置は保持する。
         if admin.STATE.get("blocked") and not published:
             try:
                 original.set("blocked", "true")

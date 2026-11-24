@@ -30,10 +30,10 @@ from state import State
 
 
 def message_record(message):
-    """Decode one bounded Kafka message without collapsing empty bytes.
+    """上限付きでKafkaメッセージを1件解釈し、空バイト列を区別して返す。
 
-    A null value is a Kafka tombstone. Empty bytes are an invalid JSON value
-    whose original representation must remain distinguishable in fixed raw.
+    値がNULLの場合はKafkaの削除マーカーである。空バイト列は不正なJSONだが、
+    固定CDCのRawには元の表現を区別できる形で保持する。
     """
     payload = message.value()
     key = message.key()
@@ -97,15 +97,15 @@ def process(admin, state, records, mapping, topics, *, values=None):
             for record in records:
                 state.record_failure(record, "CDC_RAW_WRITE_FAILED")
             raise
-        # Never apply fixed events through a generic decoder or state file.
+        # 固定CDCのイベントを、汎用CDC用のデコーダーや状態ファイルへ渡さない。
         if not getattr(state, "fixed_source", False):
             raise ValueError("Fixed CDC current-state support is not ready.")
     else:
         count = append_raw(admin.catalog(), records)
     state.last_raw_appended = count
     if fixed:
-        # A later invalid event can leave earlier rows staged. Persist the
-        # generation marker before staging, not only before derived SQL.
+        # 後続イベントが不正でも、それ以前の現在値が準備済みの場合がある。
+        # 派生SQLの直前まで待たず、現在値を準備する前に世代の印を永続化する。
         state.set("materialization_pending", "true")
     contracts = {item["table"]: item["columns"] for item in CONTRACTS}
     for record in records:
@@ -179,7 +179,7 @@ def refuse_lost_state(admin, state, *, fixed=False):
 
 
 def source_identity(values, mapping):
-    """Keep generic identities and bind fixed state to its installation."""
+    """汎用CDCの識別情報を維持し、固定CDCの状態を設置先に結び付ける。"""
     identity = {
         "database": values["CDC_SQLSERVER_DATABASE"],
         "host": values["CDC_SQLSERVER_HOST"],
@@ -197,17 +197,17 @@ def source_identity(values, mapping):
 
 
 def identity_digest(identity):
-    """Use the same canonical digest as SQLite's existing identity guard."""
+    """既存SQLiteの識別情報の検査と同じ規則でダイジェストを求める。"""
     return sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
 
 
 def poll_maintenance(consumer, runtime, next_observation, interval):
-    """Service paused group callbacks frequently but bound status sampling.
+    """停止中もグループのコールバックを処理し、状態採取の間隔を保つ。
 
-    observe reads broker watermarks and SQLite counts. Keep that work at the
-    configured CDC interval; poll retains its 0.2 second timeout so assignment
-    callbacks and queued rebuild checks stay responsive. Schedule from the
-    completed observation, avoiding catch-up bursts after a slow broker RPC.
+    observe はブローカーのウォーターマークとSQLiteの件数を読む。
+    この観測はCDCの設定間隔で行う。poll は0.2秒の待機を維持し、
+    割当コールバックと再構築要求を速やかに処理できるようにする。
+    ブローカーの応答が遅くても観測が集中しないよう、観測完了から次を計る。
     """
     consumer.poll(0.2)
     if time.monotonic() >= next_observation:
@@ -267,8 +267,8 @@ def run(
     except ValueError:
         if not fixed:
             raise
-        # Fixed recovery remains reachable through the authenticated API.
-        # No delivery is acknowledged while raw/state consistency is unknown.
+        # 固定CDCの復旧は認証済みAPIから指示できる状態に保つ。
+        # Rawとローカル状態の整合が不明な間は、配送を確認しない。
         lost_state = True
     consumer = Consumer(
         {
@@ -318,12 +318,13 @@ def run(
         next_observation = time.monotonic() + observation_interval
         while True:
             if runtime.handle_rebuild():
-                # Rebuild already publishes its immediate final observation.
+                # 再構築の最終観測は、この時点ですでに公開済み。
                 next_observation = time.monotonic() + observation_interval
                 continue
             if runtime.maintenance:
-                # Polling services group callbacks; paused deliveries are
-                # never staged or acked. A successful rebuild seeks explicitly.
+                # poll はグループのコールバックを処理する。
+                # 一時停止中は配送を反映も確認もしない。
+                # 再構築成功後は明示的に位置を移す。
                 next_observation = poll_maintenance(
                     consumer, runtime, next_observation, observation_interval
                 )
@@ -360,8 +361,8 @@ def run(
                 if time.monotonic() >= deadline:
                     break
             if runtime.maintenance:
-                # Assignment/error entry already published its status. Start
-                # the periodic maintenance interval after that transition.
+                # 割当や異常状態への遷移時に、状態は公開済み。
+                # その遷移時点から、定期的な観測の間隔を計る。
                 next_observation = time.monotonic() + observation_interval
                 continue
             if not records:
@@ -370,8 +371,8 @@ def run(
             # 工程5: Icebergとlocal完了位置より先にKafkaをackしない。
             # broker応答だけ失敗しても、再開位置はlocal checkpointから決める。
             result = runtime.process(records)
-            # process publishes success/failure immediately, including entry
-            # into maintenance. Never duplicate that observation next poll.
+            # process は保守状態に入る場合も含め、成否を直ちに公開する。
+            # 次のpollで同じ観測を重ねて公開しない。
             next_observation = time.monotonic() + observation_interval
             if result is not None:
                 print(

@@ -1,7 +1,7 @@
-"""Exercise document discovery, generated boundaries and local navigation.
+"""文書の検出、生成範囲、リポジトリ内のナビゲーションを試す。
 
-All mutations use temporary Git fixtures. The public source documents and any
-runtime configuration remain untouched by these tests.
+変更操作はすべて一時的なGit試験リポジトリで行う。
+公開文書の原本と実行設定は維持する。
 """
 
 import contextlib
@@ -26,7 +26,7 @@ SPEC.loader.exec_module(DOCUMENTATION)
 
 
 def entry(path, title):
-    """Return one valid editorial record with explicit public relationships."""
+    """公開文書間の関係を明示した、有効な編集用レコードを1件返す。"""
     return {
         "path": path,
         "title": title,
@@ -41,10 +41,10 @@ def entry(path, title):
 
 
 class DocumentationTests(unittest.TestCase):
-    """Build isolated repositories so discovery follows actual Git rules."""
+    """実際のGit規則で文書が検出されるよう、隔離したリポジトリを作る。"""
 
     def setUp(self):
-        """Prepare two documents and an independently generated manifest."""
+        """2つの文書と、独立して生成したマニフェストを用意する。"""
         temporary = tempfile.TemporaryDirectory(prefix="documentation-")
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
@@ -72,13 +72,13 @@ class DocumentationTests(unittest.TestCase):
         )
 
     def write(self, path, text):
-        """Write only a named fixture file, creating its parent as needed."""
+        """指定された試験ファイルだけを書き、必要なら親を作る。"""
         destination = self.root / path
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_text(text, encoding="utf-8")
 
     def save_registry(self, documents=None):
-        """Serialize a fixture registry; allow malformed records for tests."""
+        """試験用台帳を直列化する。異常系試験用には不正なレコードも許可する。"""
         self.write(
             DOCUMENTATION.REGISTRY,
             json.dumps(
@@ -92,11 +92,11 @@ class DocumentationTests(unittest.TestCase):
         )
 
     def generate(self):
-        """Generate the fixture's purpose blocks before an acceptance check."""
+        """受入検査に先立ち、試験文書に目的ブロックを生成する。"""
         DOCUMENTATION.update_documents(self.root, self.index)
 
     def test_generation_preserves_body_and_is_idempotent(self):
-        """Insertion and later role updates leave all outside text intact."""
+        """挿入と後続の役割変更で、生成範囲外の文章を保つ。"""
         original = (
             '<p id="banner">Banner</p>\n\n# Start\n\n'
             "Keep **formatting**, 日本語, and trailing spaces.  \n\n"
@@ -123,7 +123,7 @@ class DocumentationTests(unittest.TestCase):
         self.assertIn("A revised specific role.", revised)
 
     def test_purpose_uses_relative_prerequisite_and_next_links(self):
-        """The common API links correctly from nested generated documents."""
+        """入れ子の生成文書からも、共通APIの参照先にリンクできる。"""
         with mock.patch.object(
             DOCUMENTATION,
             "load_index",
@@ -136,7 +136,7 @@ class DocumentationTests(unittest.TestCase):
         self.assertTrue(block.endswith(DOCUMENTATION.END))
 
     def test_existing_markers_must_be_unique_and_follow_first_h1(self):
-        """Damaged, duplicate and displaced blocks are never overwritten."""
+        """壊れた、重複した、または位置のずれたブロックは上書きしない。"""
         block = DOCUMENTATION.purpose_block("README.md", self.index)
         malformed = [
             "# Start\n" + DOCUMENTATION.START,
@@ -150,7 +150,7 @@ class DocumentationTests(unittest.TestCase):
                 DOCUMENTATION.with_purpose(text, "README.md", self.index)
 
     def test_discovery_respects_ignore_and_is_independent_of_cwd(self):
-        """Include untracked MD while excluding ignored local notes."""
+        """未追跡のMarkdownを含め、Gitで無視するローカルメモは除外する。"""
         self.write(".gitignore", "ignored/\n")
         self.write("ignored/private.md", "# Local only\n")
         self.write("docs/untracked note.md", "# New note\n")
@@ -170,7 +170,7 @@ class DocumentationTests(unittest.TestCase):
         self.assertNotIn("ignored/private.md", paths)
 
     def test_empty_checkout_discovers_no_phantom_document(self):
-        """Empty Git output is an empty list rather than an empty path."""
+        """Gitの出力が空なら、空のパスを含む値ではなく空の一覧を返す。"""
         with tempfile.TemporaryDirectory(prefix="empty-docs-") as value:
             directory = Path(value)
             subprocess.run(
@@ -181,7 +181,7 @@ class DocumentationTests(unittest.TestCase):
             self.assertEqual(DOCUMENTATION.markdown_paths(directory), [])
 
     def test_first_h1_ignores_fenced_example_titles(self):
-        """Example headings cannot move the purpose block into a code fence."""
+        """コード例の見出しで、目的ブロックがコードフェンス内に移動しない。"""
         text = "```markdown\n# Example\n```\n\n# Start\n\nBody.\n"
         result = DOCUMENTATION.with_purpose(text, "README.md", self.index)
         self.assertIn(
@@ -191,7 +191,7 @@ class DocumentationTests(unittest.TestCase):
         self.assertEqual(DOCUMENTATION.first_heading(text)[0], "Start")
 
     def test_coverage_detects_missing_and_unregistered_markdown(self):
-        """Both directions of a stale registry produce actionable errors."""
+        """台帳側と文書側の両方の不整合を、修正先が分かる診断にする。"""
         self.generate()
         self.write("docs/new.md", "# New\n")
         (self.root / "docs/guide.md").unlink()
@@ -203,7 +203,7 @@ class DocumentationTests(unittest.TestCase):
         )
 
     def test_generation_preflights_all_records_before_writing(self):
-        """A later invalid file must not leave an earlier file regenerated."""
+        """後のファイルが不正なら、先に確認したファイルも再生成しない。"""
         before = (self.root / "README.md").read_bytes()
         self.write("docs/guide.md", "# Wrong title\n")
         with self.assertRaisesRegex(ValueError, "title differs"):
@@ -211,7 +211,7 @@ class DocumentationTests(unittest.TestCase):
         self.assertEqual((self.root / "README.md").read_bytes(), before)
 
     def test_registry_rejects_duplicate_paths_and_unregistered_relations(self):
-        """Require one entry per document and registered navigation paths."""
+        """文書ごとに1件の登録と、移動先のパスの登録を必須にする。"""
         records = list(self.index.values())
         self.save_registry(records + [records[0]])
         with self.assertRaisesRegex(ValueError, "Duplicate document"):
@@ -223,7 +223,7 @@ class DocumentationTests(unittest.TestCase):
             DOCUMENTATION.load_index(self.root)
 
     def test_registry_rejects_invalid_paths_status_and_missing_fields(self):
-        """Malformed metadata cannot generate unintended public file edits."""
+        """不正なメタデータで、予定外の公開ファイルを編集しない。"""
         for field, value in (
             ("path", "../outside.md"),
             ("path", "/absolute.md"),
@@ -244,14 +244,14 @@ class DocumentationTests(unittest.TestCase):
             DOCUMENTATION.load_index(self.root)
 
     def test_registry_root_must_be_an_object(self):
-        """Reject array, null and scalar JSON as ordinary input errors."""
+        """JSONの配列、NULL、スカラーを入力エラーとして扱う。"""
         for value in ([], None, "text", 1):
             self.write(DOCUMENTATION.REGISTRY, json.dumps(value))
             with self.subTest(value=value), self.assertRaises(ValueError):
                 DOCUMENTATION.load_index(self.root)
 
     def test_check_detects_stale_block_title_and_manifest_without_writes(self):
-        """Metadata drift and hand-edited generated content fail read-only."""
+        """メタデータのずれや生成部の手編集は、読取専用の検査でエラーにする。"""
         self.generate()
         self.write(
             "README.md",
@@ -276,7 +276,7 @@ class DocumentationTests(unittest.TestCase):
         )
 
     def test_gfm_duplicate_headings_and_unicode_anchors(self):
-        """Duplicate and explicit IDs work alongside punctuation and CJK."""
+        """句読点やCJK文字を含んでも、重複IDと明示したIDを扱える。"""
         self.write(
             "docs/guide.md",
             (
@@ -314,7 +314,7 @@ class DocumentationTests(unittest.TestCase):
         )
 
     def test_html_references_images_and_fenced_examples(self):
-        """Check HTML and images while ignoring fenced examples."""
+        """コードフェンスの例を除外し、HTMLと画像の参照を検証する。"""
         self.write("docs/picture.svg", '<svg id="diagram"></svg>')
         self.write(
             "README.md",
@@ -344,7 +344,7 @@ class DocumentationTests(unittest.TestCase):
         )
 
     def test_reference_links_spaces_and_balanced_parentheses(self):
-        """Common Markdown destinations keep spaces and nested parentheses."""
+        """Markdownの一般的なリンク先で、空白や入れ子の括弧を保つ。"""
         self.write("docs/space name.md", "# Space\n")
         self.write("docs/file(1).md", "# Number\n")
         self.write(
@@ -365,7 +365,7 @@ class DocumentationTests(unittest.TestCase):
         )
 
     def test_heading_formatting_and_identifier_underscores(self):
-        """GitHub heading text removes emphasis while preserving code IDs."""
+        """GitHub見出しでは、インラインコードの識別子を残し、強調記号を除く。"""
         self.assertEqual(
             DOCUMENTATION.heading_slug(
                 "This'll be a _Helpful_ Section About the Greek Letter Θ!"
@@ -378,7 +378,7 @@ class DocumentationTests(unittest.TestCase):
         )
 
     def test_local_escape_and_symlink_targets_are_rejected(self):
-        """Traversal and symlink escapes fail even when their target exists."""
+        """存在するパスでも、親参照やシンボリックリンクで境界外へ出られない。"""
         with tempfile.TemporaryDirectory(prefix="document-outside-") as value:
             outside = Path(value) / "outside.md"
             outside.write_text("# Outside\n")
@@ -398,7 +398,7 @@ class DocumentationTests(unittest.TestCase):
             )
 
     def test_directory_anchor_and_document_symlinks_cannot_escape(self):
-        """A directory's README and a source MD obey the same root boundary."""
+        """ディレクトリのREADMEとMarkdown原本に、同じルート境界を適用する。"""
         with tempfile.TemporaryDirectory(prefix="outside-anchor-") as value:
             outside = Path(value) / "outside.md"
             outside.write_text("# Outside\n")
@@ -416,7 +416,7 @@ class DocumentationTests(unittest.TestCase):
             )
 
     def test_cli_from_other_cwd_generates_then_checks_without_mutation(self):
-        """The real entry point succeeds from outside the target checkout."""
+        """実際の起動方法で、対象チェックアウトの外からも実行できる。"""
         command = [
             sys.executable,
             str(ROOT / "scripts/documentation.py"),
@@ -450,7 +450,7 @@ class DocumentationTests(unittest.TestCase):
         )
 
     def test_cli_invalid_registry_does_not_traceback_or_reveal_root(self):
-        """Invalid input yields a concise public diagnostic with no OS path."""
+        """不正な入力では、OSパスを含めず簡潔な公開用診断を返す。"""
         self.write(DOCUMENTATION.REGISTRY, "{invalid}")
         output = io.StringIO()
         with contextlib.redirect_stdout(output):
@@ -460,7 +460,7 @@ class DocumentationTests(unittest.TestCase):
         self.assertNotIn(str(self.root), output.getvalue())
 
     def test_generated_manifest_has_complete_category_and_reader_views(self):
-        """The generated index contains actual links and editorial rules."""
+        """生成した索引に、実際のリンクと編集規則が含まれる。"""
         rendered = DOCUMENTATION.render_manifest(self.index)
         self.assertIn("### Guides", rendered)
         self.assertIn("### Reader", rendered)

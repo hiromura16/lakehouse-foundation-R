@@ -1,4 +1,4 @@
-"""Verify CA bootstrap in temporary paths without changing host trust."""
+"""ホストの信頼設定を触らず、一時パスでCAの初期設定を試す。"""
 
 import importlib.util
 import shutil
@@ -18,7 +18,7 @@ SPEC.loader.exec_module(INSTALLER)
 
 
 class CertificateInstallTests(unittest.TestCase):
-    """Retain original roots and reject private or malformed input."""
+    """元のルート証明書を保持し、秘密情報や不正な入力を拒否する。"""
 
     @classmethod
     def setUpClass(cls):

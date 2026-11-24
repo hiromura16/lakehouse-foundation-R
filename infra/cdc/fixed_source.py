@@ -1,8 +1,8 @@
-"""Keep fixed CDC on the owned six-table source and the read-only principal.
+"""固定CDCの対象を、管理対象6表と読取専用のプリンシパルに限定する。
 
-The registration preflight only executes metadata SELECTs. It cannot enable
-CDC, alter permissions, create SQL objects or write a checkpoint. SQL Server
-DDL is a separate, manually reviewed DBA operation.
+登録前の確認で実行するのは、メタデータを取得するSELECTだけ。
+CDCの有効化、権限変更、SQLオブジェクトの作成、完了位置の記録は行わない。
+SQL ServerのDDLはDBAが別途内容を確認したうえで実行する。
 """
 
 import importlib
@@ -21,7 +21,7 @@ EXTRA_COLUMNS = ("original_values", "run_id", "created_at")
 
 @lru_cache(maxsize=1)
 def source_adapter():
-    """Load the common ownership and reader checks without a second driver."""
+    """共通の所有権と読取権限の確認を、別のドライバーを使わずに読み込む。"""
     scripts = str(ROOT / "scripts")
     if scripts not in sys.path:
         sys.path.insert(0, scripts)
@@ -29,11 +29,11 @@ def source_adapter():
 
 
 def select_settings(values):
-    """Derive CDC's internal names from SOURCE settings, never writer auth.
+    """SOURCE設定からCDC内部の名前を作る。書込用の認証情報は使わない。
 
-    The public private-env interface stays SOURCE_SQLSERVER_*. The internal
-    CDC names allow existing generic consumer code to compare the same source
-    identity. Connector credentials remain SOURCE environment references.
+    非公開の環境設定で指定する項目は引き続き SOURCE_SQLSERVER_* とする。
+    CDC内部の名前により、既存の汎用コンシューマーでも同じソース識別情報を
+    比較できる。コネクターの認証情報にはSOURCE環境変数への参照を維持する。
     """
     certificate = values.get("SOURCE_SQLSERVER_CA_FILE", "")
     if certificate == "/run/source-certs/source-ca.pem" and (
@@ -73,7 +73,7 @@ def select_settings(values):
 
 
 def table_mapping():
-    """Return fixed mappings without accepting a request or private map."""
+    """要求や非公開の対応表を入力にせず、固定の対応表を返す。"""
     return {
         name: {
             "target_table": name,
@@ -86,17 +86,17 @@ def table_mapping():
 
 
 def validate_mapping(mapping):
-    """Reject substituted or additional tables even on an internal call."""
+    """内部呼出しでも、表の差し替えや追加を拒否する。"""
     if mapping != table_mapping():
         raise ValueError("Fixed CDC accepts only the six owned demo tables.")
 
 
 def preflight(values, mapping, *, adapter=None):
-    """Check the connected identity, reader boundary and exact CDC captures.
+    """接続先、読取権限の境界、CDCキャプチャー定義の一致を確認する。
 
-    Successful checks are local observations, not evidence that Kafka, SQL
-    Server Agent, or the full Lakehouse pipeline has processed an event.
-    Metadata hidden from the selected principal causes a safe refusal.
+    成功はこの接続で確認した結果を示す。Kafka、SQL Server Agent、または
+    レイクハウス全体でイベントが処理されたかは別途確認する。
+    接続したプリンシパルに必要なメタデータが見えない場合は拒否する。
     """
     adapter = source_adapter() if adapter is None else adapter
     validate_mapping(mapping)
@@ -177,8 +177,8 @@ def preflight(values, mapping, *, adapter=None):
                     expected
                 ):
                     raise ValueError("Fixed CDC captured columns differ.")
-                # JsonConverter has schemas disabled, so the consumer must
-                # know that every typed timestamp uses nanosecond units.
+                # JsonConverterではスキーマを無効にしている。
+                # 型付きタイムスタンプは、消費側でナノ秒単位と解釈する。
                 cursor.execute(
                     "SELECT c.name,ty.name,c.scale FROM sys.columns c "
                     "JOIN sys.types ty ON c.user_type_id=ty.user_type_id "
@@ -198,7 +198,7 @@ def preflight(values, mapping, *, adapter=None):
                 if cursor.fetchone() != (1,):
                     raise ValueError("Fixed CDC reader role is missing.")
     except Exception:
-        # Driver messages can contain SQL names, credentials and server text.
+        # ドライバーの例外には、SQLの名前、認証情報、応答文が含まれ得る。
         raise ValueError(
             "Fixed CDC preflight failed; review ownership, read-only "
             "permissions and the six captures privately."
@@ -212,6 +212,6 @@ def preflight(values, mapping, *, adapter=None):
 
 
 def validate_state_volume(value):
-    """Permit an optional reviewed volume name without interpreting a path."""
+    """確認済みのボリューム名を任意で許可し、パスとしては扱わない。"""
     if value and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", value):
         raise ValueError("Invalid CDC state volume name.")

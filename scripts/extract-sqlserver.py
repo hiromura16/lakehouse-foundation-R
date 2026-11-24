@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Read mapped SQL Server source tables and publish completed landing files.
+"""対応付け済みのSQL Server表を読み、完了印付きファイルを着地先に公開する。
 
-Only explicit SELECT statements are issued. This snapshot bridge never creates
-or changes source objects, enables CDC, or starts downstream processing.
+発行するのは明示的なSELECT文だけ。このスナップショット連携では
+ソースのオブジェクト作成や変更、CDCの有効化、後段処理の起動は行わない。
 """
 
 import argparse
@@ -27,7 +27,7 @@ MAX_ROWS = 100000
 
 
 def source_io():
-    """Load format and atomic-file helpers without running the demo CLI."""
+    """デモCLIを起動せず、形式変換と不可分なファイル公開の関数を読み込む。"""
     specification = importlib.util.spec_from_file_location(
         "landing_source_io", ROOT / "scripts/generate-demo.py"
     )
@@ -37,7 +37,7 @@ def source_io():
 
 
 def private_file(path):
-    """Require an external, regular, owner-private configuration file."""
+    """所有者だけがアクセスできる、外部の通常ファイルを設定に使う。"""
     path = Path(path).expanduser().absolute()
     if (
         path.resolve().is_relative_to(ROOT)
@@ -53,7 +53,7 @@ def private_file(path):
 
 
 def read_settings(path):
-    """Read source credentials literally, without evaluating shell syntax."""
+    """シェル構文として評価せず、ソースの認証情報をそのまま文字列として読む。"""
     values = {}
     for line in private_file(path).read_text().splitlines():
         if not line or line.startswith("#"):
@@ -97,7 +97,7 @@ def read_settings(path):
 
 
 def reject_duplicate_keys(pairs):
-    """Reject duplicate JSON keys in a private mapping."""
+    """非公開の対応表で重複するJSONキーを拒否する。"""
     result = {}
     for key, value in pairs:
         if key in result:
@@ -107,7 +107,7 @@ def reject_duplicate_keys(pairs):
 
 
 def read_mapping(path, contracts):
-    """Validate six one-to-one column maps against the checked-in contract."""
+    """6表の1対1の列対応を、リポジトリに記録した契約と照合する。"""
     mapping = json.loads(
         private_file(path).read_text(), object_pairs_hook=reject_duplicate_keys
     )
@@ -160,14 +160,14 @@ def read_mapping(path, contracts):
 
 
 def quoted(identifier):
-    """Quote an already validated, non-expression SQL Server identifier."""
+    """検証済みで式を含まないSQL Server識別子を引用する。"""
     if not IDENTIFIER.fullmatch(identifier):
         raise ValueError("Invalid SQL identifier.")
     return "[" + identifier + "]"
 
 
 def canonical_value(value, source_zone):
-    """Serialize typed source scalars as deterministic Bronze string values."""
+    """型付きのソース値を、毎回同じ形式のBronze用文字列に直列化する。"""
     if value is None:
         return ""
     if isinstance(value, datetime):
@@ -193,7 +193,7 @@ def canonical_value(value, source_zone):
 
 @contextmanager
 def tls_configuration(values, trust_local_test=False):
-    """Set process-local FreeTDS trust without changing host configuration."""
+    """ホストの設定に手を加えず、プロセス内だけのFreeTDS証明書設定を適用する。"""
     host = values["SOURCE_SQLSERVER_HOST"]
     if trust_local_test:
         import ipaddress
@@ -242,7 +242,7 @@ def tls_configuration(values, trust_local_test=False):
 def extract_tables(
     values, mapping, contracts, max_rows, trust_local_test=False
 ):
-    """Fetch and validate all tables before publishing any files."""
+    """ファイルを公開する前に、全表を取得して検証する。"""
     if not 1 <= max_rows <= MAX_ROWS:
         raise ValueError("max-rows must be between 1 and 100000.")
     source_zone = ZoneInfo(
@@ -274,7 +274,7 @@ def extract_tables(
             cursor = connection.cursor()
             for source in contracts:
                 table = mapping[source["table"]]
-                # Map company columns onto the fixed Bronze column order.
+                # 会社側の列を、固定のBronzeの列順序に対応付ける。
                 inverse = {
                     target: original
                     for original, target in table["columns"].items()
@@ -311,8 +311,8 @@ def extract_tables(
                             for column, value in zip(source["columns"], record)
                         }
                     )
-                # SQL row order is unspecified. Canonical sorting makes
-                # unchanged snapshots byte-identical without a SQL sort.
+                # SQLの結果行の順序には依存できない。取得後に並べ替え、
+                # 未変更のスナップショットを同じバイト列にする。
                 rows.sort(
                     key=lambda row: tuple(
                         row[column] for column in source["columns"]
@@ -325,7 +325,7 @@ def extract_tables(
 
 
 def main(argv=None):
-    """Fetch a read-only snapshot and publish six completed source files."""
+    """読取専用でスナップショットを取得し、完了印付きの6ファイルを公開する。"""
     parser = argparse.ArgumentParser(
         description=__doc__,
         epilog=(
@@ -396,7 +396,7 @@ def main(argv=None):
         args.test_trust_server_certificate,
     )
     payloads = helper.encoded_sources(datasets)
-    # No file is published until all six queries and value conversions succeed.
+    # 6件すべての問合せと値の変換が成功した後に、ファイルを公開する。
     for filename, payload in payloads.items():
         helper.publish_file(output / filename, payload, args.force)
         helper.publish_file(
@@ -430,7 +430,7 @@ if __name__ == "__main__":
     try:
         main()
     except Exception:
-        # Driver/configuration errors can contain internal source identifiers.
+        # ドライバーや設定の例外には社内ソースの識別情報が含まれ得る。
         print(
             "Source extraction failed. Check private mapping, limits, "
             "permissions and TLS trust.",

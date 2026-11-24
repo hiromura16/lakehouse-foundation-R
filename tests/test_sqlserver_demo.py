@@ -1,8 +1,8 @@
-"""Unit tests for fixed synthetic SQL safety; no SQL Server is contacted.
+"""固定構成の合成SQLを対象に安全性を試す。SQL Serverへの接続は行わない。
 
-Pure conversion tests and injected cursor/driver tests are deliberately
-separate from the DDL's static contract tests. A mock result is not evidence
-that SQL Server accepted a statement or that CDC delivered a real event.
+値の変換やカーソルとドライバーを差し替えた試験は、
+DDLを静的に確認する契約試験と分ける。模擬結果は、SQL Serverで
+文が実行されたことやCDCから実イベントが配送されたことを示さない。
 """
 
 import copy
@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def load(name, relative):
-    """Load the real implementation without a CLI or connection side effect."""
+    """CLIや接続を起動せずに、本体の実装を読み込む。"""
     specification = importlib.util.spec_from_file_location(
         name, ROOT / relative
     )
@@ -54,7 +54,7 @@ VALUES = {
 
 
 class Cursor:
-    """Record parameterized DML and maintain only synthetic in-memory rows."""
+    """パラメーター付きDMLを記録し、合成のメモリ内行だけを保持する。"""
 
     def __init__(self):
         self.calls = []
@@ -63,7 +63,7 @@ class Cursor:
         self.fail_insert = None
 
     def execute(self, statement, arguments=()):
-        """Interpret the tested DML subset; never delegate to a SQL driver."""
+        """試験対象のDMLだけを解釈し、SQLドライバーには処理を渡さない。"""
         self.calls.append((statement, arguments))
         self.next = None
         table = re.search(r"\[lh_demo_(?:erp|mes)\]\.\[[a-z_]+\]", statement)
@@ -71,8 +71,8 @@ class Cursor:
             statement.startswith("SELECT ")
             and ", run_id, original_values FROM " in statement
         ):
-            # Model a case-insensitive SQL collation with space padding, while
-            # keeping the actual stored PK visible in the returned row.
+            # 大文字小文字を区別せず、空白で埋めるSQL照合を模擬する。
+            # 実際に保存された主キーの値は、応答行から確認できるようにする。
             requested = arguments[0].casefold().rstrip(" ")
             for (origin, key), values in self.rows.items():
                 if (
@@ -100,12 +100,12 @@ class Cursor:
             self.rows.pop((table[0], arguments[0]), None)
 
     def fetchone(self):
-        """Return the prepared synthetic response to the previous statement."""
+        """直前の文に対して、用意した合成応答を返す。"""
         return self.next
 
 
 class Handle:
-    """Track commit/rollback separately from the cursor's staged row state."""
+    """コミットとロールバックを、カーソルの準備済み行と別に記録する。"""
 
     def __init__(self):
         self.reader = Cursor()
@@ -114,25 +114,25 @@ class Handle:
         self.closes = 0
 
     def cursor(self):
-        """Return the synthetic cursor owned by this isolated test handle."""
+        """この隔離試験の接続が保持する合成カーソルを返す。"""
         return self.reader
 
     def commit(self):
-        """Observe successful completion without committing a real database."""
+        """実データベースをコミットせずに、正常な完了を観測する。"""
         self.commits += 1
 
     def rollback(self):
-        """Observe transaction failure without contacting a real database."""
+        """実データベースに接続せずに、トランザクションの失敗を観測する。"""
         self.rollbacks += 1
 
     def close(self):
-        """Observe that production context cleanup always closes its handle."""
+        """本体の後処理で、接続が常に閉じられることを観測する。"""
         self.closes += 1
 
 
 @contextmanager
 def injected_connection(handle):
-    """Model rollback so staged fake rows expose partial failures."""
+    """ロールバックを模擬し、途中失敗を準備済みの合成行で確認する。"""
     before = copy.deepcopy(handle.reader.rows)
     try:
         yield handle
@@ -143,7 +143,7 @@ def injected_connection(handle):
 
 
 class BoundaryTests(unittest.TestCase):
-    """Reject dangerous inputs before any driver or filesystem operation."""
+    """ドライバーやファイルシステムの操作前に、危険な入力を拒否する。"""
 
     def test_shared_database_is_default_deny(self):
         values = dict(VALUES)
@@ -214,7 +214,7 @@ class BoundaryTests(unittest.TestCase):
         )
 
     def test_connected_database_case_alias_is_not_adopted(self):
-        """Match the DBA SQL's literal database identity on every server."""
+        """どのサーバーでも、DBA用SQLに記載のデータベース識別値と照合する。"""
         cursor = mock.Mock()
         cursor.fetchone.return_value = (
             VALUES["DEMO_SQLSERVER_DATABASE"].upper(),
@@ -275,7 +275,7 @@ class BoundaryTests(unittest.TestCase):
 
 
 class DiagnosticTests(unittest.TestCase):
-    """Test safe diagnostics through injected metadata responses."""
+    """差し替えたメタデータ応答を通して、安全な診断を試す。"""
 
     def test_success_shape_contains_no_endpoint_user_or_ownership_token(self):
         handle = Handle()
@@ -347,7 +347,7 @@ class DiagnosticTests(unittest.TestCase):
 
 
 class TransportTests(unittest.TestCase):
-    """Inspect real context behavior using an injected pymssql module."""
+    """pymssqlを差し替え、本体のコンテキスト管理の動作を確認する。"""
 
     def test_source_is_readonly_and_control_uses_distinct_credentials(self):
         for role, user, readonly in (
@@ -426,7 +426,7 @@ class TransportTests(unittest.TestCase):
 
 
 class TypedSourceTests(unittest.TestCase):
-    """Preserve original values independently of SQL-compatible projections."""
+    """SQL互換の変換後の値とは別に、元の値が保持されることを試す。"""
 
     def test_exact_decimal_null_empty_and_japanese_survive_originals(self):
         data = GENERATOR.build_data(42, 1, 7, "clean")
@@ -500,7 +500,7 @@ class TypedSourceTests(unittest.TestCase):
 
 
 class WriteTests(unittest.TestCase):
-    """Test replay, ownership collisions and transaction failures."""
+    """再実行、所有権の衝突、トランザクション失敗を試す。"""
 
     def setUp(self):
         self.handle = Handle()
@@ -659,7 +659,7 @@ class WriteTests(unittest.TestCase):
 
 
 class SideEffectTests(unittest.TestCase):
-    """Mock protocol checks; live SQL Server acceptance is still required."""
+    """手順を模擬して検証する。SQL Server実機の受入は別途必要となる。"""
 
     def cursor(self, *, definition=None, identity=1, safe=1, missing=False):
         cursor = mock.Mock()
@@ -695,8 +695,8 @@ class SideEffectTests(unittest.TestCase):
                 self.assertEqual(cursor.execute.call_count, 1)
 
     def test_hidden_legacy_cascade_or_active_trigger_is_refused(self):
-        # The caller need not see the legacy child. The dbo checker reports
-        # unsafe with complete metadata, regardless of caller visibility.
+        # 既存の子オブジェクトは、呼出元には見えない場合がある。
+        # dboの確認処理は完全な情報で危険を判定する。
         for role in ("demo", "control"):
             with self.subTest(role=role):
                 self.assertFalse(
@@ -721,7 +721,7 @@ class SideEffectTests(unittest.TestCase):
 
 
 class PermissionTests(unittest.TestCase):
-    """Use fixed cursor responses to check fail-closed permission decisions."""
+    """固定のカーソル応答で、権限が不明な場合の拒否を確認する。"""
 
     def cursor(
         self,
@@ -756,8 +756,8 @@ class PermissionTests(unittest.TestCase):
             elif statement.startswith("EXEC "):
                 result[0] = (1,)
             elif "FROM sys.columns c" in statement:
-                # Effective column-only role grant; the object probe below
-                # still reports no object-level permission.
+                # ロールを通じて列単位だけに実効権限が付与されている。
+                # 下のオブジェクト単位の確認では引き続き権限なしと報告される。
                 result[0] = None
                 if column_permission:
                     operation, name, column, effective = column_permission
@@ -845,7 +845,7 @@ class PermissionTests(unittest.TestCase):
     def test_query_contract_uses_applicable_permissions_not_guessed_pairs(
         self,
     ):
-        """Inspect SQL contracts; this is not a SQL Server execution test."""
+        """SQLの契約を静的に検証する。"""
         cursor = self.cursor()
         self.assertTrue(DEMO.permissions_safe(cursor))
         object_queries = [

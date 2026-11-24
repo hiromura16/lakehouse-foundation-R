@@ -1,4 +1,4 @@
-"""Test fixed-source snapshot contracts with a fake SQL driver, never a DB."""
+"""模擬SQLドライバーで固定ソースのスナップショット契約を試す。"""
 
 import contextlib
 import copy
@@ -46,7 +46,7 @@ VALUES = {
 
 
 def fixture_data():
-    """Include original values that CSV cannot distinguish."""
+    """CSVでは区別できない元の値を含める。"""
     data = {}
     for source in CONTRACTS:
         row = {name: "value" for name in source["columns"]}
@@ -73,7 +73,7 @@ def fixture_data():
 
 
 class Cursor:
-    """Interpret only the fixed SELECT/SET protocol used by the reader."""
+    """読取元が使う所定のSELECTとSETの手順だけを解釈する。"""
 
     def __init__(
         self,
@@ -93,7 +93,7 @@ class Cursor:
         self.pending = []
 
     def execute(self, statement, parameters=None):
-        """Retain issued SQL so tests can reject source DML and weak reads."""
+        """発行したSQLを保持し、ソースDMLや弱い読取を検出できるようにする。"""
         self.statements.append((statement, parameters))
         if statement.startswith("SET "):
             self.pending = []
@@ -120,18 +120,18 @@ class Cursor:
             self.pending = list(rows)
 
     def fetchone(self):
-        """Return one prepared row, including metadata/count observations."""
+        """メタデータや件数の観測も含め、用意した行を1件返す。"""
         return self.pending.pop(0) if self.pending else None
 
     def fetchmany(self, size):
-        """Read bounded driver chunks rather than preloading all SQL rows."""
+        """全行を事前取得せず、ドライバーから上限付きの単位で読む。"""
         result = self.pending[:size]
         del self.pending[:size]
         return result
 
 
 def adapter_fixture(data=None, **options):
-    """Inject the reader connection, ownership and permission checks."""
+    """読取接続と、所有権・権限の確認処理を差し替える。"""
     cursor = Cursor(data or fixture_data(), **options)
     handle = SimpleNamespace(cursor=lambda: cursor, commit=mock.Mock())
     roles = []
@@ -156,7 +156,7 @@ def adapter_fixture(data=None, **options):
 
 
 class SnapshotReadTests(unittest.TestCase):
-    """Exercise export contracts without SQL Server integration."""
+    """SQL Serverに接続せず、エクスポート契約を試す。"""
 
     def setUp(self):
         temporary = tempfile.TemporaryDirectory(prefix="sql-snapshot-test-")
@@ -166,13 +166,13 @@ class SnapshotReadTests(unittest.TestCase):
         self.adapter, self.cursor, self.handle, self.roles = adapter_fixture()
 
     def prepare(self, **options):
-        """Prepare a batch using synthetic settings and an injected reader."""
+        """合成設定と差し替えた読取元でバッチを用意する。"""
         return BATCH.prepare_snapshot(
             VALUES, self.landing, adapter=self.adapter, **options
         )
 
     def document(self, prepared):
-        """Inspect private test output without printing its source contents."""
+        """非公開の試験出力を、ソースの内容を表示せずに確認する。"""
         path = self.landing / "sql-batches" / (prepared["batch_id"] + ".json")
         return json.loads(path.read_bytes())
 
@@ -413,7 +413,7 @@ class SnapshotReadTests(unittest.TestCase):
 
 
 class WindowCursor(Cursor):
-    """Model only the fixed composite range predicate, not a SQL engine."""
+    """決められた複合範囲条件だけを模擬する。"""
 
     def execute(self, statement, parameters=None):
         super().execute(statement, parameters)
@@ -445,7 +445,7 @@ class WindowCursor(Cursor):
 
 
 class ControlCursor:
-    """Stage watermark changes until a simulated transaction commits."""
+    """模擬トランザクションの確定までウォーターマーク変更を保留する。"""
 
     def __init__(self, connection):
         self.connection = connection
@@ -522,7 +522,7 @@ class ControlCursor:
 
 
 class ControlConnection:
-    """Verify client transactions without database integration."""
+    """データベースを使わず、クライアントのトランザクションを検証する。"""
 
     def __init__(self):
         self.committed = {}
@@ -553,7 +553,7 @@ class ControlConnection:
 
 
 class WatermarkBatchTests(unittest.TestCase):
-    """Exercise separate roles, composite windows and commit gates."""
+    """役割の分離、複合期間、コミット条件を試す。"""
 
     def setUp(self):
         temporary = tempfile.TemporaryDirectory(prefix="sql-window-test-")
@@ -629,7 +629,7 @@ class WatermarkBatchTests(unittest.TestCase):
         self.seen = []
 
     def worker(self, batch_id, observed_at):
-        """Confirm the exact exported contract without a fake live service."""
+        """模擬の実行中サービスを用意せず、出力契約の完全一致を確認する。"""
         self.assertTrue(self.control.leased)
         self.assertIn("source-read-commit", self.control.events)
         self.control.events.append("worker-ack")
@@ -794,7 +794,7 @@ class WatermarkBatchTests(unittest.TestCase):
         commits = self.control.commits
 
         class WorkerUnknown(RuntimeError):
-            """Represent a safe unknown-worker-outcome exception."""
+            """ワーカーの結果が不明な場合の安全な例外を表す。"""
 
         def unknown(*_):
             raise WorkerUnknown("worker outcome unknown")

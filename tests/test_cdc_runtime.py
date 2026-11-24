@@ -1,4 +1,4 @@
-"""Test CDC thread boundaries with fake services and real local state."""
+"""模擬サービスと実際のローカル状態で、CDCのスレッド境界を試す。"""
 
 import json
 import sys
@@ -29,7 +29,7 @@ from cdc_fixtures import (  # noqa: E402
 
 
 class RuntimeTests(unittest.TestCase):
-    """Distinguish queued work, local commits and broker acknowledgements."""
+    """キュー登録、ローカル確定、ブローカーの配送確認を区別する。"""
 
     def setUp(self):
         temporary = tempfile.TemporaryDirectory(prefix="cdc-runtime-test-")
@@ -71,7 +71,7 @@ class RuntimeTests(unittest.TestCase):
         sys.modules.update(modules)
 
         def restore():
-            """Restore SDK stubs while keeping Arrow lazy imports."""
+            """SDKの差し替えを戻し、Arrowの遅延読込は維持する。"""
             for name, module in previous.items():
                 if module is None:
                     sys.modules.pop(name, None)
@@ -81,13 +81,13 @@ class RuntimeTests(unittest.TestCase):
         self.addCleanup(restore)
 
     def assign(self):
-        """Observe only the actual synthetic topic partitions, not aliases."""
+        """別名を含めず、合成トピックの実際のパーティションだけを観測する。"""
         self.runtime.assign(
             self.broker, [partition(row["topic"], 0) for row in self.records]
         )
 
     def queue(self):
-        """Receive an HTTP-equivalent 202 while doing no state/broker work."""
+        """状態やブローカーに触れず、HTTP 202に相当する受付結果を得る。"""
         status, request = self.control.dispatch(
             "POST", "/rebuild", "Bearer " + "t" * 64, b'{"confirm":true}'
         )
@@ -217,7 +217,7 @@ class RuntimeTests(unittest.TestCase):
         original_commit = self.broker.commit
 
         def commit(*, offsets, asynchronous):
-            """Observe SQLite at the external acknowledgement boundary."""
+            """外部への配送確認時点で、SQLiteの状態を観測する。"""
             self.assertTrue(
                 all(
                     self.runtime.state.offset(item.topic, item.partition) == 0

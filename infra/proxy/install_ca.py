@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Add public CA certificates to build-image trust without dropping roots.
+"""既存の信頼先を保持し、ビルドするイメージに公開CA証明書を追加する。
 
-This command writes the OS certificate directory and bundle, and imports
-hash-named aliases into the existing Java truststore when keytool is present.
-Missing or empty optional input is skipped. Nonempty input must be a regular,
-non-symlink PEM file of at most one MiB, with at most 64 certificate blocks.
-Private keys are rejected. Added trust remains in the resulting image.
+OSの証明書ディレクトリとバンドルを更新する。keytool が使える場合は、
+ハッシュから作った別名で既存のJava信頼ストアにも取り込む。
+任意入力が無いか空なら省略する。入力には、シンボリックリンクでない
+1 MiB以下の通常のPEMファイルを使い、証明書は64個まで含められる。
+秘密鍵を含む入力は拒否する。追加した信頼設定は生成イメージに残る。
 """
 
 import argparse
@@ -29,7 +29,7 @@ CERT_DIR = Path("/usr/local/share/ca-certificates")
 
 
 def certificates(content, strict=False):
-    """Validate X.509 PEM blocks; build input may contain certificates only."""
+    """X.509のPEMブロックを検証する。ビルド入力には証明書だけを許可する。"""
     if b"PRIVATE KEY" in content:
         raise ValueError("Private keys are never accepted as CA input.")
     matches = list(CERTIFICATES.finditer(content))
@@ -48,7 +48,7 @@ def certificates(content, strict=False):
 
 
 def atomic_write(path, content, permissions=0o644):
-    """Publish public certificate bytes without exposing partial bundles."""
+    """書込途中のバンドルを参照されないよう、公開証明書を不可分に保存する。"""
     descriptor, temporary = tempfile.mkstemp(prefix=".ca-", dir=path.parent)
     try:
         with os.fdopen(descriptor, "wb") as output:
@@ -62,7 +62,7 @@ def atomic_write(path, content, permissions=0o644):
 
 
 def java_store():
-    """Find the installed JRE's existing truststore without replacing it."""
+    """インストール済みのJREから、置き換えずに既存の信頼ストアを探す。"""
     tool = shutil.which("keytool")
     if tool is None:
         return None
@@ -79,7 +79,7 @@ def java_store():
 
 
 def install_java(entries, files):
-    """Import hash-named aliases, retaining every pre-existing JRE entry."""
+    """ハッシュを別名に使って証明書を取り込み、既存のJREエントリを保持する。"""
     target = java_store()
     if target is None:
         return 0
@@ -116,11 +116,11 @@ def install_java(entries, files):
 
 
 def install(ca_file, *, cert_dir=CERT_DIR, bundle=BUNDLE, java=True):
-    """Install a bounded public chain, preserving OS and optional JRE roots.
+    """OSと任意のJREの信頼先を保ち、上限付きの公開証明書チェーンを導入する。
 
-    Return status and certificate counts only. Missing/empty input is a
-    no-op. Installing requires permission to write the selected certificate
-    directory, OS bundle and, when enabled, the existing Java truststore.
+    返すのは状態と証明書数だけ。入力が無いか空の場合は処理を省く。
+    導入には、選択した証明書ディレクトリとOSのバンドルへの書込権限がいる。
+    Javaにも追加する場合は、既存のJava信頼ストアへの書込権限も必要になる。
     """
     source = Path(ca_file)
     if not source.exists() or source == Path("/dev/null"):
@@ -135,7 +135,7 @@ def install(ca_file, *, cert_dir=CERT_DIR, bundle=BUNDLE, java=True):
     if not content.strip():
         return {"status": "skipped", "certificates": 0, "java_certificates": 0}
     entries = certificates(content, strict=True)
-    # Save every original root before the OS utility regenerates its bundle.
+    # OSの更新ツールがバンドルを再生成する前に、既存のルート証明書を保持する。
     target = Path(bundle).resolve()
     original = target.read_bytes()
     roots = certificates(original)
@@ -173,7 +173,7 @@ def install(ca_file, *, cert_dir=CERT_DIR, bundle=BUNDLE, java=True):
 
 
 def main():
-    """Run during image build; log counts only, never names or PEM bytes."""
+    """イメージビルド時に実行し、証明書の名前やPEMは出さず件数を記録する。"""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--ca-file",

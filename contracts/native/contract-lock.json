@@ -16,9 +16,9 @@
     "medallion/checks/10-sales-totals.sql": "76ee6855857f0d3f7a06f9792d2252cc43dfdc1bb09fe8305499f37bf4a53f30",
     "medallion/expected-demo.json": "bcb4f1bf215c1b845c70db68297ea09786a49520ba8fc140d5d3c2f9457016f1",
     "medallion/sources.json": "f4760de1b8757855ea79f6dfc49947009980770dc31c174e0cfce79db0d77105",
-    "infra/cdc/state.py": "ac65da7c53a20702608a816091b03d1674d50104026ece722cf07f6b72bbbb4c",
-    "infra/cdc/raw_writer.py": "1b739c78373004c3f9ba475a8d1b2d052b6ebcaec96ba48541af363b1d3e91b3",
-    "infra/cdc/raw_history.py": "3b2c6c6c0b8a0bc0b1f8efe29f5ce7839befcf890a76101056b99198ddc94a45",
-    "infra/cdc/cdc_replay.py": "ada62250a79dc7785e97d94a1bb16d8aac98e3d24aa9eaec62b7eb2c3a8ce888"
+    "infra/cdc/state.py": "940d1419a9a84a0bf0aece86947a317f5bceed1ea3e1d56346ae5628518252de",
+    "infra/cdc/raw_writer.py": "7176eb407c4428c84297dc615317e1e082d594299fd9b781c414d915212f99f6",
+    "infra/cdc/raw_history.py": "31994a6a3f1c925fc0f6b09885ad710ca409a1656fac2e1a15d28adad0c6ac35",
+    "infra/cdc/cdc_replay.py": "db507846412b7605aa4f8cc6853e86954492d3f0478a9b8dd55b6170e0c38dfc"
   }
 }

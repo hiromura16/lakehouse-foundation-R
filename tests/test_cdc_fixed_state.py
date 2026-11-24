@@ -1,4 +1,4 @@
-"""Test typed fixed CDC meaning and durable guards without live services."""
+"""実サービスを使わず、固定CDCの型と永続化の境界を試す。"""
 
 import copy
 import json
@@ -26,7 +26,7 @@ from cdc_fixtures import (  # noqa: E402
 
 
 class FixedStateTests(unittest.TestCase):
-    """Exercise real SQLite durability, not only generated SQL strings."""
+    """SQLiteに実際に書き、再起動後の状態を検証する。"""
 
     def setUp(self):
         temporary = tempfile.TemporaryDirectory(prefix="fixed-cdc-state-")
@@ -36,7 +36,7 @@ class FixedStateTests(unittest.TestCase):
         self.addCleanup(lambda: self.store.connection.close())
 
     def stage(self, message):
-        """Apply one synthetic product event through the production decoder."""
+        """本体のデコーダー経由で、合成の商品イベントを1件適用する。"""
         self.store.stage(
             message,
             "erp_products",
@@ -217,7 +217,7 @@ class FixedStateTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "identity and schema"):
             state.State(self.path, IDENTITY)
         self.assertEqual(self.path.read_bytes(), before)
-        # Reopen only for cleanup; inspect directly without claiming identity.
+        # 終了処理のためにだけ開き直す。識別情報を登録せずに直接確認する。
         self.store.connection = sqlite3.connect(self.path)
         self.assertIsNone(self.store.get("identity"))
 

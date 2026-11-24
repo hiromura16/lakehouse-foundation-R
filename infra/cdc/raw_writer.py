@@ -56,8 +56,8 @@ def raw_rows(records, *, fixed=False):
         for row, record in zip(rows, records, strict=True):
             row["key_json"] = record["key"]
             row["envelope_json"] = record["value"]
-            # Malformed envelopes are still retained. Interpretation failure
-            # must not destroy evidence or acknowledge offsets.
+            # 形式が不正なイベント本体も保存する。
+            # 解釈に失敗しても原本を失わず、オフセットの配送確認は行わない。
             try:
                 envelope = json.loads(record["value"] or "null")
             except (TypeError, ValueError):
@@ -95,7 +95,7 @@ def raw_rows(records, *, fixed=False):
                 ),
                 run_id=current.get("run_id"),
             )
-            # Convenience columns supplement the untouched envelope_json.
+            # 付加列は参照用であり、envelope_json は元のまま保持する。
             for name in FIXED_RAW_COLUMNS:
                 if row.get(name) is not None and not isinstance(
                     row[name], str

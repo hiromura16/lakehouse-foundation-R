@@ -1,13 +1,14 @@
-"""Materialize immutable, bounded fixed-SQL batches without DB credentials.
+"""変更不可で上限付きの固定SQLバッチを、DBの認証情報を使わずに反映する。
 
-The raw JSON is content-addressed. An observation has a separate apply ID,
-because a source can move from state A to B and back to A after a deletion.
-The completed-observation ledger is written only after all tables and derived
-SQL succeed. A partial failure leaves raw evidence and possibly mixed table
-generations; a replay deterministically reconstructs the complete snapshot.
+原本JSONは内容で識別する。ソースが削除などを経て状態AからBに変わり、
+再びAに戻る場合に備え、観測には別の反映IDを持たせる。
+全表と派生SQLの処理が成功した後に、観測の完了台帳へ記録する。
+途中失敗では原本と異なる世代の表が残り得る。同じ処理を再実行すれば、
+完全なスナップショットを同じ規則で再構築できる。
 
-The worker's process lock serializes this module with existing ingestion.
-This single-writer PoC has no distributed multi-table transaction.
+ワーカー内のロックにより、既存の取込処理とこの処理を直列化する。
+概念実証では書込元を1つに限定する。
+複数表にまたがる分散トランザクションは使わない。
 """
 
 import json
@@ -54,7 +55,7 @@ UTC_TIMESTAMP = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7}Z")
 
 
 class SqlBatchError(ValueError):
-    """Contain only fixed, public-safe diagnostic text."""
+    """外部に返してよい固定の診断文だけを保持する。"""
 
 
 def with_sql_provenance(statement):
@@ -80,7 +81,7 @@ def with_sql_provenance(statement):
 
 
 def timestamp(value):
-    """Validate canonical datetime2(7) text without losing its last digit."""
+    """所定形式のdatetime2(7)の文字列を、最後の桁を失わずに検証する。"""
     if not isinstance(value, str) or not UTC_TIMESTAMP.fullmatch(value):
         raise SqlBatchError("Use a seven-digit UTC SQL observation.")
     try:
@@ -91,7 +92,7 @@ def timestamp(value):
 
 
 def apply_identifier(batch_id, observed_at):
-    """Bind a stable source-content ID to one actual source observation."""
+    """ソースの安定した内容IDを、実際に行った1回の観測に結び付ける。"""
     if not isinstance(batch_id, str) or not re.fullmatch(
         r"[0-9a-f]{64}", batch_id
     ):
@@ -102,7 +103,7 @@ def apply_identifier(batch_id, observed_at):
 
 
 def unique_json(pairs):
-    """Reject duplicate keys rather than accept an ambiguous batch contract."""
+    """バッチの解釈が曖昧になるため、重複するJSONキーを拒否する。"""
     result = {}
     for key, value in pairs:
         if key in result:
@@ -112,7 +113,7 @@ def unique_json(pairs):
 
 
 def read_document(batch_id, landing):
-    """Read only a known content-addressed file and its exact ready marker."""
+    """内容IDが判明しているファイルと、厳密に対応する完了印だけを読む。"""
     landing = Path(landing).absolute()
     directory = landing / "sql-batches"
     path = directory / (batch_id + ".json")
@@ -152,7 +153,7 @@ def read_document(batch_id, landing):
 
 
 def validate_document(document, contracts):
-    """Validate all six tables before any S3, catalog or Iceberg mutation."""
+    """S3、カタログ、Icebergへ変更を加える前に、6表をすべて検証する。"""
     expected = {
         "format_version",
         "source_system",
@@ -241,7 +242,7 @@ def validate_document(document, contracts):
 
 
 def subtract_seconds(value, seconds):
-    """Move a UTC window boundary without rounding its seventh digit."""
+    """小数秒の7桁目を丸めずに、UTCの期間境界を移動する。"""
     value = timestamp(value)
     try:
         shifted = datetime.fromisoformat(value[:19]) - timedelta(
@@ -253,7 +254,7 @@ def subtract_seconds(value, seconds):
 
 
 def validate_window(document, contracts):
-    """Require complete fixed-table baselines and a bounded overlap policy."""
+    """固定表すべての基準位置と、上限付きの重複読取方針を要求する。"""
     before = document["before_watermarks"]
     overlap, lag = document["overlap_seconds"], document["safety_lag_seconds"]
     if (
@@ -296,7 +297,7 @@ def validate_window(document, contracts):
 
 
 def table_rows(table, *, maximum=MAX_HISTORY):
-    """Bound control/current table scans; reject silent PoC limit overflow."""
+    """制御表と現在値の読取を制限し、概念実証の上限を超えたら拒否する。"""
     rows = table.scan(limit=maximum + 1).to_arrow().to_pylist()
     if len(rows) > maximum:
         raise SqlBatchError("SQL batch state exceeds its PoC row limit.")
@@ -304,7 +305,7 @@ def table_rows(table, *, maximum=MAX_HISTORY):
 
 
 def prior_state(catalog):
-    """Read identity, completions and durable unfinished-apply state."""
+    """識別情報、完了記録、未完了の反映を示す永続状態を読む。"""
     identities = []
     if catalog.table_exists("sql_control.identity"):
         identities = table_rows(
@@ -318,9 +319,9 @@ def prior_state(catalog):
         progress = table_rows(
             catalog.load_table("sql_control.progress"), maximum=1
         )
-    # Completion records cannot prove that current rows are clean if either
-    # the durable source identity or dirty-state singleton was lost/restored
-    # independently. Empty first-creation tables remain safe to initialize.
+    # ソースの永続識別情報か未完了状態を示す単一行が単独で失われたか
+    # 復元された場合、完了記録だけでは現在の行が確定済みとは言えない。
+    # 初回作成時の空の表は安全に初期化できる。
     if (history and (not identities or not progress)) or (
         progress and not identities
     ):
@@ -359,7 +360,7 @@ def prior_state(catalog):
 
 
 def create_control(admin, catalog, identity):
-    """Claim an empty SQL dataset identity before changing business tables."""
+    """業務表を変更する前に、空のSQLデータセットにソースの識別情報を登録する。"""
     if not catalog.namespace_exists("sql_control"):
         catalog.create_namespace("sql_control")
     for name, columns in (
@@ -379,7 +380,8 @@ def create_control(admin, catalog, identity):
     table = catalog.load_table("sql_control.identity")
     existing = table_rows(table, maximum=1)
     if not existing:
-        # Never adopt unmarked business rows, including a legacy/manual table.
+        # 識別情報のない業務行は引き継がない。
+        # 従来の表や手作業で作った表にも適用する。
         for contract in admin.CONTRACT:
             identifier = "sql_bronze." + contract["table"]
             if catalog.table_exists(identifier) and table_rows(
@@ -395,11 +397,11 @@ def create_control(admin, catalog, identity):
 
 
 def set_progress(admin, catalog, observation, status):
-    """Durably mark applying before writes; clear only after completion.
+    """書込前に反映中の印を永続化し、完了後にだけ解除する。
 
-    This singleton is intentionally separate from the completed ledger. A
-    failed overwrite/medallion can leave Bronze dirty while the last completed
-    batch still has the same content ID as a new snapshot of the source.
+    この単一行は完了台帳と分けて保持する。上書きやメダリオン変換の失敗で
+    Bronzeの変更が未完了のまま残っても、最後に完了したバッチと
+    ソースの新しいスナップショットが同じ内容IDを持つ場合がある。
     """
     table = catalog.load_table("sql_control.progress")
     row = {
@@ -412,7 +414,7 @@ def set_progress(admin, catalog, observation, status):
 
 
 def acknowledgement(row, *, skipped):
-    """Return only bounded counts and public completion identifiers."""
+    """上限付きの件数と、公開可能な完了識別子だけを返す。"""
     try:
         saved = json.loads(row["counts_json"])
         counts = (
@@ -466,7 +468,7 @@ def acknowledgement(row, *, skipped):
 
 
 def bronze_rows(document, contract, batch_id, ingested_at):
-    """Keep original scalar meaning and attach actual SQL source provenance."""
+    """元のスカラー値の意味を保ち、実際のSQLソースを示す由来情報を付ける。"""
     name = contract["table"]
     source = document["tables"][name]
     return [
@@ -489,7 +491,10 @@ def bronze_rows(document, contract, batch_id, ingested_at):
 
 
 def materialization_plan(admin, catalog, document, batch_id, ingested_at):
-    """Validate all current rows and calculate idempotent PK merges first."""
+    """現在の全行を検証し、再実行できる主キー単位の更新を先に求める。
+
+    同じ反映を繰り返しても結果が変わらないようにする。
+    """
     planned, changes, totals = {}, {}, {}
     byte_budget = MAX_CURRENT_BYTES
     for contract in admin.CONTRACT:
@@ -549,8 +554,8 @@ def materialization_plan(admin, catalog, document, batch_id, ingested_at):
                     )
                     if unchanged:
                         continue
-                # Equal SQL clock values are ordered by the later observation.
-                # This supports rapid same-key updates within the overlap.
+                # SQL側の時刻が同じ場合は、観測が新しい方を後とする。
+                # 重複読取期間内に同じキーが続けて更新される場合に対応する。
                 indexed[key] = row
                 changed += 1
             rows = [indexed[key] for key in sorted(indexed)]
@@ -571,11 +576,12 @@ def materialization_plan(admin, catalog, document, batch_id, ingested_at):
 
 
 def load(admin, batch_id, observed_at, *, landing=Path("/landing")):
-    """Materialize one snapshot and acknowledge its exact observed apply ID.
+    """1つのスナップショットを反映し、観測に対応する反映IDで完了を返す。
 
-    The caller holds admin.LOCK. Raw archive, individual Iceberg tables,
-    derived SQL and the completed ledger are independent commits. An error
-    leaves the ledger unchanged, so the same observation can be replayed.
+    呼出元が admin.LOCK を保持している。原本の保存、個別のIceberg表、
+    派生SQL、完了台帳はそれぞれ別に確定する。台帳確定前に失敗しても
+    同じ観測を再実行できる。確定後に反映中の印が残った場合は、
+    再実行で完了記録を照合して印の解除を試みる。
     """
     apply_id = apply_identifier(batch_id, observed_at)
     payload, document = read_document(batch_id, landing)
@@ -664,8 +670,8 @@ def load(admin, batch_id, observed_at, *, landing=Path("/landing")):
                 raise SqlBatchError(
                     "An unfinished SQL observation requires reconciliation."
                 )
-            # The ledger was committed but clearing the progress marker
-            # failed. No other apply may be acknowledged until this clears.
+            # 台帳の確定には成功したが、処理中の印の解除に失敗した。
+            # 解除できるまで、別の反映を完了として応答しない。
             set_progress(admin, catalog, exact[0], "idle")
         return acknowledgement(exact[0], skipped=True)
     latest = max(history, key=lambda row: row["observed_at"], default=None)
@@ -693,7 +699,7 @@ def load(admin, batch_id, observed_at, *, landing=Path("/landing")):
         batch_id,
         datetime.now(timezone.utc).isoformat(),
     )
-    # All source structures and current identity were checked before mutation.
+    # 変更を加える前に、すべてのソース構造と現在の識別情報を検証済み。
     admin.S3.put_object(
         Bucket=admin.os.environ["S3_BUCKET_RAW"],
         Key="sql-batches/" + batch_id + ".json",
@@ -708,8 +714,8 @@ def load(admin, batch_id, observed_at, *, landing=Path("/landing")):
         "mode": document["mode"],
         "observed_at": observed_at,
     }
-    # A pending apply means some business tables may already contain another
-    # generation. Matching the last completed content is then insufficient.
+    # 反映中の処理があると、業務表の一部が別の世代に変わり得る。
+    # その場合、最後に完了した内容との一致だけで反映済みとは判断できない。
     unchanged = bool(
         not pending
         and (
@@ -741,7 +747,7 @@ def load(admin, batch_id, observed_at, *, landing=Path("/landing")):
             )
         result = admin.medallion("sql_")
         statements = result["sql_statements"]
-        # Check the committed Bronze counts and key uniqueness.
+        # 確定したBronzeの件数とキーの一意性を確認する。
         for contract in admin.CONTRACT:
             name = contract["table"]
             rows = table_rows(
@@ -768,8 +774,8 @@ def load(admin, batch_id, observed_at, *, landing=Path("/landing")):
         ),
         "sql_statements": str(statements),
     }
-    # Complete the data ledger before clearing the durable dirty-state flag.
-    # If either operation fails, no success acknowledgement leaves the worker.
+    # 永続化した未完了の印を解除する前に、データの完了台帳を確定する。
+    # どちらかに失敗した場合、ワーカーは成功の応答を返さない。
     ledger = catalog.load_table("sql_control.batches")
     ledger.append(
         admin.pa.Table.from_pylist(

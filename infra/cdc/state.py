@@ -1,4 +1,4 @@
-"""Keep durable CDC row versions and completed Kafka offsets in SQLite."""
+"""CDCの行の版とKafkaの完了オフセットをSQLiteに永続化する。"""
 
 import json
 import math
@@ -20,7 +20,7 @@ MAX_CURRENT_ROWS = 100000
 
 
 def nano_timestamp(value):
-    """Preserve datetime2(7) nanoseconds without floating point conversion."""
+    """浮動小数点数を経由せず、datetime2(7)をナノ秒単位で保持する。"""
     if type(value) is not int or not -(2**63) <= value < 2**63 or value % 100:
         raise ValueError("Fixed CDC requires exact datetime2(7) nanoseconds.")
     seconds, nanos = divmod(value, 1000000000)
@@ -31,7 +31,7 @@ def nano_timestamp(value):
 
 
 def fixed_business_row(current, columns, primary_key, key):
-    """Reuse the batch reader's bounded, NULL-preserving sidecar contract."""
+    """NULLを保持する上限付きの付随データ契約を、バッチ読取と共有する。"""
     import importlib
     import sys
 
@@ -47,7 +47,7 @@ def fixed_business_row(current, columns, primary_key, key):
 
 
 def assignment_offset(completed, low, high):
-    """Reject lost history or a reset broker before assigning a partition."""
+    """履歴の欠落やブローカーのリセットを検出したら、割当を拒否する。"""
     next_offset = completed + 1
     if next_offset < low:
         raise RuntimeError("Kafka retention passed the durable checkpoint.")
@@ -57,7 +57,7 @@ def assignment_offset(completed, low, high):
 
 
 def lsn(value):
-    """Parse the three fixed-width SQL Server log sequence components."""
+    """SQL Serverのログシーケンス番号を構成する固定幅の3要素を解析する。"""
     import re
 
     if not isinstance(value, str) or not re.fullmatch(
@@ -68,7 +68,7 @@ def lsn(value):
 
 
 def version(envelope, offset):
-    """Order streaming changes after snapshots, then by LSN and event order."""
+    """スナップショットを先に並べ、変更はLSNとイベント順で整列する。"""
     if envelope["op"] == "r":
         return [0, 0, 0, 0, 0, 0, 0, offset]
     source = envelope["source"]
@@ -84,7 +84,7 @@ def version(envelope, offset):
 
 
 def text_value(value, column):
-    """Convert known Debezium logical dates and timestamps to UTC strings."""
+    """既知のDebezium論理型の日付・時刻を、UTCの文字列に変換する。"""
     if value is None:
         return ""
     if isinstance(value, (dict, list, bool)):
@@ -101,12 +101,10 @@ def text_value(value, column):
 
 
 class State:
-    """Persist current rows separately from successfully materialized
-    offsets.
-    """
+    """現在の行と、派生表まで正常に反映したオフセットを別々に永続化する。"""
 
     def __init__(self, path, identity):
-        """Refuse to reuse a durable volume for a different SQL source."""
+        """別のSQLソースで使用した永続ボリュームの再利用を拒否する。"""
         self.path = path
         self.identity = dict(identity)
         self.fixed_source = identity.get("source_mode") == "fixed-demo"
@@ -165,7 +163,7 @@ class State:
             )
 
     def check_existing_identity(self, existing, expected):
-        """Inspect a fixed state before any persistent PRAGMA or table DDL."""
+        """永続的なPRAGMAや表DDLの前に、固定ソースの状態を確認する。"""
         allowed = {
             "metadata",
             "current_rows",
@@ -180,7 +178,7 @@ class State:
             if prior and prior != expected:
                 raise ValueError
             if not prior and any(
-                # table names come only from the fixed allowlist above.
+                # 表名には、上部の固定許可リストにある値だけを使う。
                 self.connection.execute(
                     "SELECT 1 FROM " + table + " LIMIT 1"
                 ).fetchone()
@@ -194,23 +192,21 @@ class State:
             ) from None
 
     def get(self, key):
-        """Read one internal metadata field without exposing source data."""
+        """ソースのデータを公開せず、内部メタデータの項目を1つ読む。"""
         row = self.connection.execute(
             "SELECT value FROM metadata WHERE key = ?", (key,)
         ).fetchone()
         return row[0] if row else None
 
     def set(self, key, value):
-        """Durably set an internal metadata field."""
+        """内部メタデータの項目を1つ永続化する。"""
         with self.connection:
             self.connection.execute(
                 "INSERT OR REPLACE INTO metadata VALUES (?, ?)", (key, value)
             )
 
     def offset(self, topic, partition):
-        """Return the last offset whose Iceberg and medallion writes
-        completed.
-        """
+        """Icebergとメダリオンの書込を終えた最後のオフセットを返す。"""
         row = self.connection.execute(
             "SELECT offset_id FROM offsets WHERE topic = ? "
             "AND partition_id = ?",
@@ -219,9 +215,7 @@ class State:
         return row[0] if row else -1
 
     def stage(self, record, target, mapping, columns):
-        """Apply an event to replayable state, retaining DELETE version
-        markers.
-        """
+        """再実行できる状態へイベントを反映し、DELETEの版の印も保持する。"""
         if record["value"] is None:
             return
         envelope = json.loads(record["value"])
@@ -305,11 +299,12 @@ class State:
             raise ValueError("CDC demo current-state limit exceeded.")
 
     def fixed_row(self, record, envelope, current, mapping, columns, key):
-        """Decode business originals; retain SQL watermark as provenance.
+        """業務上の元の値を復元し、SQLのウォーターマークを由来情報として残す。
 
-        SQL Server can omit an unchanged LOB from an UPDATE before image.
-        INSERT/UPDATE use the after sidecar. DELETE needs only its key and LSN,
-        not a before-image original_values LOB. Tombstones never reach here.
+        SQL Serverは、更新前イメージで未変更のLOBを省略する場合がある。
+        INSERTとUPDATEは変更後の付随データを使う。
+        DELETEはキーとLSNで処理し、更新前の original_values LOB は使わない。
+        Kafkaの削除マーカーはここへ到達しない。
         """
         primary = columns[0]
         if not re.fullmatch(r"[!-~]{1,160}", key):
@@ -343,7 +338,7 @@ class State:
         }
 
     def check_budget(self, target, key, payload):
-        """Bound total fixed state bytes and per-table version markers."""
+        """固定ソースの状態全体のバイト数と表ごとの版の印に上限を設ける。"""
         row = self.connection.execute(
             "SELECT LENGTH(CAST(row_json AS BLOB)) FROM current_rows "
             "WHERE table_name=? AND row_key=?",
@@ -366,7 +361,7 @@ class State:
                 raise ValueError("Fixed CDC row-version limit exceeded.")
 
     def counts(self, targets):
-        """Count observed live rows without returning source payloads."""
+        """元のペイロードを返さず、観測できた現行行の件数を数える。"""
         return {
             target: self.connection.execute(
                 "SELECT COUNT(*) FROM current_rows WHERE table_name=? "
@@ -377,7 +372,7 @@ class State:
         }
 
     def completed_offsets(self):
-        """Return internal Kafka checkpoints for bounded replay validation."""
+        """上限付きの再生を検証するため、内部のKafka完了位置を返す。"""
         return {
             (topic, partition): offset
             for topic, partition, offset in self.connection.execute(
@@ -386,7 +381,7 @@ class State:
         }
 
     def record_failure(self, record, code):
-        """Save a fixed failure code without payload or driver text."""
+        """ペイロードやドライバーの例外文を含めず、固定の失敗コードを保存する。"""
         if not self.fixed_source:
             return
         if not re.fullmatch(r"[A-Z_]{1,64}", code):
@@ -404,7 +399,7 @@ class State:
             )
 
     def record_rebuild(self, request_id, status, snapshot_id=None, error=None):
-        """Keep main-thread rebuild outcomes durably without private values."""
+        """非公開の値を含めず、メインスレッドの再構築結果を永続化する。"""
         if not self.fixed_source or not re.fullmatch(
             r"[0-9a-f]{32}", request_id
         ):
@@ -426,9 +421,7 @@ class State:
             )
 
     def rows(self, target):
-        """Return live business rows with the existing Bronze metadata
-        fields.
-        """
+        """現行の業務行を、既存のBronzeメタデータ項目とともに返す。"""
         result = []
         for payload, digest, timestamp in self.connection.execute(
             "SELECT row_json, source_hash, ingested_at FROM current_rows "
@@ -446,9 +439,7 @@ class State:
         return result
 
     def complete(self, records):
-        """Advance local offsets only after every Iceberg operation
-        succeeds.
-        """
+        """Icebergの全操作が成功した後にだけ、ローカル完了位置を進める。"""
         with self.connection:
             for record in records:
                 prior = self.offset(record["topic"], record["partition"])
