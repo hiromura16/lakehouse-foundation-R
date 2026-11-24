@@ -21,6 +21,7 @@
 | GET /openapi.json | OpenAPI 3.2.1の機械可読仕様。業務データを返しません。 |
 | GET /health、GET /metrics | ヘルスと集計カウンタ。業務データを返しません。 |
 | POST /run | WORKER_TOKEN。 `{"action":"medallion"}`、`ingest`、`verify` またはSQLバッチを実行 |
+| GET /v1/data-products | READER_TOKEN。表の用途、粒度、確認先と指標の定義 |
 | GET /v1/ingestion/status | READER_TOKEN。直近のファイル取込と標準経路の公開中世代の件数 |
 | GET /v1/releases/latest | READER_TOKEN。標準ソースの最新公開世代とその表スナップショット |
 | GET /v1/gold/{dataset} | READER_TOKEN。 `limit=1..200` と任意の `release=<ID>` |

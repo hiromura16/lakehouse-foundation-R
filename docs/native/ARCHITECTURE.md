@@ -74,6 +74,19 @@ flowchart LR
 
 `medallion/sources.json` と既存SQLを正本とし、列と集計仕様を固定するSHA-256は [契約マニフェスト](../../contracts/native/contract-lock.json) に記録します。 `python3 native/check_contracts.py` で一致を確認できます。業務上の「訂正」「取消」「生産日」「品質」を変更する場合は、業務オーナーと意味を決めてからSQL・独立期待値を更新します。標準構成ではDuckDBとPyIcebergを使い、設備ファイルはIcebergバッチで集計します。追加構成のSail、RisingWave、GreptimeDB、InfluxDB、DataFusion、Ballista、Cometは、[比較試験](EVALUATION.md) と [運用ツール](TOOLS.md) に起動方法と検証条件があります。
 
+### データ製品の契約
+
+[データ製品台帳](../../contracts/native/data-products.json) は、
+各Gold表の用途、行を特定するキー、日付の意味、入力、確認先の役割を
+定義します。日次生産は生産管理、出荷の充足状況は出荷業務、
+設備の最新値・1分集計は設備保全が意味を確認します。
+利用者は [読取API](API.md) や閲覧画面で同じ定義を確認できます。
+
+会社で採用するときは、台帳の役割を実際の担当チームへ割り当てます。
+解釈変更のレビューでは、台帳のキー、仕様上の対象表、業務SQL、
+独立した期待値、影響を受ける画面を一緒に照合します。
+ファイル・CDC・SQL経路は同じ業務キーに従い、別の公開名前空間で管理します。
+
 ## 公開と失敗時の一貫性
 
 Icebergは表ごとにコミットします。同期の `medallion` ジョブが、

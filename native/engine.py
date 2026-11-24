@@ -32,32 +32,11 @@ SQL_ROOT = ROOT / "medallion"
 MAX_ROWS = 100_000
 MAX_TABLE_BYTES = 64 * 1024 * 1024
 LAYERS = ("bronze", "silver", "quarantine", "gold")
+PRODUCTS = json.loads(
+    (ROOT / "contracts/native/data-products.json").read_text(encoding="utf-8")
+)
 GOLD = {
-    "factory_daily_production": ("factory_id", "production_date"),
-    "sales_fulfillment": ("sales_order_id",),
-    "sensor_latest": (
-        "factory_id",
-        "line_id",
-        "equipment_id",
-        "sensor_id",
-        "measurement",
-        "unit",
-    ),
-    "sensor_minute": (
-        "factory_id",
-        "line_id",
-        "equipment_id",
-        "sensor_id",
-        "measurement",
-        "unit",
-        "minute",
-    ),
-}
-GOLD_DATE = {
-    "factory_daily_production": "production_date",
-    "sales_fulfillment": "order_date",
-    "sensor_latest": "timestamp",
-    "sensor_minute": "minute",
+    name: tuple(data["key"]) for name, data in PRODUCTS["datasets"].items()
 }
 GOLD_IDENTIFIERS = {"factory_id", "equipment_id", "sales_order_id"}
 RELEASE_SCHEMA = pa.schema(
@@ -451,7 +430,8 @@ def verify_query(core, sql, prefix):
 
 def gold_filter(name, filters):
     """定義済みの識別子・日付でIcebergの行フィルターを組み立てる。"""
-    dimensions = GOLD_IDENTIFIERS.intersection(GOLD[name])
+    product = PRODUCTS["datasets"][name]
+    dimensions = GOLD_IDENTIFIERS.intersection(product["key"])
     if set(filters) - dimensions - {"date_from", "date_to"}:
         raise ValueError("INVALID_GOLD_FILTER")
     predicates = []
@@ -478,10 +458,10 @@ def gold_filter(name, filters):
         boundaries[key] = day
         stamp = (
             datetime.combine(day, time.min, tzinfo=timezone.utc)
-            if name.startswith("sensor_")
+            if product["time_kind"] == "timestamp"
             else day
         )
-        predicates.append(operator(GOLD_DATE[name], stamp))
+        predicates.append(operator(product["time_column"], stamp))
     if (
         len(boundaries) == 2
         and boundaries["date_from"] >= boundaries["date_to"]

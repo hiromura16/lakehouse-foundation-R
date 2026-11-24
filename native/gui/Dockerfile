@@ -24,6 +24,7 @@ ENV PATH="/opt/venv/bin:$PATH" \
     STREAMLIT_SERVER_FILE_WATCHER_TYPE=none \
     STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
 WORKDIR /opt/lakehouse-view
+COPY --chmod=644 contracts/native/data-products.json ./data-products.json
 COPY --chmod=644 native/gui/app.py ./app.py
 COPY --chmod=644 native/gui/theme.toml ./.streamlit/config.toml
 RUN chmod 755 .streamlit

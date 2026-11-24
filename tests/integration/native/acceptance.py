@@ -264,6 +264,18 @@ def check(args, env):
         "readerToken"
         in spec["paths"]["/v1/ingestion/status"]["get"]["security"][0]
     )
+    products = fetch(http + "/v1/data-products", authorization=reader)
+    assert products["format_version"] == 1
+    assert len(products["datasets"]) == 4
+    production = products["datasets"]["factory_daily_production"]
+    assert production["key"] == ["factory_id", "production_date"]
+    assert production["owner_role"] == "生産管理担当"
+    try:
+        fetch(http + "/v1/data-products", authorization=writer)
+    except HTTPError as error:
+        assert error.code == 401
+    else:
+        raise AssertionError("データ製品APIが操作トークンを受け付けました。")
     initial = fetch(http + "/v1/ingestion/status", authorization=reader)
     assert initial == {"last_attempt": None, "published": None}
     try:

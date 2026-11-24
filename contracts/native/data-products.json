@@ -1,0 +1,57 @@
+{
+  "format_version": 1,
+  "datasets": {
+    "factory_daily_production": {
+      "title": "日次生産",
+      "domain": "production",
+      "owner_role": "生産管理担当",
+      "key": ["factory_id", "production_date"],
+      "time_column": "production_date",
+      "time_kind": "date",
+      "description": "工場と日付ごとに計画数、良品数、不良数、停止時間を照合します。",
+      "definition": "歩留まりは良品数 ÷ 総生産数、計画達成率は良品数 ÷ 計画数です。分母が0の率は未定義です。",
+      "inputs": ["silver.erp_work_orders", "silver.mes_events", "silver.mes_downtime"],
+      "channels": ["files", "cdc", "sql"],
+      "classification": "internal"
+    },
+    "sales_fulfillment": {
+      "title": "受注・出荷",
+      "domain": "fulfillment",
+      "owner_role": "出荷業務担当",
+      "key": ["sales_order_id"],
+      "time_column": "order_date",
+      "time_kind": "date",
+      "description": "受注ごとに未出荷数と、約束日を過ぎて出荷した数量を確認します。",
+      "definition": "遅延数量は約束日より後に出荷した分です。未出荷でも約束日を過ぎた数量は別に判断します。",
+      "inputs": ["silver.erp_sales_orders", "silver.erp_shipments"],
+      "channels": ["files", "cdc", "sql"],
+      "classification": "internal"
+    },
+    "sensor_latest": {
+      "title": "設備の最新値",
+      "domain": "equipment",
+      "owner_role": "設備保全担当",
+      "key": ["factory_id", "line_id", "equipment_id", "sensor_id", "measurement", "unit"],
+      "time_column": "timestamp",
+      "time_kind": "timestamp",
+      "description": "設備・センサー・測定項目ごとに、最後の測定値と品質を確認します。",
+      "definition": "発生元のUTC時刻と順序番号で最新を決めます。品質BADの観測も最新値に現れます。",
+      "inputs": ["silver.sensor_history"],
+      "channels": ["files"],
+      "classification": "internal"
+    },
+    "sensor_minute": {
+      "title": "設備の1分集計",
+      "domain": "equipment",
+      "owner_role": "設備保全担当",
+      "key": ["factory_id", "line_id", "equipment_id", "sensor_id", "measurement", "unit", "minute"],
+      "time_column": "minute",
+      "time_kind": "timestamp",
+      "description": "センサーごとに1分間の測定点数と、正常値の範囲を確認します。",
+      "definition": "全点数は採用された全品質の点を数え、平均・最小・最大は品質GOODの点を対象にします。",
+      "inputs": ["silver.sensor_history"],
+      "channels": ["files"],
+      "classification": "internal"
+    }
+  }
+}

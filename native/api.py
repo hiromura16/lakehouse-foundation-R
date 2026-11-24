@@ -251,6 +251,8 @@ def handler(core):
                 return self.monitoring()
             if not self.authorized("READER_TOKEN"):
                 return self.respond(401, {"error": "AUTHENTICATION_REQUIRED"})
+            if parsed.path == "/v1/data-products" and not parsed.query:
+                return self.respond(200, engine.PRODUCTS)
             if parsed.path == "/v1/ingestion/status" and not parsed.query:
                 try:
                     return self.respond(200, ingestion_status(core))

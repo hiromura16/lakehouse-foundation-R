@@ -3,6 +3,7 @@
 import json
 import os
 from datetime import datetime, timezone
+from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import (
@@ -14,26 +15,14 @@ from urllib.request import (
 
 import streamlit as st
 
-DATASETS = {
-    "factory_daily_production": (
-        "日次生産",
-        "工場と日付ごとに、計画数、良品数、停止時間を確認します。"
-        "歩留まりは良品数 ÷ 総生産数です。",
-    ),
-    "sales_fulfillment": (
-        "受注・出荷",
-        "受注ごとに、未出荷数と約束日を過ぎて出荷した数量を確認します。",
-    ),
-    "sensor_latest": (
-        "設備の最新値",
-        "設備・センサー・測定項目ごとに、最後の測定値と品質を確認します。",
-    ),
-    "sensor_minute": (
-        "設備の1分集計",
-        "センサーごとに1分間の測定点数を確認します。"
-        "平均・最小・最大には品質がGOODの点を使います。",
-    ),
-}
+REGISTRY = Path(__file__).with_name("data-products.json")
+if not REGISTRY.is_file():
+    # ソースから閲覧画面を起動する場合は、同じ契約をcheckoutから読む。
+    REGISTRY = (
+        Path(__file__).resolve().parents[2]
+        / "contracts/native/data-products.json"
+    )
+DATASETS = json.loads(REGISTRY.read_text(encoding="utf-8"))["datasets"]
 API_ORIGIN = "http://lakehouse:8080"
 COLUMN_LABELS = {
     "factory_id": "工場ID",
@@ -134,10 +123,14 @@ def show():
     name = selection.selectbox(
         "確認する集計",
         list(DATASETS),
-        format_func=lambda key: DATASETS[key][0],
+        format_func=lambda key: DATASETS[key]["title"],
     )
     limit = count.selectbox("表示上限", [25, 50, 100, 200], index=1)
-    st.caption(DATASETS[name][1])
+    dataset = DATASETS[name]
+    st.caption(dataset["description"])
+    with st.expander("数値の定義"):
+        st.write(dataset["definition"])
+        st.caption(f"確認先　{dataset['owner_role']}")
     filters = {}
     with st.expander("工場・設備・日付で絞り込む"):
         items = (
