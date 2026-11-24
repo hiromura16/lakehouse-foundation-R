@@ -213,3 +213,89 @@ compose -p APP_NAME_FROM_HEADER --env-file .env -f compose.yaml up -d --build --
 Dokployの再取得後も、名前付きデータvolumeおよびcheckout外のlanding・設定・CAを維持します。同じホストに検証用と本番用を配置する場合は、個別のappName、ポート、landingを割り当てます。標準ポートはAPI 18502、Grafana 18501です。社内の実プロキシ、IdP、証明書とDokployのGUI操作は、導入先で [受入手順](OPERATIONS.md) を実行して確認します。
 
 [Dokploy Docker Compose](https://docs.dokploy.com/docs/core/docker-compose) · [公開リポジトリのHTTPS取得](https://docs.dokploy.com/docs/core/providers) · [GitHub App連携](https://docs.dokploy.com/docs/core/github) · [ComposeのDomains](https://docs.dokploy.com/docs/core/docker-compose/domains)
+
+## PostgreSQL更新の判定条件と切り戻し
+
+標準の `catalog-db` と、追加ツールの `tools-db` は別のDBです。
+通常の全体Deployを始める前に、配備時と同じ **App Name**、環境ファイル、
+Composeファイルとプロファイルの順序を控えます。関連するAutoDeploy・
+定期実行を一時停止し、メンテナンスの対象と再開責任者を共有します。
+[PostgreSQL 18.7の更新と索引の再構築](https://www.postgresql.org/docs/18/release-18-7.html)
+
+### 停止する順序と保全の範囲
+
+1. 受入API・Webhookへの新規依頼を対象ルートの入口で止めます。Dokployの
+   定期投入、外部タスク、n8nのスケジュールを停止し、R2配送がある場合は
+   承認・送信待ちの状態を控えます。
+   n8nでは公開中のワークフローの版を控え、停止する対象を **Unpublish**
+   します。**Executions** の実行中・待機中を確認し、完了・繰越し・取消の
+   扱いを決めます。その後 `n8n` を停止します。Composeにn8nの停止猶予を
+   指定していないため、サービス単位の `stop --timeout` で
+   `N8N_GRACEFUL_SHUTDOWN_TIMEOUT`（既定30秒）より長い猶予を確保します。
+2. CDCを使う場合は `native-cdc` を停止し、確定offsetと状態ディレクトリを
+   保全します。投入・変換の完了を確認して `lakehouse` を停止します。
+   Composeの猶予は2分です。強制停止した場合は公開世代と取込台帳を
+   照合します。続いて `catalog` を停止し、移行ジョブが動いていないことを
+   確認します。最後に `catalog-db` と `storage` を止めます。
+   `tools-db` は `n8n` の停止後に止めます。論理バックアップを選んだ場合は、
+   n8n停止からツールDB停止までの間にダンプを取得します。
+3. `backup-native.py capture` を使う場合は、対象App Nameの全サービスを
+   停止し、各コンテナとボリュームの関連を残します。両PostgreSQLは
+   正常停止を確認します。同じApp NameのGrafana、
+   Prometheus、Blackbox、Alertmanagerもこの間は停止します。
+   監視を継続する場合は、監視を別プロジェクトに置くか、会社で承認済みの
+   個別スナップショット手順を使います。後者では、DB・S3の停止点と
+   ボリューム名を記録し、部分停止中の監視と通知を継続できます。
+   標準のGrafanaとPrometheusは対象DBに接続していません。部分停止では
+   サービス名を指定し、監視を含む全体のStop・Deployと分けます。停止対象の
+   監視は失敗を表示します。保守対象・時間帯を当番へ共有します。
+
+[Composeの停止とボリューム保全](https://docs.docker.com/reference/cli/docker/compose/stop/)
+· [n8nの公開停止](https://docs.n8n.io/build/understand-workflows/save-and-publish-workflows)
+· [n8nの実行一覧](https://docs.n8n.io/workflows/executions/all-executions/)
+· [n8nの停止猶予](https://docs.n8n.io/deploy/host-n8n/configure-n8n/basic-configuration/use-environment-variables/deployment)
+
+### 再開の判定
+
+| 対象 | 再開する条件 |
+| --- | --- |
+| カタログDBとS3 | 同じ停止点の `catalog-db` と `storage` を別名の空ボリュームへ復元し、採取時の固定イメージで起動します。Warehouse ID、Goldの公開世代・件数・行ハッシュ、RawのSHA-256が一致した後、復元先を18.7へ更新して再照合します。DBの版・照合設定・必要な索引再構築も確認します。 |
+| n8n | `tools-db` のデータ、`tools-n8n` ボリューム、同じ `TOOLS_N8N_KEY`、採取時の固定イメージと非公開設定を揃えます。物理復元の `restore` が展開するのは標準の2ボリュームです。n8nとツールDBは、個別の空ボリュームへ元のUID/GIDと権限を保持して展開し、`/home/node/.n8n` と `/var/lib/postgresql` にそれぞれ割り当てます。 |
+| n8nの動作 | DBを起動後、n8nの `/healthz/readiness` が200を返すこと、既存のユーザーでログインできること、ワークフロー、公開版、必要な実行履歴を保全時と照合します。公開や外部通信を閉じた復元環境で、採取前に保存したテスト資格情報を使う無害な手動フローを確認します。 |
+
+標準の物理台帳はカタログとS3の固定版を記録します。追加ツールの
+`tools-db` と `n8n` の実イメージID・固定参照、ボリューム名、設定は
+別途記録します。ツールDBの論理バックアップを採用する場合は、n8nを
+停止した状態で動作中のDBを `pg_dump --format=custom` で保全し、
+`pg_restore --single-transaction` で同じロール構成の空DBへ戻す試験を
+行います。ダンプのSHA-256と、独自ロールや表領域がある場合はその定義を
+DBAと保全します。
+`tools-n8n` と暗号鍵も同じ時点で保全し、秘密・原本は暗号化します。
+
+[標準構成の復元](OPERATIONS.md#標準のdbと保存先を新しいボリュームへ復元する)
+· [PostgreSQLのpg_dump](https://www.postgresql.org/docs/18/app-pgdump.html)
+· [PostgreSQLのpg_restore](https://www.postgresql.org/docs/18/app-pgrestore.html)
+· [n8nの暗号鍵](https://docs.n8n.io/deploy/host-n8n/configure-n8n/basic-configuration/configuration-examples/set-a-custom-encryption-key)
+· [n8nのreadiness](https://docs.n8n.io/deploy/host-n8n/keep-n8n-running/monitor-n8n)
+
+### 切り戻す条件
+
+新しいDBが起動しない、照合に差がある、n8nで既存の資格情報が使えない
+場合は入口を閉じたままにし、新側の書込サービスを先に止めます。
+更新前に保持した元ボリュームと固定イメージを使うか、同じ停止点の
+保全物を別の空ボリュームへ復元します。先にDBとS3、次にカタログと
+読取先を起動し、n8nはツールDBと接続先を確認してから起動します。
+更新・復元直後は既存の固定イメージを使い、設定したDBと各サービスの
+ヘルスを個別に確認します。照合後に元のワークフロー公開状態、定期投入、
+CDCを段階的に戻します。
+
+旧イメージで、すでに更新したデータボリュームを起動する方法は、
+停止前の状態を再現できません。新版で書込を開けた後は、先にその差分、
+CDC位置、n8nの実行結果と外部への副作用を保全し、再実行範囲と
+復旧時点を決めます。審査が完了するまで元ボリューム、保全物、固定版を
+保持します。[復元リハーサル](OPERATIONS.md#停止時点をそろえる復旧リハーサル)
+
+PostgreSQLの増分バックアップを別途取得している場合は、18.7への更新後に
+新しい全量バックアップを取得して、それを後続の増分の基点にします。
+このリポジトリの停止ボリューム採取は全量を保存します。
+[PostgreSQL 18.7の増分バックアップに関する注意](https://www.postgresql.org/docs/18/release-18-7.html)
