@@ -1,0 +1,11 @@
+# 初期構成はアラートの集約と状態の保存だけを行う。
+# 配信を始めるときは、承認済み受信先の設定を別途登録する。
+route:
+  receiver: no-delivery
+  group_by: [alertname, app, job]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+receivers:
+  - name: no-delivery

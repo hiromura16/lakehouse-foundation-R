@@ -108,6 +108,8 @@ jobs:
         python native/tools/setup.py --directory "$tools"
         printf 'LAKEHOUSE_OPS_HTPASSWD=%s\n' "$tools/operator.htpasswd" >> "$site"
         docker compose --env-file "$site" config --quiet
+        docker compose --env-file "$site" \
+          -f compose.yaml -f compose.alerting.yaml config --quiet
         CDC_STATE_DIR="$tools" CDC_SETTINGS_FILE="$tools/settings.json" \
           CDC_TABLE_MAP_FILE="$tools/table-map.json" COMPOSE_PROJECT_NAME=lakehouse-r \
           docker compose --env-file "$site" -f compose.yaml -f compose.cdc.yaml config --quiet

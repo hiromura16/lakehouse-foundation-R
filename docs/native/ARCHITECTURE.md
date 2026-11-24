@@ -135,7 +135,10 @@ sequenceDiagram
 | `compose.yaml` | ファイル取込、SQL集計、Iceberg、Gold API、Grafana | 最初の合成データ試験と標準運用 |
 | `compose.gui.yaml` | 集計結果、カタログ、Prometheusの認証付き閲覧 | ブラウザーで受入結果を確認 |
 | `compose.tools.yaml` | n8n、OpenObserve、InfluxDB 3 Core、Explorer、運用ポータル | 自動化、監視の調査、時系列SQL |
+| `compose.alerting.yaml` | Alertmanagerによるオンプレ通知 | 発報・復旧を承認済みの通知先へ送る |
 | `compose.cdc.yaml` | 外部Kafkaからの変更取込 | 到着順と更新順、再開位置を管理 |
+| `compose.cloudflare.yaml` | Cloudflare Tunnel・Accessの承認を通るGold参照 | 拠点外へ許可した世代と列だけを提供する |
+| `compose.evaluation.yaml` と設備・S3の追加ファイル | Sail、DataFusion系、RisingWave、GreptimeDB、RustFSの隔離試験 | 企業の要件や別エンジンを合成入力で照合する |
 
 [追加ツールの役割と使い方](TOOLS.md) · [構想上の候補と評価項目](ROADMAP.md)
 

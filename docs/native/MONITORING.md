@@ -34,7 +34,7 @@
 
 ## Dockerネットワークの容量
 
-起動するComposeプロジェクトごとに、標準構成は6個、閲覧を追加すると7個、閲覧と運用ツールを追加すると10個のDockerネットワークを使います。CDCは1個、Cloudflareは2個を追加するため、すべてを同じプロジェクトで有効にすると13個です。隔離したRustFS受入環境を同じホストに追加すると、さらに6個を使います。
+起動するComposeプロジェクトごとに、標準構成は6個、閲覧を追加すると7個、閲覧と運用ツールを追加すると10個のDockerネットワークを使います。CDCは1個、Cloudflareは2個を追加するため、同じプロジェクトでこれらを有効にすると13個です。通知用のAlertmanagerを加えるとさらに1個を使います。隔離したRustFS受入環境を同じホストに追加すると、さらに6個を使います。
 
 Dockerが `all predefined address pools have been fully subnetted` を返す場合は、ホスト上の各Composeプロジェクトと停止済みの検証環境が使うネットワークを管理者と確認します。会社やVPNの経路と重複しないアドレス範囲を確保したうえで、ホスト側のDocker自動割当プールを設計します。停止だけではComposeネットワークが残るため、不要になった検証環境は、その環境のプロジェクト名とComposeファイルを指定して `docker compose down` で片付けます。[Dockerのサブネット割当](https://docs.docker.com/engine/network/#subnet-allocation)
 
@@ -67,6 +67,68 @@ docker compose --env-file "$site" exec -T blackbox \
 
 例は標準構成です。閲覧や運用ツールを有効にしている場合は、最初の起動と同じプロジェクト名、追加の `-f`、環境ファイルを指定します。
 
-Dokployでは変更をGitへ保存し、対象Composeを再配備します。公開設定はビルド時に読み取り権限を固定してイメージへ組み込みます。Dokployの標準Deployはビルドも実行します。[Advanced → Run Command](COMPANY.md) でカスタムコマンドを使う場合も `--build` を含め、Grafana・Prometheus・Blackboxがhealthyになったことを確認します。GrafanaのUIで試作したパネルはClassic JSONへexportし、`runtime.json` を更新します。配布したダッシュボードは `uid` を維持し、起動時にファイルからプロビジョニングします。GrafanaのUIからの永続上書きは無効です。通知を配信する場合は、Prometheusのルールに接続するAlertmanagerを導入先で設定します。
+Dokployでは変更をGitへ保存し、対象Composeを再配備します。公開設定はビルド時に読み取り権限を固定してイメージへ組み込みます。Dokployの標準Deployはビルドも実行します。[Advanced → Run Command](COMPANY.md) でカスタムコマンドを使う場合も `--build` を含め、Grafana・Prometheus・Blackboxがhealthyになったことを確認します。GrafanaのUIで試作したパネルはClassic JSONへexportし、`runtime.json` を更新します。配布したダッシュボードは `uid` を維持し、起動時にファイルからプロビジョニングします。GrafanaのUIからの永続上書きは無効です。配信が必要な場合は、次の任意構成を選びます。
 
 [Grafana公式Provisioning](https://grafana.com/docs/grafana/latest/administration/provisioning/) · [Prometheus file discovery](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#file_sd_config) · [Blackbox Exporterの設定パターン](https://prometheus.io/docs/guides/multi-target-exporter/)
+
+## オンプレミスの通知を追加する
+
+Prometheusが異常を検知し、Alertmanagerが通知のグループ化、抑制、復旧通知を担当します。
+[Alertmanager v0.35.0](https://github.com/prometheus/alertmanager/releases/tag/v0.35.0) は
+Go製で、[Apache-2.0](https://github.com/prometheus/alertmanager/blob/v0.35.0/LICENSE) です。
+
+1. Dokployで対象Composeの **Advanced → Run Command → Command** を開きます。
+   `-f compose.yaml` の後ろ、`up` の前に `-f compose.alerting.yaml` を追加します。
+   閲覧や運用ツールを有効にしているときは、使っている追加ファイルも残します。
+2. 同じComposeを再配備し、`prometheus` と `alertmanager` がhealthyになることを
+   **Docker → Containers** から確認します。標準構成の他サービスは同じComposeに残ります。
+3. Grafanaの **Explore** で `up{job="alertmanager"}` が1であることを確認します。
+   `prometheus_notifications_errors_total` はPrometheusからAlertmanagerへの
+   送信エラー、`alertmanager_notifications_failed_total` は受信先への送信エラーです。
+   宛先の設定後に、両方の指標と試験通知を確認します。
+
+標準構成だけに通知を追加する場合のDokploy用例です。`APP_NAME_FROM_HEADER` は
+対象サービスの実際のApp Nameに置き換えます。
+
+```text
+compose -p APP_NAME_FROM_HEADER --env-file .env -f compose.yaml -f compose.alerting.yaml up -d --build --wait --wait-timeout 180 --remove-orphans
+```
+
+既定の [alertmanager.yml](../../native/monitoring/alertmanager.yml) は通知先なしで
+異常の状態を集約します。配信を始める際は、運用承認済みの受信サービスを内部の
+`alert_delivery` ネットワークで到達できるようにし、同じファイルのルートと受信先を
+登録します。例えば、同じComposeに置いた社内受信サービスが `onprem-receiver` の
+名前で待機する場合、受信先の例は次のとおりです。ルートの `receiver` も
+`onprem-webhook` へ変更します。
+
+```yaml
+receivers:
+  - name: onprem-webhook
+    webhook_configs:
+      - url: http://onprem-receiver:8080/receive
+        send_resolved: true
+```
+
+`alert_delivery` は内部ネットワークです。受信サービスをこのネットワークへ参加させる
+場合は、同ネットワークから両監視サービスへ到達できることを前提にします。他ネットワーク
+へは、配備先で承認された専用の中継サービスを通します。URLに埋め込む認証値や
+送信用の秘密は、Gitやビルド済みイメージへ保存せず、実行時ファイルとして管理します。
+受信先の障害などで再送される場合があります。受信側ではWebhookのグループキー、
+アラートの指紋・開始時刻・状態を使って、同じ発生の再送を照合します。
+単一障害の検査では、発報と復旧の両方が届くことを配備先の試験受信先で確認します。
+
+設定をGitで更新して再配備します。Alertmanagerのポートはホストに公開せず、
+コンテナ端末から次を実行できます。名前付きボリューム `alertmanager` は
+サイレンスと通知状態を保持します。廃止するときは追加Composeファイルを外し、
+同じApp Nameの標準コマンドで `--build --remove-orphans` を付けて再配備します。
+履歴のボリュームを削除する場合は、保全の要否を確認します。
+
+**Bash / Zsh共通**
+
+```bash
+amtool check-config /etc/alertmanager/alertmanager.yml
+amtool --alertmanager.url=http://127.0.0.1:9093 alert
+```
+
+[Alertmanager公式の設定](https://prometheus.io/docs/alerting/latest/configuration/) ·
+[Prometheusからの送信先設定](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#alertmanager_config)

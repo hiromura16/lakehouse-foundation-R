@@ -59,3 +59,15 @@ USER 0
 COPY --chmod=644 native/tools/health-workflow.json /opt/foundation/health-workflow.json
 RUN chmod 755 /opt/foundation
 USER node
+
+# 通知を選んだ場合だけ、標準のPrometheus設定に送信先と監視対象を追加する。
+FROM prometheus AS prometheus-alerting
+USER 0
+COPY --chmod=644 native/monitoring/prometheus-alerting.yml /tmp/prometheus-alerting.yml
+COPY --chmod=644 native/monitoring/alertmanager-scrape.yml /etc/prometheus/alertmanager-scrape.yml
+RUN printf '\n' >> /etc/prometheus/prometheus.yml \
+    && cat /tmp/prometheus-alerting.yml >> /etc/prometheus/prometheus.yml
+USER nobody
+
+FROM docker.io/prom/alertmanager:v0.35.0@sha256:e638797febd034838eca8b98cdbd46f951e9bf7f178777aa8669167406a9946c AS alertmanager
+COPY --chmod=644 native/monitoring/alertmanager.yml /etc/alertmanager/alertmanager.yml

@@ -1,0 +1,6 @@
+# 配信処理自身の状態もPrometheusで調べられるようにする。
+scrape_configs:
+  - job_name: alertmanager
+    static_configs:
+      - targets: [alertmanager:9093]
+        labels: {app: Alertmanager}

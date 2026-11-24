@@ -1,0 +1,52 @@
+# デフォルトの起動を保ち、この追加ファイルを選んだときだけ通知処理を使う。
+services:
+  prometheus:
+    build:
+      target: prometheus-alerting
+    networks:
+      alert_delivery: {}
+
+  alertmanager:
+    image: ${COMPOSE_PROJECT_NAME:-lakehouse-r}-alertmanager
+    pull_policy: build
+    build:
+      context: .
+      dockerfile: native/Dockerfile.configured
+      target: alertmanager
+    restart: unless-stopped
+    user: "65534:65534"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 128m
+    cpus: 0.25
+    labels:
+      traefik.enable: 'false'
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: '3'
+    # 1台構成なのでクラスターピア用のソケットを開かない。
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+      - --cluster.listen-address=
+      - --data.retention=120h
+    volumes:
+      - alertmanager:/alertmanager
+    networks:
+      alert_delivery: {}
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:9093/-/ready]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+# Prometheusの通知経路と承認済みの受信サービスだけを接続する。
+networks:
+  alert_delivery:
+    internal: true
+
+volumes:
+  alertmanager:

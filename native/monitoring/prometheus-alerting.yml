@@ -1,0 +1,9 @@
+# 任意のAlertmanager構成を選んだビルドでだけ、この設定を追加する。
+alerting:
+  alertmanagers:
+    - api_version: v2
+      static_configs:
+        - targets: [alertmanager:9093]
+
+scrape_config_files:
+  - /etc/prometheus/alertmanager-scrape.yml
