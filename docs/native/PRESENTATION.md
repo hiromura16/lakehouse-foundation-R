@@ -27,6 +27,8 @@
 - [閲覧・配布用PDF（20ページ）](https://github.com/hiromura16/lakehouse-foundation-R/releases/download/briefing-2026-11-25/factory-lakehouse-briefing.pdf)
 - [全体構造PNG（2400×1350）](images/foundation-r-structure.png)
 - [オンプレと外部連携の配置PNG（2400×1350）](https://github.com/hiromura16/lakehouse-foundation-R/releases/download/briefing-2026-11-25/factory-lakehouse-topology.png)
-- [説明会向けHTML（10枚）](../presentation/index.html) · [配備と運用の補助ツール](TOOLS.md)
+- [説明会向けHTML（20枚）](../presentation/index.html) · [配備と運用の補助ツール](TOOLS.md)
 
-HTML版は前後ボタンまたは左右キーで進められます。任意の運用ポータルからも開けます。[PowerPoint 11枚の短縮版](https://github.com/hiromura16/lakehouse-foundation-R/releases/download/presentation-2026-11-24/lakehouse-foundation-r.pptx)
+HTML版は運用ポータルの **説明スライド**、またはチェックアウト内の `docs/presentation/index.html` をブラウザーで開きます。目次と前後ボタンで移動できます。左右キーとPageUp・PageDownは前後、Home・Endは最初と最後への移動です。目次から選んだスライドのURLは共有できます。スマートフォンでは1列に並びます。
+
+**印刷・PDF** では、表示中の位置にかかわらず全20枚を16:9で出力します。ブラウザーでPDFに保存する場合は、ページのヘッダーとフッターを無効にしてください。JavaScriptを無効にしていても、全スライドを読み、ブラウザーの印刷機能で出力できます。画像やスタイルはチェックアウトまたは運用ポータルから読み込みます。[PowerPoint 11枚の短縮版](https://github.com/hiromura16/lakehouse-foundation-R/releases/download/presentation-2026-11-24/lakehouse-foundation-r.pptx)

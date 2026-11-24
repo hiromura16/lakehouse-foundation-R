@@ -52,7 +52,12 @@ FROM docker.io/library/nginx:stable-alpine@sha256:8eb2b5540eae779603cc3db84b3986
 COPY --chmod=644 native/tools/nginx.conf /etc/nginx/nginx.conf
 COPY --chmod=644 native/tools/portal/index.html native/tools/portal/portal.css native/tools/portal/portal.js /usr/share/nginx/html/
 COPY --chmod=644 docs/presentation/index.html docs/presentation/slides.css docs/presentation/slides.js /usr/share/nginx/html/slides/
-RUN chmod 755 /usr/share/nginx/html/slides
+# 配布済みの合成画面と、上流の図版・ライセンスを資料と同じオリジンで提供する。
+COPY --chmod=644 docs/native/images/foundation-r-structure.png docs/native/images/data-browser-demo.png \
+    docs/native/images/runtime-demo.png docs/native/images/operations-portal.png \
+    docs/native/images/iceberg-metadata.png docs/native/images/iceberg-LICENSE.txt \
+    docs/native/images/iceberg-NOTICE.txt /usr/share/nginx/html/native/images/
+RUN chmod 755 /usr/share/nginx/html/slides /usr/share/nginx/html/native /usr/share/nginx/html/native/images
 
 FROM ${N8N_IMAGE_REPO}:2.49.5@sha256:c349b24d6e242b4ea14d75e6f1a90c50e348cf4b1c4512b4a0a50219ead6533d AS n8n
 USER 0

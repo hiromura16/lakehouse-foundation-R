@@ -3,18 +3,374 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Foundation R 説明スライド</title>
+  <meta name="description" content="工場データの受入、保存、集計、閲覧、監視を導入するための20枚の説明資料。">
+  <title>Lakehouse Foundation R｜導入と運用</title>
   <link rel="stylesheet" href="slides.css">
   <script src="slides.js" defer></script>
 </head>
 <body>
-  <nav class="controls" aria-label="スライドの操作">
-    <button id="previous" type="button">前へ</button>
-    <label><span>スライド</span><select id="selector"></select></label>
-    <button id="next" type="button">次へ</button>
-    <button id="print" type="button">印刷・PDF</button>
+  <nav class="controls" aria-label="スライド操作" hidden>
+    <a class="deck-name" href="#foundation-r">Foundation R</a>
+    <div class="paging">
+      <button id="outline-toggle" type="button" aria-haspopup="dialog">目次</button>
+      <button id="previous" type="button" aria-label="前のスライド"><span aria-hidden="true">←</span><span>前へ</span></button>
+      <span id="position" class="position" aria-hidden="true"></span>
+      <button id="next" type="button" aria-label="次のスライド"><span>次へ</span><span aria-hidden="true">→</span></button>
+      <button id="print" type="button">印刷・PDF</button>
+    </div>
+    <progress id="progress" aria-label="スライドの進み具合" max="20" value="1"></progress>
+    <span id="announcer" class="sr-only" role="status"></span>
   </nav>
-  <main id="deck" aria-label="Foundation R の説明資料"></main>
-  <noscript>スライドの表示にはJavaScriptを有効にしてください。</noscript>
+
+  <dialog id="outline" aria-labelledby="outline-title">
+    <div class="outline-heading">
+      <div>
+        <h2 id="outline-title">目次</h2>
+        <p>左右キーで移動。Home・Endで最初と最後へ。</p>
+      </div>
+      <form method="dialog"><button type="submit">閉じる</button></form>
+    </div>
+    <nav id="outline-links" aria-label="スライド一覧"></nav>
+  </dialog>
+
+  <!-- 確認や印刷はJavaScriptが使えない環境でも行えるよう、全スライドをHTMLに置く。 -->
+  <main id="deck" aria-label="Lakehouse Foundation R 導入と運用">
+    <section id="foundation-r" class="slide cover" aria-labelledby="title-foundation-r" data-chapter="設計">
+      <header class="slide-header"><span>設計</span><span class="folio">01 / 20</span></header>
+      <div class="slide-body cover-grid">
+        <div>
+          <h1 id="title-foundation-r">Lakehouse<br>Foundation R</h1>
+          <p class="lead">工場で受け取ったデータを保全し、数字の出所をたどれる集計として届ける。</p>
+          <ul class="cover-topics">
+            <li>製造・受注・設備データを同じ基盤で扱う</li>
+            <li>オンプレを中心に、承認した集計だけ外部へ連携</li>
+            <li>Dokployで配備し、合成データから受け入れる</li>
+          </ul>
+        </div>
+        <div class="cover-map" aria-label="取り込み、保全と変換、利用">
+          <div><span>受け取る</span><strong>工場ファイル・業務DB・設備</strong></div>
+          <div><span>確かめる</span><strong>原本・検証・公開世代</strong></div>
+          <div><span>届ける</span><strong>集計・調査・自動化</strong></div>
+        </div>
+      </div>
+      <footer class="slide-foot"><span>対象　工場システム担当・データ利用者・基盤運用者</span></footer>
+    </section>
+
+    <section id="responsibilities" class="slide" aria-labelledby="title-responsibilities" data-chapter="設計">
+      <header class="slide-header"><span>設計</span><span class="folio">02 / 20</span></header>
+      <h2 id="title-responsibilities">工場・業務・運用の責務を分ける</h2>
+      <p class="lead">誰が値を決め、誰が運び、誰が公開を保証するかを先に決める。</p>
+      <div class="slide-body cards three">
+        <article><h3>工場システム担当</h3><p>元システムから安全に取り出し、列定義や完了印を付けて渡す。PLCや基幹DBとの接続権限は入力側で管理する。</p></article>
+        <article><h3>業務担当</h3><p>工場日次、受注、設備品質などの定義を決める。欠測や遅延、取消の意味も業務ごとの契約に残す。</p></article>
+        <article><h3>基盤運用者</h3><p>原本、検証結果、公開世代を保全する。失敗箇所を絞り、同じ入力を安全に再実行できる状態にする。</p></article>
+      </div>
+      <div class="note">DDDの業務境界を契約で表し、UNIXの考え方に沿って受入・検証・変換・公開を小さな処理に分ける。</div>
+      <footer class="slide-foot"><a href="https://github.com/hiromura16/lakehouse-foundation-R/blob/main/docs/native/DESIGN.md">設計思想と適用範囲</a></footer>
+    </section>
+
+    <section id="architecture" class="slide" aria-labelledby="title-architecture" data-chapter="設計">
+      <header class="slide-header"><span>設計</span><span class="folio">03 / 20</span></header>
+      <h2 id="title-architecture">オンプレを中心に役割を接続する</h2>
+      <p class="lead">保存・カタログ・計算・利用を別々に変更できる構成。</p>
+      <div class="slide-body figure-layout wide-figure">
+        <figure>
+          <a href="../native/images/foundation-r-structure.png"><img src="../native/images/foundation-r-structure.png" width="2400" height="1350" alt="工場の入力、内製レイクハウス、運用と調査、外部連携を領域別に示す全体構造図"></a>
+          <figcaption>PowerPoint収録の全体構造図。画像を開くと2400×1350で確認できます。</figcaption>
+        </figure>
+        <dl class="definition-list">
+          <div><dt>入力</dt><dd>ファイル、SQLバッチ、任意の外部Kafka CDC</dd></div>
+          <div><dt>計算と保存</dt><dd>DuckDBのSQL、PyIceberg、Lakekeeper、SeaweedFS</dd></div>
+          <div><dt>利用</dt><dd>Gold読取、業務GUI、定型処理、承認済み外部連携</dd></div>
+          <div><dt>監視</dt><dd>計測と表示を分け、書込系ネットワークを隔離</dd></div>
+        </dl>
+      </div>
+      <footer class="slide-foot"><a href="https://github.com/hiromura16/lakehouse-foundation-R/blob/main/docs/native/ARCHITECTURE.md">アーキテクチャと構成要素</a></footer>
+    </section>
+
+    <section id="data-layers" class="slide" aria-labelledby="title-data-layers" data-chapter="設計">
+      <header class="slide-header"><span>設計</span><span class="folio">04 / 20</span></header>
+      <h2 id="title-data-layers">原本から公開集計までを追跡する</h2>
+      <p class="lead">Medallionの各層で、保存した事実と業務上の判断を記録する。</p>
+      <div class="slide-body">
+        <ol class="flow">
+          <li><h3>Raw</h3><p>ハッシュを照合し、元ファイルを保全。</p><small>再取込と監査の根拠</small></li>
+          <li><h3>Bronze</h3><p>配送や入力台帳に紐づけ、読める形に揃える。</p><small>由来と処理の記録</small></li>
+          <li><h3>Silver</h3><p>型、業務キー、重複、最新版を検査。</p><small>再利用できる業務表</small></li>
+          <li><h3>Gold</h3><p>目的別の集計を作り、表の版を公開台帳へ。</p><small>利用者へ渡す結果</small></li>
+        </ol>
+        <div class="note">受入拒否は原本と理由、業務上の異常行はQuarantineに記録。変換が止まった場合も直前の公開世代を参照できる。</div>
+      </div>
+      <footer class="slide-foot"><a href="https://github.com/hiromura16/lakehouse-foundation-R/blob/main/docs/native/ARCHITECTURE.md">データレイヤーと公開境界</a></footer>
+    </section>
+
+    <section id="data-contracts" class="slide" aria-labelledby="title-data-contracts" data-chapter="設計">
+      <header class="slide-header"><span>設計</span><span class="folio">05 / 20</span></header>
+      <h2 id="title-data-contracts">業務の粒度を揃えてから結合する</h2>
+      <p class="lead">列名のほか、キー・時刻・品質・重複・不成立時の扱いをデータ契約にする。</p>
+      <div class="slide-body">
+        <table class="data-table">
+          <thead><tr><th scope="col">製品</th><th scope="col">集計の単位</th><th scope="col">実装する判断</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">日次生産</th><td>工場 × 生産日</td><td>計画、実績、停止を同じ粒度にして結合し、数量の二重計上を防ぐ。</td></tr>
+            <tr><th scope="row">受注と出荷</th><td>受注キー</td><td>分割出荷をまとめ、部分出荷、未出荷、約束日後の出荷を判定する。</td></tr>
+            <tr><th scope="row">設備</th><td>設備 × 測定項目 × 1分</td><td>UTCに揃え、平均はGOODのみ。最新の測定点には品質も表示する。</td></tr>
+          </tbody>
+        </table>
+        <div class="note">件数0は確認済みの結果。欠測や未公開は、それぞれ観測と公開の状態で表す。</div>
+      </div>
+      <footer class="slide-foot"><a href="https://github.com/hiromura16/lakehouse-foundation-R/blob/main/docs/native/API.md">データ製品と参照API</a></footer>
+    </section>
+
+    <section id="intake" class="slide" aria-labelledby="title-intake" data-chapter="データと調査">
+      <header class="slide-header"><span>データと調査</span><span class="folio">06 / 20</span></header>
+      <h2 id="title-intake">データ源に合う受け渡しを選ぶ</h2>
+      <p class="lead">出せる形式から始め、変換を増やす前に原本と受領結果を残す。</p>
+      <div class="slide-body cards two">
+        <article><h3>工場ファイル・検査画像</h3><p>既存CSVやJSONLを完了印と受け取る。検査画像はハッシュと由来を保全し、画像解析は別工程で行う。</p></article>
+        <article><h3>SQL Server・PostgreSQL</h3><p>読取専用の抽出で業務表を同じ時点に揃える。基盤との間をファイルや固定SQLバッチにすると再現しやすい。</p></article>
+        <article><h3>自社システム・手元のツール</h3><p>配送ID、スキーマ、文字コード、完了印を決めて連携。差分の訂正理由を送り元の契約に明記する。</p></article>
+        <article><h3>外部Kafka互換CDC</h3><p>上流のDebezium形式から変更と削除を受信。offsetと原本を照合し、再起動後も続きから処理する。</p></article>
+      </div>
+      <footer class="slide-foot"><a href="https://github.com/hiromura16/lakehouse-foundation-R/blob/main/docs/native/SOURCES.md">取込方法の選択と手順</a></footer>
+    </section>
+
+    <section id="telemetry" class="slide" aria-labelledby="title-telemetry" data-chapter="データと調査">
+      <header class="slide-header"><span>データと調査</span><span class="folio">07 / 20</span></header>
+      <h2 id="title-telemetry">設備の測定点と業務集計を使い分ける</h2>
+      <p class="lead">時刻・品質・設備IDの契約を揃え、調査の時間幅に合わせて保存先を選ぶ。</p>
+      <div class="slide-body">
+        <ol class="flow three-flow">
+          <li><h3>設備とゲートウェイ</h3><p>Modbus TCPやOPC UAからの読取を確認。MQTTはMosquitto、Telegraf、Kafka互換のNisshi、Vectorの経路を隔離試験で検証。</p></li>
+          <li><h3>InfluxDB 3 Core</h3><p>測定点を時刻とタグで検索する追加ストア。ExplorerでSQLとチャートを試せる。</p></li>
+          <li><h3>Icebergの設備製品</h3><p>検証した入力から1分集計と品質を公開。業務側のデータと同じ公開世代で参照する。</p></li>
+        </ol>
+        <div class="note">合成例ではGOODの測定点を平均に使い、最新点がBADなら値と判定をそのまま調査に残す。</div>
+      </div>
+      <footer class="slide-foot"><a href="https://github.com/hiromura16/lakehouse-foundation-R/blob/main/docs/native/TELEMETRY.md">設備テレメトリの試験</a></footer>
+    </section>
+
+    <section id="iceberg" class="slide" aria-labelledby="title-iceberg" data-chapter="データと調査">
+      <header class="slide-header"><span>データと調査</span><span class="folio">08 / 20</span></header>
+      <h2 id="title-iceberg">Icebergで公開時点の表を指定する</h2>
+      <p class="lead">ファイルと表の版、業務製品の公開世代を結び付ける。</p>
+      <div class="slide-body figure-layout">
+        <dl class="definition-list">
+          <div><dt>SeaweedFS</dt><dd>S3互換の保存先。原本やIcebergのデータ・メタデータを保管する。</dd></div>
+          <div><dt>IcebergとPyIceberg</dt><dd>表のスナップショット、マニフェスト、データファイルの関係を管理する。</dd></div>
+          <div><dt>LakekeeperとPostgreSQL</dt><dd>Rust製RESTカタログと永続状態。計算とは別に表を見つける。</dd></div>
+          <div><dt>Foundation Rの公開台帳</dt><dd>業務製品の表ごとの版を束ねる。利用者は公開世代IDを指定して照合する。</dd></div>
+        </dl>
+        <figure>
+          <a href="../native/images/iceberg-metadata.png"><img src="../native/images/iceberg-metadata.png" width="1248" height="1290" alt="Apache Iceberg公式図。カタログから表メタデータ、スナップショット、マニフェスト、データファイルへ参照が連なる"></a>
+          <figcaption>© The Apache Software Foundation · <a href="../native/images/iceberg-LICENSE.txt">Apache License 2.0</a> · <a href="../native/images/iceberg-NOTICE.txt">NOTICE</a></figcaption>
+        </figure>
+      </div>
+      <footer class="slide-foot"><a href="https://iceberg.apache.org/spec/#overview">Apache Iceberg仕様と図版の出典</a></footer>
+    </section>
+
+    <section id="data-browser" class="slide" aria-labelledby="title-data-browser" data-chapter="データと調査">
+      <header class="slide-header"><span>データと調査</span><span class="folio">09 / 20</span></header>
+      <h2 id="title-data-browser">業務画面から数字の出所を調べる</h2>
+      <p class="lead">日次生産・出荷・設備から調べたい製品を選び、数値と公開時点を突き合わせる。</p>
+      <div class="slide-body figure-layout">
+        <ol class="steps">
+          <li><h3>製品を選ぶ</h3><p>遅延出荷、工場の停止、設備の品質など、調査したい問いを決める。</p></li>
+          <li><h3>対象を絞る</h3><p>集計の粒度、表示行、総件数を確認する。絞り込み結果と全件を把握する。</p></li>
+          <li><h3>同じ公開時点で比較する</h3><p>公開世代と表の版を記録。追加例ではmarimoで分析を再現し、Rillで工場・期間別のKPIを探索できる。</p></li>
+        </ol>
+        <figure>
+          <a href="../native/images/data-browser-demo.png"><img src="../native/images/data-browser-demo.png" width="1350" height="1310" alt="合成データの閲覧画面。業務製品を選ぶタブ、集計値、公開世代と結果表を表示"></a>
+          <figcaption>Streamlit閲覧画面。合成工場データ。</figcaption>
+        </figure>
+      </div>
+      <footer class="slide-foot"><a href="https://github.com/hiromura16/lakehouse-foundation-R/blob/main/docs/native/GUI.md">業務閲覧と参照権限</a></footer>
+    </section>
+
+    <section id="monitoring" class="slide" aria-labelledby="title-monitoring" data-chapter="データと調査">
+      <header class="slide-header"><span>データと調査</span><span class="folio">10 / 20</span></header>
+      <h2 id="title-monitoring">状態・履歴・処理遅延を調べる</h2>
+      <p class="lead">接続先の応答と、公開ジョブの成否や経過時間を分けて見る。</p>
+      <div class="slide-body figure-layout wide-figure">
+        <figure>
+          <a href="../native/images/runtime-demo.png"><img src="../native/images/runtime-demo.png" width="1440" height="1135" alt="合成環境のGrafana。サービスの応答状態、履歴、ジョブの成否と経過時間を表示"></a>
+          <figcaption>Grafanaの設定ファイルから再現できる合成環境。</figcaption>
+        </figure>
+        <dl class="definition-list">
+          <div><dt>Blackbox Exporter</dt><dd>HTTPまたはTCPの疎通を測る。</dd></div>
+          <div><dt>Prometheus</dt><dd>疎通、ジョブ指標、ルールを収集する。</dd></div>
+          <div><dt>Grafana</dt><dd>標準7、GUI付き9、運用ツール付き14の監視対象を表示。</dd></div>
+          <div><dt>設定変更</dt><dd>対象YAMLとパネルJSONをGitで編集し、対象イメージを再ビルド。</dd></div>
+        </dl>
+      </div>
+      <footer class="slide-foot"><a href="https://github.com/hiromura16/lakehouse-foundation-R/blob/main/docs/native/MONITORING.md">監視の設定ファイル</a></footer>
+    </section>
+
+    <section id="operations-tools" class="slide" aria-labelledby="title-operations-tools" data-chapter="連携と配備">
+      <header class="slide-header"><span>連携と配備</span><span class="folio">11 / 20</span></header>
+      <h2 id="title-operations-tools">調査と自動化の入口を揃える</h2>
+      <p class="lead">運用ポータルで応答を確認し、作業に合うツールへ移動する。</p>
+      <div class="slide-body figure-layout">
+        <dl class="definition-list">
+          <div><dt>n8n</dt><dd>定型通知やAPI連携。まず同梱の読取ヘルス確認を手動で試す。</dd></div>
+          <div><dt>OpenObserve</dt><dd>Rust製の調査基盤。転送した状態指標をPromQLで探し、グラフも設定できる。</dd></div>
+          <div><dt>InfluxDB 3・Explorer</dt><dd>測定点を時間で絞り、SQLとチャートで原因を探る。</dd></div>
+          <div><dt>通信の分離</dt><dd>n8nからは固定の読取ゲートへ。S3、カタログDB、Blackboxへ直接接続させない。</dd></div>
+        </dl>
+        <figure>
+          <a href="../native/images/operations-portal.png"><img src="../native/images/operations-portal.png" width="1320" height="1031" alt="合成環境の運用ポータル。監視、調査、自動化、時系列検索への入口を表示"></a>
+          <figcaption>合成環境の運用ポータル。</figcaption>
+        </figure>
+      </div>
+      <footer class="slide-foot"><a href="https://github.com/hiromura16/lakehouse-foundation-R/blob/main/docs/native/TOOLS.md">運用ツールの導入と設定</a></footer>
+    </section>
+
+    <section id="ai-access" class="slide" aria-labelledby="title-ai-access" data-chapter="連携と配備">
+      <header class="slide-header"><span>連携と配備</span><span class="folio">12 / 20</span></header>
+      <h2 id="title-ai-access">AIの回答に表の版を添える</h2>
+      <p class="lead">LLMへの質問を、対象製品と公開時点が明確な読取操作に分ける。</p>
+      <div class="slide-body">
+        <ol class="flow three-flow">
+          <li><h3>問いを絞る</h3><p>「合成工場の日次生産の実績を比較」といった目的を選ぶ。</p></li>
+          <li><h3>固定の読取を実行</h3><p>LangChainのツール、ローカルstdio MCP、またはOpenAPIの定義を利用。データセットと行数を制限する。</p></li>
+          <li><h3>回答を再現できる形に</h3><p>表名、表の版、公開世代を答えに添える。続けて読む表も同じ世代を指定する。</p></li>
+        </ol>
+        <div class="note">自由SQLや書込トークンは読取ツールに渡さない。モデル、トレーシング、外部送信は利用する環境で明示的に設定する。</div>
+      </div>
+      <footer class="slide-foot"><a href="https://github.com/hiromura16/lakehouse-foundation-R/blob/main/docs/native/API.md">OpenAPI、LangChain、ローカルMCP</a></footer>
+    </section>
+
+    <section id="dokploy" class="slide" aria-labelledby="title-dokploy" data-chapter="連携と配備">
+      <header class="slide-header"><span>連携と配備</span><span class="folio">13 / 20</span></header>
+      <h2 id="title-dokploy">Dokployから標準構成を配備する</h2>
+      <p class="lead">会社VMで通信とファイルの配置を確認し、DokployがComposeを取得して起動する。</p>
+      <div class="slide-body">
+        <ol class="flow four-flow">
+          <li><h3>VMを準備</h3><p>Git HTTPSとCAを確認。一般ユーザーでlandingと非公開設定を生成する。</p></li>
+          <li><h3>Composeを登録</h3><p>DokployでGitを指定し、環境とビルド用の非公開ファイルを設定。</p></li>
+          <li><h3>Deployを実行</h3><p>コンテナとログを確認。常駐9サービス、DB移行は終了0。</p></li>
+          <li><h3>合成データで受入</h3><p>原本、受入状態、公開世代、Goldの行数を照合。同じ入力で再実行する。</p></li>
+        </ol>
+        <div class="note">GUI・運用ツールは標準が通ってから同じプロジェクトに追加。Dockerのサブネット容量と認証付きの画面導線を確認する。</div>
+      </div>
+      <footer class="slide-foot"><a href="https://github.com/hiromura16/lakehouse-foundation-R/blob/main/docs/native/START.md">Dokployの初回導入</a><a href="https://docs.dokploy.com/docs/core/docker-compose">DokployのCompose仕様</a></footer>
+    </section>
+
+    <section id="proxy" class="slide" aria-labelledby="title-proxy" data-chapter="連携と配備">
+      <header class="slide-header"><span>連携と配備</span><span class="folio">14 / 20</span></header>
+      <h2 id="title-proxy">プロキシの障害を4つの経路に分ける</h2>
+      <p class="lead">Gitが取得できても、イメージやPythonパッケージの取得に別設定が必要になる。</p>
+      <div class="slide-body">
+        <table class="data-table">
+          <thead><tr><th scope="col">経路</th><th scope="col">まず確認すること</th><th scope="col">確認結果</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">作業端末・Git</th><td>会社プロキシ、OSの信頼CA</td><td><code>git ls-remote</code> が公開mainの参照を返す。</td></tr>
+            <tr><th scope="row">Docker daemon</th><td>レジストリ許可リスト、daemonのCA</td><td>固定ダイジェストのベースを取得できる。</td></tr>
+            <tr><th scope="row">BuildKit</th><td>ビルド用CA、パッケージ索引、必要な認証</td><td>BuildKit secretで限定的に渡し、lockのハッシュを照合する。</td></tr>
+            <tr><th scope="row">実行コンテナ</th><td>外向きHTTP、内部DNS、<code>NO_PROXY</code></td><td>内部サービスと必要な外部宛先の応答を別々に確認。</td></tr>
+          </tbody>
+        </table>
+        <div class="note">CAを更新する場合は設定とハッシュを揃えて再ビルド。認証情報は非公開ファイルに置き、画面やログへ出さない。</div>
+      </div>
+      <footer class="slide-foot"><a href="https://github.com/hiromura16/lakehouse-foundation-R/blob/main/docs/native/COMPANY.md">企業プロキシ、CA、Dockerミラー</a></footer>
+    </section>
+
+    <section id="cloudflare" class="slide" aria-labelledby="title-cloudflare" data-chapter="連携と配備">
+      <header class="slide-header"><span>連携と配備</span><span class="folio">15 / 20</span></header>
+      <h2 id="title-cloudflare">承認済みの集計だけを外部へ届ける</h2>
+      <p class="lead">Cloudflareは任意の出口。取込、処理、Iceberg公開は工場側で完結する。</p>
+      <div class="slide-body">
+        <div class="network-diagram" aria-label="外部読取とオンプレ処理の接続">
+          <section><h3>オンプレのデータ基盤</h3><p>取込 → SQL → 公開世代</p><small>S3・カタログDB・Writerは内部に保持</small></section>
+          <section><h3>公開ゲート</h3><p>Reader → 承認済みの表・世代・列</p><small>行数上限とCloudflare Accessの署名を確認</small></section>
+          <section><h3>Cloudflare</h3><p>Tunnel＋Access → 外部の認証済み利用者</p><small>R2への承認済み成果物保全は別手順</small></section>
+        </div>
+        <div class="note">トンネルが停止してもオンプレの取込と集計を継続。復旧後に承認した世代と列を照合する。</div>
+      </div>
+      <footer class="slide-foot"><a href="https://github.com/hiromura16/lakehouse-foundation-R/blob/main/docs/native/CLOUDFLARE.md">Access、Tunnel、R2の境界</a></footer>
+    </section>
+
+    <section id="compute" class="slide" aria-labelledby="title-compute" data-chapter="評価と運用">
+      <header class="slide-header"><span>評価と運用</span><span class="folio">16 / 20</span></header>
+      <h2 id="title-compute">Sparkが担う処理を用途別に選ぶ</h2>
+      <p class="lead">標準の業務SQLは単一VMで実行。実行量や互換性が必要になったら同じデータで評価する。</p>
+      <div class="slide-body cards two">
+        <article><h3>DuckDB ＋ PyIceberg</h3><p>採用。DuckDBは組込みの列指向SQL実行エンジン。PyIcebergが外部の表と版を管理し、別のSQLサーバーを増やさず始められる。</p></article>
+        <article><h3>DataFusion</h3><p>評価。RustとArrowのSQLエンジン。同じParquet、SQL、結果のハッシュでDuckDBと比較する。運用の採否はデータ量と事業の制約で決める。</p></article>
+        <article><h3>SailとBallista</h3><p>別評価。SailはSpark Connectクライアントから、Ballistaは分散タスクの登録と実行を隔離環境で確認。</p></article>
+        <article><h3>Spark ＋ Comet</h3><p>既存Sparkの高速化を測る評価構成。CometはSparkの実行環境を前提とし、標準のJVMなし構成から分けて扱う。</p></article>
+      </div>
+      <footer class="slide-foot"><a href="https://github.com/hiromura16/lakehouse-foundation-R/blob/main/docs/native/EVALUATION.md">同じ入力を使った計算・分散実行の評価</a><a href="https://duckdb.org/why_duckdb">DuckDBの設計</a></footer>
+    </section>
+
+    <section id="alternatives" class="slide" aria-labelledby="title-alternatives" data-chapter="評価と運用">
+      <header class="slide-header"><span>評価と運用</span><span class="folio">17 / 20</span></header>
+      <h2 id="title-alternatives">置き換え候補は役割ごとに検証する</h2>
+      <p class="lead">実データを導入する前に、Rust製の候補も互換性と復元を確認する。</p>
+      <div class="slide-body">
+        <table class="data-table">
+          <thead><tr><th scope="col">役割</th><th scope="col">導入・追加構成</th><th scope="col">隔離評価で確認した候補</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">S3互換保存</th><td>SeaweedFS</td><td>RustFS。認証、条件付き書込、公開後の再起動と照合。</td></tr>
+            <tr><th scope="row">変更イベント</th><td>外部Kafka互換CDC</td><td>RisingWave。Debezium形式の訂正と削除から現在値を構成。</td></tr>
+            <tr><th scope="row">時系列検索</th><td>InfluxDB 3 CoreとExplorer</td><td>GreptimeDB。合成3測定点へのSQLと最新値を照合。</td></tr>
+            <tr><th scope="row">運用メトリクス閲覧</th><td>Grafana</td><td>追加のOpenObserveでPromQL検索とダッシュボードを確認。</td></tr>
+          </tbody>
+        </table>
+        <div class="note">検証では対象、固定版、成功条件、未確認範囲を記録し、既存構成の切替は導入先の復旧試験を含めて判断する。</div>
+      </div>
+      <footer class="slide-foot"><a href="https://github.com/hiromura16/lakehouse-foundation-R/blob/main/docs/native/EVALUATION.md">評価構成と再現手順</a></footer>
+    </section>
+
+    <section id="acceptance" class="slide" aria-labelledby="title-acceptance" data-chapter="評価と運用">
+      <header class="slide-header"><span>評価と運用</span><span class="folio">18 / 20</span></header>
+      <h2 id="title-acceptance">合成データの期待値と受入結果を照合する</h2>
+      <p class="lead">入力、処理、公開結果、再実行を同じ記録に残す。</p>
+      <div class="slide-body">
+        <div class="metrics">
+          <div><strong>6<span>ファイル</span></strong><p>合成の業務入力を初回受入</p></div>
+          <div><strong>14<span>文</span></strong><p>業務SQLを実行</p></div>
+          <div><strong>14<span>行</span></strong><p>日次生産のGoldへ公開</p></div>
+        </div>
+        <div class="cards two evidence-cards">
+          <article><h3>同じ入力を再実行</h3><p>新規0で公開世代は変わらない。11項目の業務検証では、重複抑止や遅延到着の帰属も照合する。</p></article>
+          <article><h3>失敗と復旧を確認</h3><p>型不正、入出力の隔離、CDC再起動、RawとGoldの復元を別の受入として記録する。</p></article>
+        </div>
+      </div>
+      <footer class="slide-foot"><a href="https://github.com/hiromura16/lakehouse-foundation-R/blob/main/docs/native/ACCEPTANCE.md">試験データ・成功条件・記録項目</a></footer>
+    </section>
+
+    <section id="first-day" class="slide" aria-labelledby="title-first-day" data-chapter="評価と運用">
+      <header class="slide-header"><span>評価と運用</span><span class="folio">19 / 20</span></header>
+      <h2 id="title-first-day">初日の合格条件と復旧点を決める</h2>
+      <p class="lead">会社VMでは実際のプロキシ、接続元、保存先で順に受け入れる。</p>
+      <div class="slide-body cards three">
+        <article><h3>開始前</h3><p>Gitとビルドの到達性、VM容量、秘密の保管先、バックアップ先と担当を決める。</p></article>
+        <article><h3>起動と取込</h3><p>Dokployから配備。合成入力の原本、ジョブ結果、公開世代、集計の行数を残す。認証と監視も確認する。</p></article>
+        <article><h3>復旧確認</h3><p>処理を止め、カタログDBとS3を同じ時点で保全。隔離環境で世代、行数、原本ハッシュを照合してから実データへ。</p></article>
+      </div>
+      <div class="note">処理に失敗したら公開を急がず、前回の成功世代と障害範囲を確認する。復旧後に原因・再実行の結果を記録する。</div>
+      <footer class="slide-foot"><a href="https://github.com/hiromura16/lakehouse-foundation-R/blob/main/docs/native/OPERATIONS.md">運用、バックアップ、復旧</a><a href="https://github.com/hiromura16/lakehouse-foundation-R/blob/main/docs/native/ACCEPTANCE.md">初回の受入順</a></footer>
+    </section>
+
+    <section id="component-guide" class="slide" aria-labelledby="title-component-guide" data-chapter="評価と運用">
+      <header class="slide-header"><span>評価と運用</span><span class="folio">20 / 20</span></header>
+      <h2 id="title-component-guide">構成要素と資料を作業から探す</h2>
+      <p class="lead">変更する場所を絞り、必要になった構成から手を付ける。</p>
+      <div class="slide-body">
+        <table class="data-table component-table">
+          <thead><tr><th scope="col">作業</th><th scope="col">主なコンポーネント</th><th scope="col">参照先</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">配備と通信</th><td>Dokploy、Docker Compose、BuildKit、Cloudflare Tunnel・Access</td><td><a href="#dokploy">配備</a> · <a href="#proxy">企業プロキシ</a></td></tr>
+            <tr><th scope="row">原本保全と変換</th><td>Python / SQL、DuckDB、SeaweedFS、PyIceberg、Lakekeeper、PostgreSQL</td><td><a href="#data-layers">原本と集計</a> · <a href="#iceberg">公開世代</a></td></tr>
+            <tr><th scope="row">業務閲覧とAI</th><td>Gold読取API、Streamlit、LangChain Core、MCP</td><td><a href="#data-browser">業務画面</a> · <a href="#ai-access">AIと読取</a></td></tr>
+            <tr><th scope="row">運用・調査と自動化</th><td>Blackbox、Prometheus、Grafana、OpenObserve、n8n、InfluxDB 3、Explorer</td><td><a href="#monitoring">監視</a> · <a href="#operations-tools">運用ツール</a></td></tr>
+            <tr><th scope="row">比較と拡張</th><td>DataFusion、RustFS、RisingWave、GreptimeDB、Sail、Ballista、Comet</td><td><a href="#compute">計算</a> · <a href="#alternatives">選択肢</a></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <footer class="slide-foot"><a href="https://github.com/hiromura16/lakehouse-foundation-R/blob/main/docs/native/PRESENTATION.md">PowerPoint・PDF・構成図</a><a href="https://github.com/hiromura16/lakehouse-foundation-R/blob/main/docs/DOCUMENTATION-MANIFEST.md">担当ごとの資料一覧</a></footer>
+    </section>
+  </main>
 </body>
 </html>
