@@ -59,6 +59,7 @@ jobs:
             --schedule-container "$container"
           docker exec -i "$container" python - < tests/integration/native/gold_stream.py
           docker exec -i "$container" python - < tests/integration/native/gold_admission.py
+          docker exec -i "$container" python - < tests/integration/native/worker_shutdown.py
           docker exec -i -e FOUNDATION_R_SYNTHETIC_OBJECT_TEST=1 "$container" python - \
             < tests/integration/native/catalog_objects.py
           docker compose --env-file "$site" -p native-ci \

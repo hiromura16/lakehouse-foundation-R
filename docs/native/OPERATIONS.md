@@ -64,6 +64,9 @@ APIが409を返し、CLIは終了1になります。入力修正後に再実行�
 保全対象はカタログDB、S3のSeaweedFSデータと設定、landing原本、private `site.env` と暗号鍵、Grafana volumeと設定ファイル、必要に応じてPrometheusデータ、CDC SQLiteのディレクトリ全体とその運用設定です。追加構成ではn8n専用DBと暗号鍵、OpenObserve、InfluxDB、Explorerのデータと資格情報も対象にします。DokployのVolume Backupsを使う場合、名前付きvolumeに加えてホストのlandingとCAを別途保全します。
 
 1. 投入・変換・CDCを停止し、ジョブの完了を確認します。Dokployは対象のComposeだけをStopします。
+   ワーカーはSIGTERMを受けると新規接続を止め、受付済みの要求が完了するのを待ちます。
+   Composeの猶予は2分です。大きな原本や長い変換は先に完了を確認し、
+   強制停止が発生した場合は公開世代と原本の台帳を照合してから再開します。
 2. カタログとオブジェクトの同じ停止時点を、ホストのストレージスナップショットまたは運用で承認されたバックアップ手段で保全します。秘密は暗号化された保管先へ保存します。
 3. 別VM・別projectに同時点の両方とprivate設定を復元します。会社側の実接続を作る前に、隔離状態で同じ公開世代とGold件数、S3原本hash、Grafana設定を照合します。
 4. 更新の試験で問題が起きた場合は、採用版のGit commitとバックアップを揃えて隔離環境で復旧を検証します。DBのschema移行を行った後にコンテナタグだけ戻すと、DBが旧版に対応しない場合があります。
@@ -86,7 +89,7 @@ APIが409を返し、CLIは終了1になります。入力修正後に再実行�
 
 ```bash
 backup="$HOME/.config/lakehouse-foundation-r/backup-20261125"
-docker compose --env-file "$site" -p "$project" stop --timeout 30
+docker compose --env-file "$site" -p "$project" stop
 python3 scripts/backup-native.py capture --project "$project" "$backup"
 python3 scripts/backup-native.py verify "$backup"
 docker compose --env-file "$site" -p "$project" up -d --wait --wait-timeout 180

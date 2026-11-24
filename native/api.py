@@ -5,6 +5,7 @@ import json
 import os
 import re
 import secrets
+import signal
 import socket
 import sys
 import time
@@ -433,6 +434,21 @@ def handler(core, *, gold_readers=2):
     return Handler
 
 
+class WorkerHTTPServer(ThreadingHTTPServer):
+    """停止時に、受け付け済みのHTTP処理が終わるのを待つ。"""
+
+    daemon_threads = False
+    timeout = 0.25
+
+    def __init__(self, address, request_handler, *, stopping):
+        self.stopping = stopping
+        super().__init__(address, request_handler)
+
+    def verify_request(self, _request, _client_address):
+        """待機中に停止を受けた場合は、新しく届いた接続を閉じる。"""
+        return not self.stopping()
+
+
 def serve():
     """トークンの検証と保存先の初期化を済ませてからHTTPを受け付ける。"""
     worker, reader = (os.environ[k] for k in ("WORKER_TOKEN", "READER_TOKEN"))
@@ -443,10 +459,21 @@ def serve():
     readers = os.environ.get("LAKEHOUSE_GOLD_MAX_CONCURRENT", "2")
     if not re.fullmatch(r"[1-8]", readers):
         raise ValueError("Goldの同時実行数は1〜8を指定してください。")
+    stopping = False
+
+    def stop(_signal, _frame):
+        """ロックと外部I/Oを使わず、主スレッドに受付停止を知らせる。"""
+        nonlocal stopping
+        stopping = True
+
+    signal.signal(signal.SIGTERM, stop)
+    signal.signal(signal.SIGINT, stop)
     core = core_module()
     # Lakekeeperの健全性はComposeで待機する。S3の初回接続に失敗した場合は
     # 初期化を再試行し、成功するまでHTTPを受け付けない。
     for attempt in range(15):
+        if stopping:
+            return
         try:
             core.bootstrap()
             break
@@ -457,11 +484,20 @@ def serve():
                 f"初期化を再試行します（{type(error).__name__}）。", flush=True
             )
             time.sleep(2)
-    core.STATE["ready"] = True
-    with ThreadingHTTPServer(
-        ("0.0.0.0", 8080), handler(core, gold_readers=int(readers))
+    if stopping:
+        return
+    with WorkerHTTPServer(
+        ("0.0.0.0", 8080),
+        handler(core, gold_readers=int(readers)),
+        stopping=lambda: stopping,
     ) as http:
-        http.serve_forever()
+        core.STATE["ready"] = True
+        try:
+            # SIGTERM後は受付をやめ、with終了時に処理中の要求を待つ。
+            while not stopping:
+                http.handle_request()
+        finally:
+            core.STATE["ready"] = False
 
 
 def operation(
