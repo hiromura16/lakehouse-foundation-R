@@ -189,6 +189,34 @@ GreptimeDBは設備を選んだ時系列検索に使い、原本を別経路でI
 最新値と1分集計を [入力契約](SOURCES.md) に沿って生成します。
 [Kafka設備原本のIceberg受入](EVALUATION.md#kafkaの設備原本をicebergへ保管する)
 
+## MQTTの連続送信・停止復帰を測る
+
+使い捨てCompose環境で40台の設備を模擬し、250点ずつMQTTで送ります。
+保存先で各区間の件数を確認してから次へ進みます。Vectorを停止した間の500点を
+Kafkaにため、再開後にGreptimeDBで照合します。最後に50点を再送し、直後の
+初出1点の確定を待ってから、全行の時刻・設備ID・測定値を比較します。
+Mosquittoの停止中に発生した計測を守る試験は、この容量計測と別に実行します。
+
+**Bash / Zsh共通**
+
+```bash
+python3 tests/integration/telemetry/acceptance.py --capacity-rows 10000
+python3 tests/integration/telemetry/acceptance.py --nisshi --capacity-rows 10000
+```
+
+| Kafka互換ブローカー | 平常時9,500点の送信と確認 | 500点の転送再開から確定まで | 全値照合 |
+| --- | ---: | ---: | ---: |
+| Redpanda | 1,025.9秒 | 50.0秒 | 10,001件一致 |
+| Nisshi | 1,015.9秒 | 49.9秒 | 10,001件一致 |
+
+Bakuの隔離Composeで、両方とも各1回を計測しました。確認の待ち時間も含む
+結果です。上限性能や本番の保持容量を決める場合は、実際の発行間隔、設備数、
+ディスク、再送時間を使って別に計測します。
+[GitHub Actions](../../.github/workflows/telemetry.yml) は短い1,000点で同じ
+停止復帰と全値照合を実行します。OPC UAの失敗時は合成機器の書込段階と
+GreptimeDBの最終行を記録し、Nisshi試験では保存位置とVectorの確定位置を
+比較できます。
+
 ## 設備導入で決める条件
 
 - 送信者と発行トピックを紐づけ、工場内のTLS証明書または認証基盤、

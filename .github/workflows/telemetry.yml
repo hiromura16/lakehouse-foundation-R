@@ -35,7 +35,7 @@ jobs:
         include:
           - scenario: MQTTとRedpanda
             script: tests/integration/telemetry/acceptance.py
-            args: ''
+            args: --capacity-rows 1000
           - scenario: OPC UAとRedpanda
             script: tests/integration/telemetry/acceptance.py
             args: --opcua
@@ -47,7 +47,7 @@ jobs:
             args: ''
           - scenario: MQTTとNisshi
             script: tests/integration/telemetry/acceptance.py
-            args: --nisshi
+            args: --nisshi --capacity-rows 1000
           - scenario: OPC UAとNisshi
             script: tests/integration/telemetry/acceptance.py
             args: --nisshi --opcua

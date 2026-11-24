@@ -110,6 +110,8 @@ async def simulate():
                 ServerTimestamp=stamp + timedelta(minutes=10),
             )
         )
+        # 購読や保存が止まった際に、設備側の確定段階だけを追えるようにする。
+        print(f"試験用温度の書込み完了: {delta}秒、状態0x{status:08x}")
 
     async def wait_for_trigger(name):
         """通知を照合してから試験側が次の点を進める。"""

@@ -4,9 +4,11 @@ import argparse
 import json
 import secrets
 import shutil
+import sqlite3
 import subprocess
 import tempfile
 import time
+from contextlib import closing
 from pathlib import Path
 from urllib.error import URLError
 from urllib.parse import urlencode
@@ -14,6 +16,11 @@ from urllib.request import ProxyHandler, build_opener
 
 TOPIC = "factory/measurements/evaluation"
 METRIC = "factory_temperature_celsius"
+CAPACITY_METRIC = "factory_capacity_temperature_celsius"
+CAPACITY_FIRST_MS = 1767618000000
+CAPACITY_DEVICE_COUNT = 40
+CAPACITY_BATCH_ROWS = 250
+CAPACITY_OUTAGE_ROWS = 500
 FIRST_MS = 1767614400000
 MOSQUITTO = (
     "docker.io/library/eclipse-mosquitto:2.0.23@sha256:"
@@ -34,16 +41,112 @@ def until(operation, label, timeout=60):
     raise RuntimeError(f"{label}の条件に達しませんでした。")
 
 
-def greptime_rows(http, endpoint, table, columns):
-    """時系列表の結果から、確定した計測点のみを読み取る。"""
-    sql = f"SELECT {columns} FROM {table} ORDER BY ts"
+def greptime_select(http, endpoint, sql):
+    """独立した試験用HTTPポートへ固定SQLを送り、保存された行を読む。"""
     address = endpoint + "/v1/sql?" + urlencode({"sql": sql})
-    with http.open(address, timeout=3) as reply:
+    with http.open(address, timeout=5) as reply:
         result = json.load(reply)
     return result["output"][0]["records"]["rows"]
 
 
-def opcua_acceptance(docker, project, run, root, http, endpoint):
+def greptime_rows(http, endpoint, table, columns):
+    """既存の少量試験では、時系列表の計測点を時刻順で読み取る。"""
+    return greptime_select(
+        http, endpoint, f"SELECT {columns} FROM {table} ORDER BY ts"
+    )
+
+
+def capacity_point(index):
+    """連番から一意な時刻と40設備のタグ、照合しやすい値を作る。"""
+    return [
+        CAPACITY_FIRST_MS + index * 100,
+        f"capacity{index % CAPACITY_DEVICE_COUNT:02d}",
+        index / 4,
+    ]
+
+
+def telemetry_capacity(run, publish, http, endpoint, size, *, nisshi):
+    """稼働中の受信とVector停止中の滞留を、全件・全値で照合する。"""
+
+    def count():
+        """連番の送信完了とは独立に、保存先に確定した件数を数える。"""
+        rows = greptime_select(
+            http, endpoint, f"SELECT COUNT(*) FROM {CAPACITY_METRIC}"
+        )
+        return rows[0][0]
+
+    def saved(expected):
+        """前のバッチの確認後に送信を進め、無制限の滞留を起こさない。"""
+        actual = count()
+        assert actual <= expected, f"想定外の保存件数: {actual} > {expected}"
+        return actual == expected
+
+    def payload(start, stop):
+        """各行を独立したQoS 1メッセージとして送るLine Protocolを返す。"""
+        lines = []
+        for index in range(start, stop):
+            timestamp, device, value = capacity_point(index)
+            lines.append(
+                f"factory_capacity_temperature,device={device} "
+                f"celsius={value} {timestamp * 1_000_000}\n"
+            )
+        return "".join(lines)
+
+    started = time.monotonic()
+    active_end = size - CAPACITY_OUTAGE_ROWS
+    for start in range(0, active_end, CAPACITY_BATCH_ROWS):
+        end = min(start + CAPACITY_BATCH_ROWS, active_end)
+        publish(payload(start, end), multiline=True)
+        until(lambda: saved(end), f"平常時の{end}点の確定", timeout=120)
+    active_seconds = time.monotonic() - started
+
+    run("stop", "vector")
+    publish(payload(active_end, size), multiline=True)
+    assert saved(active_end), "転送停止中に保存件数が変化しました。"
+    recovery_started = time.monotonic()
+    run("start", "vector")
+    until(
+        lambda: saved(size),
+        "転送器の復帰後に滞留した計測点の確定",
+        timeout=120,
+    )
+    recovery_seconds = time.monotonic() - recovery_started
+
+    # 送信の最後に初出点を加え、同じ区画で再送した点の後まで処理を進める。
+    publish(payload(0, 50) + payload(size, size + 1), multiline=True)
+    until(lambda: saved(size + 1), "同一50点の再送と初出1点の確定")
+    for offset in range(0, size + 1, 1000):
+        actual = greptime_select(
+            http,
+            endpoint,
+            f"SELECT ts, device, val FROM {CAPACITY_METRIC} "
+            f"ORDER BY ts LIMIT 1000 OFFSET {offset}",
+        )
+        expected = [
+            capacity_point(index)
+            for index in range(offset, min(offset + 1000, size + 1))
+        ]
+        assert actual == expected, f"時刻・設備・値の違い: 行{offset}以降"
+    print(
+        json.dumps(
+            {
+                "broker": "nisshi" if nisshi else "redpanda",
+                "devices": CAPACITY_DEVICE_COUNT,
+                "active_rows": active_end,
+                "active_seconds": round(active_seconds, 3),
+                "recovered_rows": CAPACITY_OUTAGE_ROWS,
+                "recovery_seconds": round(recovery_seconds, 3),
+                "replayed_rows": 50,
+                "verified_distinct_rows": size + 1,
+            },
+            ensure_ascii=False,
+        )
+    )
+
+
+def opcua_acceptance(
+    docker, project, run, root, http, endpoint, *, nisshi=False
+):
     """誤った相手証明書、暗号化購読、時刻、品質悪化の扱いを照合する。"""
     keys = root / "opcua"
     run("build", "opcua-simulator", timeout=360)
@@ -96,9 +199,33 @@ def opcua_acceptance(docker, project, run, root, http, endpoint):
             "ts, device, quality, val",
         )
 
-    assert until(rows, "暗号化した最初のOPC UA通知") == [
-        [semantic_first_ms, "opc01", "GOOD", 22.5],
-    ]
+    def expect_points(label, expected):
+        """失敗時は、ブローカーと時系列DBの到達段階を別々に記録する。"""
+        last_points = None
+
+        def observed():
+            nonlocal last_points
+            last_points = rows()
+            return last_points if len(last_points) >= len(expected) else None
+
+        try:
+            assert until(observed, label) == expected
+        except (AssertionError, RuntimeError):
+            evidence = {"phase": label, "greptime_last_rows": last_points}
+            if nisshi:
+                evidence["nisshi"] = nisshi_fixture_progress(
+                    root / "nisshi" / "nisshi.db",
+                    "foundation-r-evaluation-sensors",
+                )
+            print(json.dumps(evidence, ensure_ascii=False), flush=True)
+            raise
+
+    expect_points(
+        "暗号化した最初のOPC UA通知",
+        [
+            [semantic_first_ms, "opc01", "GOOD", 22.5],
+        ],
+    )
     # 模擬設備にだけ接続する独立した認証クライアントを起動する。
     probe_mounts = []
     for name in ("client-cert.pem", "client-key.pem", "server-cert.pem"):
@@ -139,27 +266,72 @@ def opcua_acceptance(docker, project, run, root, http, endpoint):
         logs = run("logs", "telegraf-opcua")
         return "StatusBadNoCommunication" in logs.stdout + logs.stderr
 
-    def observed(size):
-        """送信順の揺れを避けるため、保存が進んだ段階を照合する。"""
-        points = rows()
-        return points if len(points) >= size else None
-
     trigger("next-bad")
     until(bad_quality_arrived, "通信異常の受信")
     trigger("next-good")
-    assert until(lambda: observed(2), "復帰後の正常値の保存") == [
-        [semantic_first_ms, "opc01", "GOOD", 22.5],
-        [semantic_first_ms + 2000, "opc01", "GOOD", 23.5],
-    ]
+    expect_points(
+        "復帰後の正常値の保存",
+        [
+            [semantic_first_ms, "opc01", "GOOD", 22.5],
+            [semantic_first_ms + 2000, "opc01", "GOOD", 23.5],
+        ],
+    )
     trigger("last-good")
-    assert until(lambda: observed(3), "最後の正常値の保存") == [
-        [semantic_first_ms + offset * 1000, "opc01", "GOOD", val]
-        for offset, val in ((0, 22.5), (2, 23.5), (3, 24.5))
-    ]
+    expect_points(
+        "最後の正常値の保存",
+        [
+            [semantic_first_ms + offset * 1000, "opc01", "GOOD", val]
+            for offset, val in ((0, 22.5), (2, 23.5), (3, 24.5))
+        ],
+    )
     print("OPC UA暗号化、相手鍵不一致・書込みの拒否、発生元時刻と品質を照合。")
 
 
-def verify(docker, root, *, opcua=False, nisshi=False):
+def nisshi_fixture_progress(path, topic):
+    """失敗時のみ、固定版Nisshiの合成SQLiteからoffsetと発生元時刻を読む。"""
+    records_sql = """
+        SELECT record.offset_id, substr(record.v, 1, 256)
+        FROM record
+        JOIN topition ON record.topition = topition.id
+        JOIN topic ON topition.topic = topic.id
+        WHERE topic.name = ? AND topition.partition = 0
+        ORDER BY record.offset_id LIMIT 16
+    """
+    committed_sql = """
+        SELECT consumer_offset.committed_offset
+        FROM consumer_offset
+        JOIN consumer_group
+          ON consumer_offset.consumer_group = consumer_group.id
+        JOIN topition ON consumer_offset.topition = topition.id
+        JOIN topic ON topition.topic = topic.id
+        WHERE consumer_group.name = ? AND topic.name = ?
+          AND topition.partition = 0
+    """
+    try:
+        uri = path.resolve().as_uri() + "?mode=ro"
+        with closing(sqlite3.connect(uri, uri=True, timeout=1)) as db:
+            # 保存点と確認位置は同じ読み取り時点で比較する。
+            db.execute("BEGIN")
+            events = db.execute(records_sql, (topic,)).fetchall()
+            committed = db.execute(
+                committed_sql, ("foundation-r-evaluation-greptime", topic)
+            ).fetchone()
+    except sqlite3.Error as error:
+        return {"read_error": type(error).__name__}
+    records = []
+    for offset, value in events:
+        # Line Protocolのペイロード自体はログに出さない。
+        payload = value if isinstance(value, bytes) else b""
+        token = payload.strip().rpartition(b" ")[2]
+        timestamp = int(token) // 1_000_000 if token.isdigit() else None
+        records.append({"offset": offset, "source_ms": timestamp})
+    return {
+        "first_partition_records": records,
+        "vector_committed_next_offset": committed[0] if committed else None,
+    }
+
+
+def verify(docker, root, *, opcua=False, nisshi=False, capacity_rows=None):
     """合成送信元だけを使い、保存先で時刻・値・件数を確認する。"""
     project = f"foundation-r-telemetry-{secrets.token_hex(4)}"
     passwords = root / "passwords"
@@ -258,14 +430,11 @@ def verify(docker, root, *, opcua=False, nisshi=False):
             timeout=timeout,
         )
 
-    def publish(offset, value, *, user="simulator", check=True):
-        """1点をQoS 1で送信し、資格情報は標準入力に限定する。"""
-        base = 'mosquitto_pub -h mosquitto -q 1 -V mqttv5 -t "$1" -s'
+    def publish(payload, *, user="simulator", check=True, multiline=False):
+        """QoS 1で送信し、合成資格情報をホスト上の引数に入れない。"""
+        mode = "-l" if multiline else "-s"
+        base = f'mosquitto_pub -h mosquitto -q 1 -V mqttv5 -t "$1" {mode}'
         args = [TOPIC]
-        payload = (
-            f"factory_temperature,device=sim01 celsius={value} "
-            f"{(FIRST_MS + offset * 1000) * 1000000}\n"
-        )
         if user is not None:
             base = f'read -r password && exec {base} -u "$2" -P "$password"'
             args.append(user)
@@ -282,7 +451,16 @@ def verify(docker, root, *, opcua=False, nisshi=False):
             *args,
             input_text=payload,
             check=check,
-            timeout=10,
+            timeout=20,
+        )
+
+    def one_point(offset, value, *, user="simulator", check=True):
+        """少量試験で、単一の計測点に対するACLの応答も確認できる。"""
+        return publish(
+            f"factory_temperature,device=sim01 celsius={value} "
+            f"{(FIRST_MS + offset * 1000) * 1_000_000}\n",
+            user=user,
+            check=check,
         )
 
     def rows_for(size):
@@ -331,7 +509,9 @@ def verify(docker, root, *, opcua=False, nisshi=False):
         http = build_opener(ProxyHandler({}))
         run("up", "-d", "vector", timeout=300)
         if opcua:
-            opcua_acceptance(docker, project, run, root, http, endpoint)
+            opcua_acceptance(
+                docker, project, run, root, http, endpoint, nisshi=nisshi
+            )
             return
         run("up", "-d", "telegraf", timeout=300)
 
@@ -345,17 +525,17 @@ def verify(docker, root, *, opcua=False, nisshi=False):
             )
 
         until(mqtt_connected, "MQTT購読")
-        assert publish(9, 99.0, user=None, check=False).returncode != 0
-        denied = publish(9, 99.0, user="collector", check=False)
+        assert one_point(9, 99.0, user=None, check=False).returncode != 0
+        denied = one_point(9, 99.0, user="collector", check=False)
         # MQTT 5のPUBACKで拒否されてもCLIが0を返す版がある。
         assert "not authorized" in denied.stderr.lower(), denied.stderr
-        publish(0, 22.5)
+        one_point(0, 22.5)
         assert until(lambda: rows_for(1), "最初の保存") == [
             [FIRST_MS, "sim01", 22.5]
         ]
         run("stop", "telegraf")
-        publish(1, 23.5)
-        publish(2, 24.5)
+        one_point(1, 23.5)
+        one_point(2, 24.5)
         run("restart", "mosquitto")
         if nisshi:
             run("restart", "broker")
@@ -366,6 +546,10 @@ def verify(docker, root, *, opcua=False, nisshi=False):
             for offset, value in enumerate((22.5, 23.5, 24.5))
         ]
         print("MQTTの認証・ACL・購読停止中の2点再送、GreptimeDBの3点を照合。")
+        if capacity_rows is not None:
+            telemetry_capacity(
+                run, publish, http, endpoint, capacity_rows, nisshi=nisshi
+            )
     except Exception as error:
         # 合成入力の接続失敗だけを記録し、生成した資格情報は伏せる。
         services = (
@@ -404,10 +588,25 @@ def main():
     parser.add_argument("--sudo", action="store_true")
     parser.add_argument("--opcua", action="store_true")
     parser.add_argument("--nisshi", action="store_true")
+    parser.add_argument(
+        "--capacity-rows",
+        type=int,
+        help="MQTTの容量試験に送る合成点数（1000〜100000）",
+    )
     args = parser.parse_args()
+    if args.capacity_rows is not None and (
+        args.opcua or not 1_000 <= args.capacity_rows <= 100_000
+    ):
+        parser.error("--capacity-rows はMQTTの1000〜100000点に使えます。")
     docker = ["sudo", "-n", "docker"] if args.sudo else ["docker"]
     with tempfile.TemporaryDirectory(prefix="foundation-r-telemetry-") as temp:
-        verify(docker, Path(temp), opcua=args.opcua, nisshi=args.nisshi)
+        verify(
+            docker,
+            Path(temp),
+            opcua=args.opcua,
+            nisshi=args.nisshi,
+            capacity_rows=args.capacity_rows,
+        )
 
 
 if __name__ == "__main__":
