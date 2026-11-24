@@ -326,7 +326,12 @@ def listener_ports():
             if port is None or not address:
                 raise ReadError
             try:
-                ip = bind_address(wildcard if address == "*" else address)
+                # ssはIPv4とIPv6のどちらにも %インターフェース を付ける。
+                # ホスト待受は警告用なので、アドレスの範囲だけで比較する。
+                scope_free = address.partition("%")[0]
+                ip = bind_address(
+                    wildcard if scope_free == "*" else scope_free
+                )
             except ValueError:
                 raise ReadError from None
             listeners[(fields[0], port)].add(ip)

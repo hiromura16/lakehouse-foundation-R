@@ -512,11 +512,12 @@ class PublishedPortsTest(unittest.TestCase):
             preflight,
             "read",
             side_effect=[
-                "tcp LISTEN 0 128 127.0.0.1:23456 0.0.0.0:*",
+                "tcp LISTEN 0 128 127.0.0.1%lo:23456 0.0.0.0:*",
                 "\n".join(
                     (
                         "tcp LISTEN 0 128 [::ffff:127.0.0.1]:23456 *:*",
                         "udp UNCONN 0 0 *:23456 *:*",
+                        "udp UNCONN 0 0 [2001:db8::5]%eth0:23457 *:*",
                     )
                 ),
             ],
@@ -527,6 +528,9 @@ class PublishedPortsTest(unittest.TestCase):
         )
         self.assertEqual(
             result[("udp", 23456)], {preflight.bind_address("::")}
+        )
+        self.assertEqual(
+            result[("udp", 23457)], {preflight.bind_address("2001:db8::5")}
         )
         self.assertTrue(
             all("-p" not in call.args[0] for call in reader.call_args_list)
