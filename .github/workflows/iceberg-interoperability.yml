@@ -5,12 +5,14 @@ on:  # yamllint disable-line rule:truthy
     paths:
       - native/requirements.lock
       - native/evaluation/risingwave.toml
+      - native/evaluation/telemetry-wire.sql
       - tests/integration/iceberg/**
       - .github/workflows/iceberg-interoperability.yml
   pull_request:
     paths:
       - native/requirements.lock
       - native/evaluation/risingwave.toml
+      - native/evaluation/telemetry-wire.sql
       - tests/integration/iceberg/**
       - .github/workflows/iceberg-interoperability.yml
   workflow_dispatch:
@@ -31,7 +33,7 @@ jobs:
           version: '0.13.7'
           checksum: c5221ff41b7892bfc223543883600125f6a47fe845093e0f5bdff4f359196d83
           enable-cache: false
-      - name: Kafkaの追記とカタログ停止後の復旧、PyIcebergの読み取り
+      - name: Kafkaの追記・カタログ復旧・設備原本バイトのPyIceberg照合
         shell: bash
         run: |
           set -Eeuo pipefail

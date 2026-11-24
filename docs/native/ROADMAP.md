@@ -20,7 +20,7 @@
 | --- | --- | --- |
 | オンプレS3の交換可能性 | RustFSの別構成で認証、条件付き書込、Raw・Goldの再起動を検証 | 保存制限・冗長化、バックアップ、既存オブジェクトとカタログの移行 |
 | Silverの再構築 | 標準DuckDBの業務処理。Sail・DataFusionで8件の共通SQL fixtureを照合 | 同じ実契約を全エンジンへ渡し、Icebergの再構築、型・順序、ファイル数とRSSを比較 |
-| Kafkaから現在値を構築 | CDCの作成・訂正・削除・再開。RisingWaveの別構成でIceberg V2への追記とカタログ断復旧 | RisingWaveでのCDC更新・削除のIceberg書込、OIDC、並行書込 |
+| Kafkaから現在値を構築 | CDCの作成・訂正・削除・再開。RisingWaveの別構成でIceberg V2への追記、カタログ断復旧、設備原本の2区画・バイト完全一致 | RisingWaveでのCDC更新・削除のIceberg書込、OIDC、並行書込 |
 | 設備時系列の調査 | Icebergの最新値・1分窓、InfluxDBとGreptimeDBのSQL、MQTTの再送、OPC UAの署名・暗号化と品質、Modbus TCPの読取と欠測 | 実設備のTLS・Modbus RTU・運用ダッシュボード接続、保持・断電、1万〜100万点の比較 |
 | ローカル変換 | DataFusionのCSV・JSONLとParquet変換、DuckDBとの1万・10万・100万行比較 | 企業入力のファイルサイズ、型、ピークメモリを計測 |
 | 分散SQL | Ballista SchedulerとExecutorの個別起動、分散SQLの合計 | 複数ホスト、停止時の再試行、単一ノードを超える負荷 |

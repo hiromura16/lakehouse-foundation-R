@@ -9,6 +9,26 @@ from pyiceberg.catalog import load_catalog
 from pyiceberg.exceptions import NamespaceAlreadyExistsError
 
 
+def event(row):
+    """型付けされた計測行を、比較用の同じ列順にそろえる。"""
+    return (
+        row["event_id"],
+        row["event_time"].isoformat(),
+        row["measurement"],
+        row["metric_value"],
+    )
+
+
+def wire(row):
+    """Kafkaの区画・位置をキーにし、読戻したバイトを16進で採取する。"""
+    return (
+        (row["kafka_partition"], row["kafka_offset"]),
+        row["kafka_time"].isoformat(),
+        row["kafka_key"].hex() if row["kafka_key"] is not None else None,
+        row["payload"].hex() if row["payload"] is not None else None,
+    )
+
+
 def main() -> None:
     """同一の隔離ネットワークから、設定済みwarehouseの専用表へ接続する。"""
     catalog = load_catalog(
@@ -32,10 +52,16 @@ def main() -> None:
         except NamespaceAlreadyExistsError:
             pass
         return
-    if sys.argv[1:] != ["read"]:
+    operation = sys.argv[1:]
+    if operation == ["read"]:
+        table = catalog.load_table(("fixture", "events_v2"))
+        convert = event
+    elif operation == ["telemetry-wire"]:
+        table = catalog.load_table(("fixture", "telemetry_wire_v2"))
+        convert = wire
+    else:
         raise ValueError("未対応の操作です。")
 
-    table = catalog.load_table(("fixture", "events_v2"))
     if table.metadata.format_version != 2:
         raise RuntimeError(
             f"Iceberg形式がV2ではありません: {table.metadata.format_version}"
@@ -44,15 +70,7 @@ def main() -> None:
     if snapshot is None:
         raise RuntimeError("Icebergスナップショットがまだありません。")
     arrow = table.scan().to_arrow()
-    rows = sorted(
-        (
-            row["event_id"],
-            row["event_time"].isoformat(),
-            row["measurement"],
-            row["metric_value"],
-        )
-        for row in arrow.to_pylist()
-    )
+    rows = sorted(convert(row) for row in arrow.to_pylist())
     print(
         json.dumps(
             {

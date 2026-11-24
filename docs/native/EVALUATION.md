@@ -181,6 +181,27 @@ OIDCと権限、コミット応答だけが失われるケースは別受入で�
 同じ業務IDを別のKafkaイベントとして送った場合は、業務の再送契約が必要です。
 [RisingWaveのIceberg確定と再送](https://docs.risingwave.com/iceberg/deliver-to-iceberg) · [採用版のRust REST選択](https://github.com/risingwavelabs/risingwave/blob/v3.1.2/src/connector/src/connector_common/iceberg/mod.rs) · [受入プログラム](../../tests/integration/iceberg/acceptance.py)
 
+## Kafkaの設備原本をIcebergへ保管する
+
+同じ相互運用試験では、型付けした計測点とは別に、2区画の専用Kafka
+トピックを読み、RisingWaveの `FORMAT PLAIN ENCODE BYTES` と
+Iceberg V2へ追記するシンクを使用します。`fixture.telemetry_wire_v2` に
+Kafkaの区画・位置・記録時刻・キー・本文を保存します。本文内の設備時刻は
+原本バイトの一部として残り、Kafkaの時刻へ置き換わりません。
+
+最初の3件にはLine Protocolに加えて非UTF-8、NUL、改行のある原本が
+含まれます。別プロセスのPyIcebergでキーと本文を全バイト照合し、
+RisingWaveを再起動して入力なしで同じスナップショットを維持した後、
+別区画の1件を追加して全4件と配送位置が一致することを確認しました。
+
+このSQLの用途は、非NULLの設備原本を隔離環境で追記する試験です。
+トピックの再作成は別の原本系列として管理し、運用時はKafka保持期限に
+達する前に区画・位置の照合を行います。CDCの削除、Kafkaヘッダーの保存、
+長期の保持や高負荷、標準の設備Goldへの正規化は別のデータ契約です。
+[再現用SQL](../../native/evaluation/telemetry-wire.sql)
+· [RisingWaveのKafkaバイト列とメタデータ](https://docs.risingwave.com/ingestion/sources/kafka#extract-metadata-from-kafka-sources)
+· [Icebergシンク](https://docs.risingwave.com/iceberg/deliver-to-iceberg)
+
 ## 1万・10万・100万行のParquetを測る
 
 DuckDB 2.0.1とDataFusion 55.0.0で、合成設備4列の同じParquetに対して

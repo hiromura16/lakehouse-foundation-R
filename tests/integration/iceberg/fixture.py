@@ -36,6 +36,7 @@ HTTP.trust_env = False
 WAREHOUSE = "fixture-warehouse"
 BUCKET = PROJECT + "-warehouse"
 TOPIC = "fixture-events-v1"
+TELEMETRY_TOPIC = "fixture-telemetry-wire-v1"
 
 # 時刻の正規化と小数の値を同時に確認するため、異なるUTCオフセットを混ぜる。
 INPUT = [
@@ -428,6 +429,95 @@ def replay() -> None:
     print(json.dumps({"phase": "replay", **stable}))
 
 
+def telemetry_wire() -> None:
+    """別トピックの原本バイトと区画・位置を、再起動と追加後に照合する。"""
+    cli = ("exec", "-T", "broker", "rpk", "topic")
+    compose(*cli, "create", TELEMETRY_TOPIC, "--partitions", "2")
+    sql((ROOT / "telemetry-wire.sql").read_text(encoding="utf-8"))
+    # Line Protocolの元の時刻、UTF-8外のバイト、制御文字、別区画を含める。
+    source = {
+        0: [
+            (b"sim01", b"temperature celsius=22.5 1767614400000000000\n"),
+            (b"\x80", b"\xff\x00\nlegacy\r\n"),
+        ],
+        1: [(b"sim02", b"pressure kilopascal=102.5 1767614401000000000")],
+    }
+
+    def produce(partition, pairs):
+        """テキストCLIでも内容が変わらないよう、16進をKafka発行器で戻す。"""
+        data = "".join(f"{key.hex()} {value.hex()}\n" for key, value in pairs)
+        compose(
+            *cli,
+            "produce",
+            TELEMETRY_TOPIC,
+            "--partition",
+            str(partition),
+            "--format",
+            "%k{hex} %v{hex}\n",
+            input_text=data,
+        )
+
+    def match():
+        """非NULL原本をIcebergから独立して読み、全件と配送位置を比較する。"""
+        result = json.loads(
+            compose(
+                "run", "--no-deps", "--rm", "-T", "reader", "telemetry-wire"
+            )
+        )
+        expected = [
+            ([partition, offset], key.hex(), value.hex())
+            for partition, pairs in source.items()
+            for offset, (key, value) in enumerate(pairs)
+        ]
+        actual = [
+            (location, key, value)
+            for location, _, key, value in result["rows"]
+        ]
+        if (
+            result["format_version"] != 2
+            or actual != expected
+            or result["distinct_ids"] != len(expected)
+            or any(not row[1].endswith("+00:00") for row in result["rows"])
+        ):
+            raise RuntimeError(
+                "区画、位置、原本バイトの全件が揃っていません。"
+            )
+        return result
+
+    for partition, pairs in source.items():
+        produce(partition, pairs)
+    sql("FLUSH;")
+    before = wait_for(match, "テレメトリ原本の最初の3件")
+    compose("restart", "risingwave")
+    wait_for(
+        lambda: sql("FLUSH;", timeout=10),
+        "テレメトリ保管の再起動",
+        seconds=120,
+    )
+    after = wait_for(match, "再起動後のテレメトリ原本")
+    if before["snapshot_id"] != after["snapshot_id"]:
+        raise RuntimeError("入力なしでテレメトリ原本の版が変わりました。")
+    source[1].append(
+        (b"sim02", b"temperature celsius=24.5 1767614402000000000")
+    )
+    produce(1, source[1][-1:])
+    sql("FLUSH;")
+    final = wait_for(match, "再開後に追加したテレメトリ原本")
+    if final["snapshot_id"] == before["snapshot_id"]:
+        raise RuntimeError("新規入力でテレメトリ原本の版が進みませんでした。")
+    print(
+        json.dumps(
+            {
+                "phase": "telemetry-wire",
+                "partitions": len(source),
+                "rows": final["count"],
+                "exact_key_and_value": True,
+                "stable_snapshot_after_restart": True,
+            }
+        )
+    )
+
+
 def audit() -> None:
     """秘密の値自体を出力せず、起動したプロジェクトのログに混入していないか調べる。"""
     services = (
@@ -460,7 +550,14 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "phase",
-        choices=("initialize", "baseline", "recover", "replay", "audit"),
+        choices=(
+            "initialize",
+            "baseline",
+            "recover",
+            "replay",
+            "telemetry-wire",
+            "audit",
+        ),
     )
     arguments = parser.parse_args()
     phases = {
@@ -468,6 +565,7 @@ def main() -> int:
         "baseline": baseline,
         "recover": recover,
         "replay": replay,
+        "telemetry-wire": telemetry_wire,
         "audit": audit,
     }
     try:

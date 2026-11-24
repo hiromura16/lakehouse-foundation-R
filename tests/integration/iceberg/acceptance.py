@@ -36,6 +36,7 @@ def run(work, use_sudo):
     for source, filename in (
         ("native/requirements.lock", "requirements.lock"),
         ("native/evaluation/risingwave.toml", "risingwave.toml"),
+        ("native/evaluation/telemetry-wire.sql", "telemetry-wire.sql"),
     ):
         shutil.copyfile(REPO / source, work / filename)
     environment = dict(
@@ -71,7 +72,14 @@ def run(work, use_sudo):
             *compose, "up", "-d", "catalog", "storage", "broker", "risingwave"
         )
         execute(*compose, "build", "reader")
-        for step in ("initialize", "baseline", "recover", "replay", "audit"):
+        for step in (
+            "initialize",
+            "baseline",
+            "recover",
+            "replay",
+            "telemetry-wire",
+            "audit",
+        ):
             execute(sys.executable, "fixture.py", step, timeout=720)
     finally:
         execute(

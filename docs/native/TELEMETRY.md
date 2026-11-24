@@ -154,6 +154,15 @@ Unit ID、番地、バイト順・ワード順、倍率を承認済み設定に�
 
 [試験のTelegraf設定](../../tests/integration/modbus/telegraf.toml) · [Modbusの公式仕様](https://www.modbus.org/file/secure/modbusprotocolspecification.pdf) · [TelegrafのModbus入力](https://docs.influxdata.com/telegraf/v1/input-plugins/modbus/)
 
+## 検索用データと長期の原本を分ける
+
+GreptimeDBは設備を選んだ時系列検索に使い、原本を別経路でIcebergに
+保管する構成も試せます。RisingWaveの試験ではKafkaの区画・位置と
+キー・本文のバイト列をIceberg V2へ保存し、再起動後に照合します。
+標準で設備の確定済みJSONLを受け取る場合は、Icebergの長期履歴、
+最新値と1分集計を [入力契約](SOURCES.md) に沿って生成します。
+[Kafka設備原本のIceberg受入](EVALUATION.md#kafkaの設備原本をicebergへ保管する)
+
 ## 設備導入で決める条件
 
 - 送信者と発行トピックを紐づけ、工場内のTLS証明書または認証基盤、
