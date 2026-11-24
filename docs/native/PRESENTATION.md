@@ -25,11 +25,11 @@
 | 21〜26 | VMの事前診断、SQLの同一観測、設備の停止復帰、Icebergの計算・削除、復元、GoldとR2 |
 | 27〜30 | 2 GiB原本の実測、現地シフトの照合、PostgreSQL更新、公開ポートの診断 |
 
-- [編集用PowerPoint（30枚）](https://github.com/hiromura16/lakehouse-foundation-R/releases/download/briefing-2026-11-25-v3/factory-lakehouse-briefing.pptx)
-- [閲覧・配布用PDF（30ページ）](https://github.com/hiromura16/lakehouse-foundation-R/releases/download/briefing-2026-11-25-v3/factory-lakehouse-briefing.pdf)
+- [編集用PowerPoint（30枚）](https://github.com/hiromura16/lakehouse-foundation-R/releases/download/briefing-2026-11-25-v4/factory-lakehouse-briefing.pptx)
+- [閲覧・配布用PDF（30ページ）](https://github.com/hiromura16/lakehouse-foundation-R/releases/download/briefing-2026-11-25-v4/factory-lakehouse-briefing.pdf)
 - [全体構造PNG（2400×1350）](images/foundation-r-structure.png)
-- [オンプレと外部連携の配置PNG（2400×1350）](https://github.com/hiromura16/lakehouse-foundation-R/releases/download/briefing-2026-11-25-v3/factory-lakehouse-topology.png)
-- [全30枚のスクリーンショット（PNGのZIP）](https://github.com/hiromura16/lakehouse-foundation-R/releases/download/briefing-2026-11-25-v3/factory-lakehouse-preview-images.zip) · [編集・再生成用のソース](https://github.com/hiromura16/lakehouse-foundation-R/releases/download/briefing-2026-11-25-v3/factory-lakehouse-source.zip) · [ファイルのSHA-256](https://github.com/hiromura16/lakehouse-foundation-R/releases/download/briefing-2026-11-25-v3/SHA256SUMS)
+- [オンプレと外部連携の配置PNG（2400×1350）](https://github.com/hiromura16/lakehouse-foundation-R/releases/download/briefing-2026-11-25-v4/factory-lakehouse-topology.png)
+- [全30枚のスクリーンショット（PNGのZIP）](https://github.com/hiromura16/lakehouse-foundation-R/releases/download/briefing-2026-11-25-v4/factory-lakehouse-preview-images.zip) · [編集・再生成用のソース](https://github.com/hiromura16/lakehouse-foundation-R/releases/download/briefing-2026-11-25-v4/factory-lakehouse-source.zip) · [ファイルのSHA-256](https://github.com/hiromura16/lakehouse-foundation-R/releases/download/briefing-2026-11-25-v4/SHA256SUMS)
 - [説明会向けHTML（30枚）](../presentation/index.html) · [技術付録の最初のページ](../presentation/index.html#vm-preflight) · [2 GiB原本・工場のシフト・DB更新・ポート診断](../presentation/index.html#two-gib-archives) · [配備と運用の補助ツール](TOOLS.md)
 
 HTML版は運用ポータルの **説明スライド**、またはチェックアウト内の `docs/presentation/index.html` をブラウザーで開きます。目次と前後ボタンで移動できます。左右キーとPageUp・PageDownは前後、Home・Endは最初と最後への移動です。目次から選んだスライドのURLは共有できます。スマートフォンでは1列に並びます。
