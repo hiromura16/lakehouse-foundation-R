@@ -1,0 +1,96 @@
+# 単独の検証用Compose。Lakehouseや他のComposeネットワークには接続しない。
+services:
+  notebook:
+    image: ghcr.io/marimo-team/marimo:0.25.2-sql@sha256:f154a40fba17cda7581edd3a3ef6c371d46c69a0e45dcd825293554e5d62e4c6
+    user: "${MARIMO_UID:-1000}:${MARIMO_GID:-1000}"
+    working_dir: /work
+    # 上流イメージの既定CMDは無認証のedit。runと認証を明示して使用する。
+    # quietはアクセストークン付きの起動URLがログに出るのを防ぐ。
+    command:
+      - marimo
+      - --quiet
+      - run
+      - --headless
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+      - --token
+      - --token-password-file
+      - /approved/token
+      - /work/factory.py
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 768m
+    cpus: 1.0
+    pids_limit: 128
+    tmpfs: ["/tmp:rw,noexec,nosuid,nodev,size=96m,mode=1777"]
+    environment:
+      HOME: /tmp
+      PYTHONDONTWRITEBYTECODE: "1"
+      MARIMO_SKIP_UPDATE_CHECK: "1"
+    volumes:
+      - type: bind
+        source: ./notebook
+        target: /work
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${MARIMO_APPROVED_DIR:?承認済みスナップショットの絶対パスを指定してください}
+        target: /approved
+        read_only: true
+        bind:
+          create_host_path: false
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen("http://127.0.0.1:8080/healthz", timeout=2)
+      interval: 3s
+      timeout: 3s
+      retries: 12
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: "2"
+    networks: [offline]
+  gateway:
+    image: docker.io/library/nginx:stable-alpine@sha256:8eb2b5540eae779603cc3db84b3986a15ecb5308b54303146eee9837c137b51a
+    entrypoint: [nginx]
+    command: [-g, "daemon off;"]
+    # 未特権ユーザーに、読み取り可能な中継設定と一時ディレクトリだけを渡す。
+    user: "${MARIMO_UID:-1000}:${MARIMO_GID:-1000}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 48m
+    pids_limit: 32
+    tmpfs: ["/tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777"]
+    volumes:
+      - type: bind
+        source: ./nginx.conf
+        target: /etc/nginx/nginx.conf
+        read_only: true
+        bind:
+          create_host_path: false
+    ports:
+      # 公開先をホストのループバックに限定し、ポートはDockerに割り当てさせる。
+      - target: 8080
+        host_ip: 127.0.0.1
+    networks: [frontend, offline]
+    depends_on:
+      notebook:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, "http://127.0.0.1:8080/healthz"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+networks:
+  frontend:
+  offline:
+    internal: true

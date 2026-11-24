@@ -32,6 +32,7 @@ Dokployの **Projects → Create Service → Compose** から、公開GitHubの 
 | --- | --- |
 | GUIから配備する、会社のプロキシ・CAを設定する | [Dokployと企業ネットワーク](docs/native/COMPANY.md) |
 | ブラウザーで公開した集計を確認する | [集計結果の確認と接続先一覧](docs/native/GUI.md) |
+| 同じGoldをNotebookで調査する | [marimoで日次生産を再現](examples/marimo/README.md) |
 | アプリの状態を見る、ダッシュボードを変更する | [Grafana運用監視](docs/native/MONITORING.md) |
 | ファイル、SQL Server、外部Kafkaを接続する | [入出力契約と接続方法](docs/native/SOURCES.md) |
 | 工場のMQTT計測と停止中の再送を試す | [設備テレメトリの接続と受入](docs/native/TELEMETRY.md) |

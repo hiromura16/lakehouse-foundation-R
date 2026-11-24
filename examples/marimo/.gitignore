@@ -1,0 +1,8 @@
+# 配備用ファイルとブラウザー試験の出力はローカルにだけ置く。
+/approved/
+/site.env
+/browser-evidence.json
+/browser-error.log
+/schema-evidence.json
+/screenshot.png
+__pycache__/

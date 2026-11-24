@@ -49,6 +49,7 @@
 | 文書 | 何のために読むか | 読むタイミング | 区分 |
 | --- | --- | --- | --- |
 | [工場テレメトリの接続と受入](<native/TELEMETRY.md>) | 設備のMQTTを集め、Kafka経由の再送とGreptimeDBの時系列検索を検証します。 | 合成の設備テレメトリを隔離環境で検証するとき。 | active |
+| [日次生産Goldをmarimoで再現する](<../examples/marimo/README.md>) | 承認済みのGoldを別環境で確認し、工場別の日次生産と歩留まりを再集計します。 | 入力のハッシュと公開世代を固定し、調査を他の担当者と再現するとき。 | active |
 | [合成入力を最初に作る](<../samples/README.md>) | 実データを使わずに最初の6契約素材を生成し、出力と後続処理の境界を確認する。 | 空の検証用landingに小さい固定条件の合成入力を初めて用意するとき。 | active |
 
 ### 04 配備・接続
@@ -77,6 +78,7 @@
 | 文書 | 目的 |
 | --- | --- |
 | [目的・読者から探す文書マニフェスト](<DOCUMENTATION-MANIFEST.md>) | 公開Markdown全件の固有の目的・読者・読む時点を、目的別と読者別に引く。 |
+| [日次生産Goldをmarimoで再現する](<../examples/marimo/README.md>) | 承認済みのGoldを別環境で確認し、工場別の日次生産と歩留まりを再集計します。 |
 | [合成入力を最初に作る](<../samples/README.md>) | 実データを使わずに最初の6契約素材を生成し、出力と後続処理の境界を確認する。 |
 
 ### 初めて使う人
@@ -118,6 +120,7 @@
 | [Foundation Rの初回導入と操作](<native/START.md>) | 会社VMにDokployで配備し、合成データから業務集計までを確認します。 |
 | [工場テレメトリの接続と受入](<native/TELEMETRY.md>) | 設備のMQTTを集め、Kafka経由の再送とGreptimeDBの時系列検索を検証します。 |
 | [運用ポータルと追加ツール](<native/TOOLS.md>) | n8n、OpenObserve、InfluxDBの設置と初回操作を確認します。 |
+| [日次生産Goldをmarimoで再現する](<../examples/marimo/README.md>) | 承認済みのGoldを別環境で確認し、工場別の日次生産と歩留まりを再集計します。 |
 
 ### 評価・報告担当
 

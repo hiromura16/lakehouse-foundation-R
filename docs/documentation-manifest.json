@@ -346,6 +346,25 @@
         "docs/native/ACCEPTANCE.md"
       ],
       "status": "active"
+    },
+    {
+      "path": "examples/marimo/README.md",
+      "title": "日次生産Goldをmarimoで再現する",
+      "purpose": "承認済みのGoldを別環境で確認し、工場別の日次生産と歩留まりを再集計します。",
+      "audience": [
+        "データ利用担当",
+        "基盤構築担当"
+      ],
+      "when_to_use": "入力のハッシュと公開世代を固定し、調査を他の担当者と再現するとき。",
+      "category": "03 データ・操作",
+      "prerequisites": [
+        "docs/native/API.md"
+      ],
+      "next": [
+        "docs/native/GUI.md",
+        "docs/native/ACCEPTANCE.md"
+      ],
+      "status": "active"
     }
   ]
 }
