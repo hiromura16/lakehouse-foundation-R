@@ -125,6 +125,7 @@ jobs:
             native/evaluation/parquet_benchmark.lock \
             native/evaluation/business_parity.lock
           "$eval_env/bin/python" -m native.evaluation.business_parity
+          "$eval_env/bin/python" -m native.evaluation.typed_gold_benchmark --orders 200
 
   factory-timeseries:
     runs-on: ubuntu-latest

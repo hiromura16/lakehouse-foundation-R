@@ -178,6 +178,40 @@ warehouseから読戻し、標準Goldと全行・型・IcebergフィールドID�
 限定しています。
 [DataFusionの設定](https://datafusion.apache.org/python/user-guide/configuration.html) · [実行プログラム](../../native/evaluation/business_parity.py)
 
+### 型付きSilver 6表からGold 2表の計算時間を測る
+
+同じ固定SilverをDuckDBとRustのDataFusionへ渡し、日次生産と
+受注出荷の2表を計算します。合成データの受注数は200、2,000、8,000です。
+各回の出力を、標準エンジンで先に確定したGoldの全行と正規化済みArrow型に
+照合します。IcebergフィールドIDの一致は前述の別warehouseでの試験で確認します。
+
+前節の `.venv-business-parity` を使い、利用可能な論理CPUが二つ以上ある
+Linuxで実行します。 `--reverse` を指定するとDataFusionを先に測定します。
+標準のDokployプロジェクトや保存先へ接続せず、合成データだけを作ります。
+
+**Bash / Zsh共通**
+
+```bash
+.venv-business-parity/bin/python -m native.evaluation.typed_gold_benchmark --orders 200
+.venv-business-parity/bin/python -m native.evaluation.typed_gold_benchmark --orders 2000 --reverse
+.venv-business-parity/bin/python -m native.evaluation.typed_gold_benchmark --orders 8000
+```
+
+| 合成受注数 | Silver全行 | DuckDB 初回／反復中央値 | DataFusion 初回／反復中央値 |
+| ---: | ---: | ---: | ---: |
+| 200 | 1,404 | 15.97／15.65 ms | 25.34／14.83 ms |
+| 2,000 | 14,004 | 16.98／14.34 ms | 27.56／16.65 ms |
+| 8,000 | 56,004 | 31.70／22.70 ms | 101.32／21.40 ms |
+
+Linux x86-64の同一ホストで論理CPUを二つに固定した今回の試験です。
+同じセッションで、準備直後の1回と反復4回を測定しました。
+`prepare_ms` はセッションと入力の準備、SQLの時間は計画から
+2表をArrowへ返すまでです。入力・結果の検査やIcebergへの書込みは
+計測区間の外です。今回の8,000受注では、初回と反復で両処理系の関係が
+異なりました。採用判断には、入力分布、並列数、保持する表サイズ、
+ファイルI/Oを運用環境で合わせます。
+[計測コード](../../native/evaluation/typed_gold_benchmark.py)
+
 ## RisingWaveでKafkaの現在値を確認する
 
 新規の合成試験プロジェクトで実行します。PostgreSQLクライアント `psql` が必要です。起動後に `psql` の接続が確立してからDDLを適用します。

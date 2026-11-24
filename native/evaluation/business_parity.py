@@ -213,11 +213,16 @@ def local_catalog(path, name):
     )
 
 
-def fixture(path, scenario):
+def fixture(path, scenario, *, orders=20, days=7):
     """ファイルの列検査を通した合成原本を、固定Iceberg V2世代にする。"""
     catalog = local_catalog(path, "source")
     schema.ensure_tables(catalog, schema.CONTRACT)
-    data = DEMO.build_data(seed=42, scenario="edge")
+    data = DEMO.build_data(
+        seed=42,
+        orders=orders,
+        days=days,
+        scenario="clean" if scenario == "benchmark" else "edge",
+    )
     if scenario == "empty":
         data = {name: [] for name in data}
     elif scenario == "extended":
