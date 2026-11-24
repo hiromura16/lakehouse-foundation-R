@@ -27,9 +27,9 @@ ssh -N -o ExitOnForwardFailure=yes \
 
 [OpenSSHのローカル転送](https://man.openbsd.org/ssh#L)
 
-![合成環境でサービスの現在値、メンテナンス後に回復した履歴とGold参照枠を表示したGrafana](images/runtime-demo.png)
+![合成環境で16対象の現在値と履歴、応答時間、取込の状況、Gold参照枠を表示したGrafana](images/runtime-demo.png)
 
-画像は、[閲覧画面](GUI.md) と [運用ツール](TOOLS.md) を追加して計画メンテナンスを行った合成環境の記録です。撮影時は内部2サービスの追加前で、14対象を表示しています。
+画像は、[閲覧画面](GUI.md) と [運用ツール](TOOLS.md) を追加した合成環境です。追加した内部2サービスの履歴は、監視を始めた時点から表示されます。
 
 現在の「サービスの状態」は、標準構成で9対象、閲覧画面付きで11対象、運用ツール付きで14対象、両方付きで16対象を表示します。標準の9対象には内部読取ゲートウェイ `read-api` とヘルスリレー `health-relay` の固定HTTPヘルス経路を含みます。どちらの判定も、そのプロセスが応答できることを示します。監視リレーが停止すると、リレーの先にあるGrafanaや閲覧UIも疎通失敗として表示されます。「プロセス監視」のGrafanaの値と、Dockerのヘルスチェックを合わせて障害箇所を調べます。
 
@@ -40,6 +40,20 @@ ssh -N -o ExitOnForwardFailure=yes \
 ワーカーの再起動時に累計は0へ戻ります。既定は同時2件です。
 メモリとCPUを増やした配備で負荷を確認したうえで、調整する場合は
 `LAKEHOUSE_GOLD_MAX_CONCURRENT` を1〜8の範囲で指定します。
+
+## 追加構成の確認先
+
+| 状況 | 見る場所 | 合格の目安 |
+| --- | --- | --- |
+| カタログの初期化 | Dokployの `catalog-migrate` | 実行が終了してコード0 |
+| 自動化の専用PostgreSQL | Dokployの `tools-db` とGrafanaのn8n | DBがhealthy、n8nのreadinessが応答 |
+| OpenObserveへの転送 | Dokployの `observe-forwarder` とOpenObserve | 転送を選んだ環境でプロセスが起動し、対象の時系列に最新の点が入る |
+| CDCの進み具合 | 認証付きのCDC状態API | `ready: true`、`blocked: false`、会社が決めた遅延以内 |
+| Cloudflareのトンネルと公開用Gold | Zero Trustのトンネル状態と承認済みクライアントのHTTPS | トンネルが接続し、承認済み世代を取得。無認証の要求は拒否 |
+
+[OpenObserveの確認](TOOLS.md#openobserveに監視メトリクスを送る) · [CDCの復旧](CDC-SHADOW.md) · [Cloudflareの受入](CLOUDFLARE.md)
+
+## 設定ファイル
 
 | ファイル | 変更する内容 |
 | --- | --- |
