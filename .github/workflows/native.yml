@@ -95,6 +95,8 @@ jobs:
             sleep 5
           done
           python3 tests/integration/native/tools_acceptance.py "$tools"
+          python3 tests/integration/native/network_acceptance.py \
+            --project native-ci --site "$site" --tools "$tools/tools.env"
       - name: 試験プロジェクトと合成データを破棄
         if: always()
         run: |
