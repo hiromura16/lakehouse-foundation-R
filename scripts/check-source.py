@@ -26,6 +26,7 @@ REVIEWED_PNG_SHA256 = {
         "1b531a470896bfca41a5eb887d77ec74d1031357b44b8fad436a436e030957ec",
     },
     "docs/native/images/foundation-r-overview.png": {
+        "d1b690b84c31a7ace7636298c124b2ca3b63e12cbff22a546d652b247125c7ca",
         "2bf660d2a198b42ecf4f246d8e58dab0ac60edb33c1d05f364b3a4cd1f178f27",
         "58507200eb6f419fd7147520287f951c980702ec423cad8e1588d1eca8cf91aa",
     },
