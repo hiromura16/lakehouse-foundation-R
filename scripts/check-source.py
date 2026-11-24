@@ -454,6 +454,12 @@ def example_ip_text(name, text):
             return offset
 
         walk(0, ())
+    elif name == "tests/test_preflight.py":
+        # RFC 5737の経路診断fixtureに使う3つの値だけを認める。
+        route_fixtures = r'"(192\.0\.2\.(?:0/24|4)|198\.51\.100\.0/24)"'
+        spans.extend(
+            match.span(1) for match in re.finditer(route_fixtures, text)
+        )
     elif name == "infra/sail/Dockerfile":
         # 汎用versionではなく、この依存zipと既知配置の構文だけを許可。
         version = r"py4j-0\.10\.9\.9-src\.zip"

@@ -212,6 +212,23 @@ class PublicationChecks(unittest.TestCase):
         self.assertFalse(MODULE.permitted_ip(host))
         self.assertFalse(MODULE.permitted_ip(host + "/32"))
 
+    def test_preflight_reserved_addresses_only_in_route_fixture(self):
+        """RFC 5737の固定fixtureだけを認め、他の途中値・実IPも検査する。"""
+        reserved = ".".join(("198", "51", "100", "0")) + "/24"
+        other = ".".join(("198", "51", "100", "5"))
+        text = f'{{"dst": "{reserved}"}}'
+        self.assertEqual(
+            MODULE.scan_text("tests/test_preflight.py", text, (), ()), []
+        )
+        for name, data in (
+            ("production.txt", text),
+            ("tests/test_preflight.py", f'{{"dst": "{other}"}}'),
+        ):
+            self.assertEqual(
+                [hit.rule for hit in MODULE.scan_text(name, data, (), ())],
+                ["concrete-ipv4-address"],
+            )
+
     def test_svg_geometry_decimal_sequences_are_not_addresses(self):
         """他形式の検査を維持しつつ、圧縮表記のSVG数値を許可する。"""
         host = ".".join(["203", "0", "113", "71"])
