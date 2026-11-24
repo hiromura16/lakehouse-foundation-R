@@ -19,3 +19,8 @@ groups:
         labels: {severity: warning}
         annotations:
           summary: "過去15分に変換ジョブの失敗が発生しました"
+      - alert: LakehouseSensorUpdatePending
+        expr: increase(lakehouse_partial_runs[15m]) > 0
+        labels: {severity: warning}
+        annotations:
+          summary: "設備データの更新が保留されました。取込状態APIを確認してください"

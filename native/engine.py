@@ -6,6 +6,7 @@
 """
 
 import json
+import logging
 import re
 from datetime import date, datetime, timezone
 from decimal import Decimal
@@ -18,6 +19,7 @@ import pyarrow as pa
 from native import sensor
 from scripts.sql_batch_worker import with_sql_provenance
 
+LOG = logging.getLogger(__name__)
 ROOT = Path(__file__).resolve().parents[1]
 SQL_ROOT = ROOT / "medallion"
 MAX_ROWS = 100_000
@@ -165,7 +167,11 @@ def latest_release(core, catalog, prefix="", release_id=None):
     snapshot_id = current_id(table) if release_id is None else release_id
     if snapshot_id is None or table.snapshot_by_id(snapshot_id) is None:
         return None
-    (row,) = table.scan(snapshot_id=snapshot_id).to_arrow().to_pylist()
+    rows = table.scan(snapshot_id=snapshot_id, limit=2).to_arrow().to_pylist()
+    if not rows:
+        # Icebergが上書き中に作る空の中間版は、公開済みの世代には含めない。
+        return None
+    (row,) = rows
     return {
         "release_snapshot_id": str(snapshot_id),
         "released_at": row["released_at"],
@@ -195,25 +201,13 @@ def add_arrow(db, relation, target, arrow):
         db.unregister(relation)
 
 
-def medallion(core, prefix=""):
-    """派生表を保存し、全表のスナップショットIDを最後に公開する。
-
-    Icebergは表ごとに確定する。全表の保存が完了するまで、利用者は前回の
-    マニフェストを参照する。途中で失敗したら復旧後に再実行する。
-    同じ接頭辞へ書き込む実行元は、プロセスをまたいで1つに限定する。
-    """
-    core.ensure_tables(prefix)
-    catalog = core.catalog()
-    tables = input_tables(core, catalog, prefix)
-    inputs = {name: snap for name, (_, snap) in tables.items()}
-    sensor_entries = sensor.ledger(core, catalog, prefix)
-    sensor_inputs = {row["path"]: row["sha256"] for row in sensor_entries}
-    recipe_hash = sha256(Path(__file__).read_bytes())
-    recipe_hash.update(Path(sensor.__file__).read_bytes())
+def business_queries(prefix):
+    """業務のSQLとアダプターの組を、変更検出用のハッシュとともに返す。"""
+    digest = sha256(Path(__file__).read_bytes())
     statements = []
     for path in sorted(SQL_ROOT.glob("*.sql")):
         source = path.read_bytes()
-        recipe_hash.update(source)
+        digest.update(source)
         query = source.decode()
         if prefix in {"sql_", "sqlcdc_"}:
             query = with_sql_provenance(query)
@@ -222,15 +216,11 @@ def medallion(core, prefix=""):
             for part in sql_for_duckdb(query).split(";")
             if part.strip()
         )
-    recipe = recipe_hash.hexdigest()
-    previous = latest_release(core, catalog, prefix)
-    if (
-        previous
-        and previous["inputs"] == inputs
-        and previous.get("sensor_inputs", {}) == sensor_inputs
-        and previous["recipe"] == recipe
-    ):
-        return {"sql_statements": 0, "unchanged": True}
+    return digest.hexdigest(), statements
+
+
+def business_outputs(core, catalog, prefix, tables, statements):
+    """業務入力の固定スナップショットだけを読み、派生表をコミットする。"""
     outputs = {}
     row_counts = {}
     with connect() as db:
@@ -260,32 +250,150 @@ def medallion(core, prefix=""):
             identifier = f"{core.schema(prefix, layer)}.{name}"
             outputs[local] = write_table(catalog, identifier, arrow)
             row_counts[local] = arrow.num_rows
-        if not prefix:
-            for local, arrow in sensor.tables(
-                core, db, sensor_entries
-            ).items():
-                outputs[local] = write_table(catalog, local, arrow)
-                row_counts[local] = arrow.num_rows
+    return outputs, row_counts
+
+
+def sensor_outputs(core, catalog, previous, receive_sensor):
+    """設備表はすべて確定した場合だけ、新しい参照先の組を返す。"""
+    digest = sha256(Path(sensor.__file__).read_bytes()).hexdigest()
+    snapshots = previous.get("outputs", {})
+    counts = previous.get("row_counts", {})
+    previous_outputs = {
+        key: snapshots[key] for key in sensor.OUTPUTS if key in snapshots
+    }
+    previous_counts = {
+        key: counts[key] for key in sensor.OUTPUTS if key in counts
+    }
+    previous_inputs = previous.get("sensor_inputs", {})
+    previous_recipe = previous.get("sensor_recipe")
+    built_at = previous.get("sensor", {}).get("built_at")
+    if not built_at and previous_outputs:
+        built_at = previous["released_at"]
+    phase = "intake"
+    try:
+        if receive_sensor is not None:
+            receive_sensor()
+        phase = "transform"
+        entries = sensor.ledger(core, catalog, "")
+        new_inputs = {row["path"]: row["sha256"] for row in entries}
+        if digest == previous_recipe and new_inputs == previous_inputs:
+            return (
+                previous_outputs,
+                previous_counts,
+                {
+                    "sensor_inputs": previous_inputs,
+                    "sensor_recipe": previous_recipe,
+                    "sensor": {
+                        "status": "ready",
+                        "built_at": built_at,
+                        "error": None,
+                    },
+                },
+            )
+        with connect() as db:
+            transformed = sensor.tables(core, db, entries)
+        outputs, row_counts = {}, {}
+        for name, arrow in transformed.items():
+            outputs[name] = write_table(catalog, name, arrow)
+            row_counts[name] = arrow.num_rows
+        state = {
+            "status": "ready",
+            "built_at": datetime.now(timezone.utc).isoformat(),
+            "error": None,
+        }
+        return (
+            outputs,
+            row_counts,
+            {
+                "sensor_inputs": new_inputs,
+                "sensor_recipe": digest,
+                "sensor": state,
+            },
+        )
+    except Exception as error:
+        # 途中の表は利用者へ見せない。原本・パス・資格情報はログに載せない。
+        LOG.warning(
+            "設備経路の失敗 phase=%s type=%s", phase, type(error).__name__
+        )
+        return (
+            previous_outputs,
+            previous_counts,
+            {
+                "sensor_inputs": previous_inputs,
+                "sensor_recipe": previous_recipe,
+                "sensor": {
+                    "status": "retained"
+                    if previous_outputs
+                    else "unavailable",
+                    "built_at": built_at,
+                    "error": "SENSOR_INTAKE_FAILED"
+                    if phase == "intake"
+                    else "SENSOR_TRANSFORM_FAILED",
+                },
+            },
+        )
+
+
+def medallion(core, prefix="", *, receive_sensor=None):
+    """業務・設備それぞれの完了済み参照先を最後に一度だけ公開する。
+
+    業務の失敗では公開世代を変更しない。設備の失敗では直前の設備表を
+    保持し、正常に確定した業務を公開する。書込元は接頭辞ごとに1つとする。
+    """
+    core.ensure_tables(prefix)
+    catalog = core.catalog()
+    tables = input_tables(core, catalog, prefix)
+    inputs = {name: snap for name, (_, snap) in tables.items()}
+    recipe, statements = business_queries(prefix)
+    previous = latest_release(core, catalog, prefix) or {}
+    if previous.get("inputs") == inputs and previous.get("recipe") == recipe:
+        statements = []
+        outputs = {
+            key: snapshot
+            for key, snapshot in previous["outputs"].items()
+            if key not in sensor.OUTPUTS
+        }
+        counts = {
+            key: count
+            for key, count in previous["row_counts"].items()
+            if key not in sensor.OUTPUTS
+        }
+    else:
+        outputs, counts = business_outputs(
+            core, catalog, prefix, tables, statements
+        )
+    manifest = {
+        "inputs": inputs,
+        "outputs": outputs,
+        "row_counts": counts,
+        "recipe": recipe,
+    }
+    result = {"sql_statements": len(statements), "unchanged": True}
+    if not prefix:
+        refs, sensor_counts, sensor_meta = sensor_outputs(
+            core,
+            catalog,
+            previous,
+            receive_sensor,
+        )
+        outputs.update(refs)
+        counts.update(sensor_counts)
+        manifest.update(sensor_meta)
+        result["sensor"] = sensor_meta["sensor"]
+    if all(previous.get(key) == value for key, value in manifest.items()):
+        return result
+
     release = pa.Table.from_pylist(
         [
             {
                 "released_at": datetime.now(timezone.utc).isoformat(),
-                "manifest_json": json.dumps(
-                    {
-                        "inputs": inputs,
-                        "outputs": outputs,
-                        "row_counts": row_counts,
-                        "recipe": recipe,
-                        "sensor_inputs": sensor_inputs,
-                    },
-                    sort_keys=True,
-                ),
+                "manifest_json": json.dumps(manifest, sort_keys=True),
             }
         ],
         schema=RELEASE_SCHEMA,
     )
     write_table(catalog, release_table(core, prefix), release)
-    return {"sql_statements": len(statements), "unchanged": False}
+    return {**result, "unchanged": False}
 
 
 def verify_query(core, sql, prefix):
@@ -349,7 +457,7 @@ def gold_rows(core, name, limit, prefix="", release_id=None):
             .to_arrow_table()
             .to_pylist()
         )
-    return {
+    result = {
         "table": identifier,
         "snapshot_id": str(snapshot_id) if snapshot_id is not None else None,
         "release_snapshot_id": release["release_snapshot_id"],
@@ -359,3 +467,7 @@ def gold_rows(core, name, limit, prefix="", release_id=None):
         "total_rows": arrow.num_rows,
         "truncated": arrow.num_rows > limit,
     }
+    if local in sensor.OUTPUTS:
+        result["sensor"] = release.get("sensor")
+        result["recipe"] = release.get("sensor_recipe") or result["recipe"]
+    return result

@@ -169,6 +169,14 @@ def show():
 
     st.session_state["release"] = data["release_snapshot_id"]
     rows = data["rows"]
+    sensor = data.get("sensor") or {}
+    if sensor.get("status") == "retained":
+        st.warning(
+            "設備データの更新は保留中です。最後に確定した計測値を表示しています。"
+        )
+        if built_at := sensor.get("built_at"):
+            stamp = datetime.fromisoformat(built_at).astimezone(timezone.utc)
+            st.caption(f"設備データの確定（UTC） {stamp:%Y-%m-%d %H:%M:%S}")
     st.caption(
         f"公開時刻（UTC） {published_at:%Y-%m-%d %H:%M:%S} ／ "
         f"{len(rows)}行を表示（全{data['total_rows']}行）"

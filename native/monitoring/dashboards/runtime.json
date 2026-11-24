@@ -208,6 +208,12 @@
           "expr": "lakehouse_failed_runs",
           "legendFormat": "失敗",
           "instant": false
+        },
+        {
+          "refId": "C",
+          "expr": "lakehouse_partial_runs",
+          "legendFormat": "設備の更新保留",
+          "instant": false
         }
       ],
       "fieldConfig": {

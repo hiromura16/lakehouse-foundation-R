@@ -69,7 +69,7 @@ def receipt_outcome(relative, data):
     return None
 
 
-def ingest(directory=Path("/landing"), prefix=""):
+def ingest(directory=Path("/landing"), prefix="", *, lane="all"):
     """ready付き原本を照合し、原本・業務文字列・完了台帳を保存する。
 
     directoryは読取元、prefixは通常または隔離検証のnamespaceを選ぶ。
@@ -84,7 +84,7 @@ def ingest(directory=Path("/landing"), prefix=""):
     imported = skipped = 0
     receipt_counts = {"raw": 0, "normalized": 0, "rejected": 0}
     # 工程1: 完了印と原本を照合した RAW 入力だけを永続化へ渡す。
-    for raw in ready_files(directory):
+    for raw in ready_files(directory, lane=lane):
         path, relative, data, digest = (
             raw.path,
             raw.relative,

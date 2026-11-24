@@ -57,6 +57,13 @@ python3 -m native.intake.spool --landing "$landing" \
 
 原本はS3、型付けした履歴は `silver.sensor_history`、最新値とUTCの1分集計は `gold.sensor_latest` と `gold.sensor_minute` に保存します。系列キーは工場・ライン・設備・センサー・計測種別・単位です。同じ系列と時刻・sequenceの完全一致は1点にまとめ、値や品質が衝突するとそのキーを隔離します。1分集計では全点数とGOOD数を持ち、最小・最大・平均はGOODだけを対象にします。異常値や衝突は `quarantine.sensor_events` に原本hashと行番号を残します。
 
+設備の完了印と変換は製造・出荷の入力から分けて実行します。
+`medallion` で設備側の原本照合や変換に失敗した場合、既存の設備表を保持
+しながら業務の確定版を公開します。閲覧画面の設備集計に更新保留が表示され、
+取込状態APIに前回の設備確定時刻と失敗段階が残ります。現行の設備ファイル
+再集計枠は256パス、計32MiB、計10万物理行です。連続計測の収集・保持には
+[専用テレメトリ経路](TELEMETRY.md) を使い、配置先で保持容量を設定します。
+
 ## SQL Serverからファイルを抽出する
 
 会社のSQL Serverに接続できるホストで、対象6表のSELECTを許可された専用IDを用意します。マッピングは [表・列の対応例](../../infra/source/sqlserver-tables.example.json) をcheckout外へコピーし、実際の表・列へ置き換えます。資格情報はcheckout外の0600の設定ファイルへ保存します。主要項目は `SOURCE_SQLSERVER_HOST`、`SOURCE_SQLSERVER_DATABASE`、`SOURCE_SQLSERVER_USER`、`SOURCE_SQLSERVER_PASSWORD`、`SOURCE_SQLSERVER_PORT`、`SOURCE_SQLSERVER_CA_FILE`、`SOURCE_SQLSERVER_TIMEZONE` です。

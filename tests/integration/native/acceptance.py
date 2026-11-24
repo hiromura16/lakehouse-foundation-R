@@ -157,6 +157,70 @@ def reject_bad_header(root, http, writer, reader, release):
         path.unlink()
 
 
+def check_independent_lanes(root, http, writer, reader):
+    """破損した設備完了印の横で業務が更新され、修復後に設備が再開する。"""
+    source = root / "sensor/acceptance.jsonl"
+    marker = source.with_suffix(".jsonl.ready")
+    original = marker.read_text(encoding="utf-8")
+    marker.write_text("invalid", encoding="utf-8")
+    before = fetch(http + "/v1/releases/latest", authorization=reader)
+    product = root / "csv/erp_products__000000000009_0001.csv"
+    payload = (
+        "product_id,product_name,product_family,unit,"
+        "standard_cycle_seconds,updated_at\n"
+        "SYNTH-001,合成部材,合成部門,EA,25,2026-01-05T12:00:00Z\n"
+    ).encode()
+    product.write_bytes(payload)
+    product.with_suffix(".csv.ready").write_text(
+        hashlib.sha256(payload).hexdigest() + "\n"
+    )
+    try:
+        partial = fetch(
+            http + "/run", authorization=writer, body={"action": "medallion"}
+        )
+        assert partial["sensor"]["status"] == "retained"
+        assert partial["sensor"]["error"] == "SENSOR_INTAKE_FAILED"
+        assert partial["sql_statements"] == 14
+        status = fetch(http + "/v1/ingestion/status", authorization=reader)
+        assert status["last_attempt"]["status"] == "partial"
+        assert status["published"]["sensor"] == partial["sensor"]
+        old_sensor = fetch(
+            http + "/v1/gold/sensor_minute", authorization=reader
+        )
+        assert old_sensor["sensor"] == partial["sensor"]
+        current = fetch(http + "/v1/releases/latest", authorization=reader)
+        assert current["release_snapshot_id"] != before["release_snapshot_id"]
+        assert isinstance(current["inputs"]["erp_products"], str)
+        assert (
+            current["inputs"]["erp_products"]
+            != before["inputs"]["erp_products"]
+        )
+        for dataset in ("gold.sensor_minute", "gold.sensor_latest"):
+            assert current["outputs"][dataset] == before["outputs"][dataset]
+    finally:
+        marker.write_text(original, encoding="utf-8")
+    healed = fetch(
+        http + "/run", authorization=writer, body={"action": "medallion"}
+    )
+    assert healed["sensor"]["status"] == "ready"
+    assert healed["sql_statements"] == 0
+    assert healed["sensor"]["built_at"] == before["sensor"]["built_at"]
+    original_release = before["release_snapshot_id"]
+    fixed_sensor = fetch(
+        http + f"/v1/gold/sensor_minute?release={original_release}",
+        authorization=reader,
+    )
+    assert fixed_sensor["sensor"]["status"] == "ready"
+    assert fixed_sensor["snapshot_id"] == old_sensor["snapshot_id"]
+    assert fixed_sensor["recipe"] == old_sensor["recipe"]
+    retained_release = current["release_snapshot_id"]
+    retained = fetch(
+        http + f"/v1/gold/sensor_minute?release={retained_release}",
+        authorization=reader,
+    )
+    assert retained["sensor"]["status"] == "retained"
+
+
 def check(args, env):
     """トークン分離、再実行、固定したGold、Grafanaの自動設定を確認する。"""
     reader = "Bearer " + env["READER_TOKEN"]
@@ -230,6 +294,7 @@ def check(args, env):
         == release
     )
     reject_bad_header(args.landing, http, writer, reader, release)
+    check_independent_lanes(args.landing, http, writer, reader)
     verified = fetch(
         http + "/run", authorization=writer, body={"action": "verify"}
     )
@@ -278,6 +343,7 @@ def check(args, env):
     assert {target["expr"] for target in panels[4]["targets"]} == {
         "lakehouse_successful_runs",
         "lakehouse_failed_runs",
+        "lakehouse_partial_runs",
     }
     assert panels[5]["options"]["colorMode"] == "none"
     print(
@@ -293,6 +359,7 @@ def check(args, env):
                 "sql_batch_replay": True,
                 "identical_run_kept_release": True,
                 "invalid_header_kept_release": True,
+                "independent_business_sensor_release": True,
             }
         )
     )

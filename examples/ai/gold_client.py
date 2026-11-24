@@ -81,6 +81,7 @@ class GoldClient:
         return {
             "release_snapshot_id": result["release_snapshot_id"],
             "released_at": result["released_at"],
+            "sensor": result.get("sensor"),
             "outputs": {
                 name: str(snapshot) if snapshot is not None else None
                 for name, snapshot in result["outputs"].items()

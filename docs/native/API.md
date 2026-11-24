@@ -26,7 +26,9 @@
 | GET /v1/gold/{dataset} | READER_TOKEN。 `limit=1..200` と任意の `release=<ID>` |
 | GET /v1/cdc/gold/{dataset}、GET /v1/sql/gold/{dataset} | READER_TOKEN。該当する任意ソースの公開済みGold |
 
-Goldのデータセット名は `factory_daily_production`、`sales_fulfillment`、`sensor_latest`、`sensor_minute` です。センサーの2表は標準ファイル経路にあります。 `release_snapshot_id` と `snapshot_id` は64-bit IDを改変しないよう文字列で返します。金額などのDECIMALは文字列、日付時刻はISO形式です。 `total_rows` と `truncated` で参照件数の限界を確認できます。未公開は404、認証エラーは401、処理中の別操作は409です。
+Goldのデータセット名は `factory_daily_production`、`sales_fulfillment`、`sensor_latest`、`sensor_minute` です。センサーの2表は標準ファイル経路にあります。 `release_snapshot_id` と `snapshot_id` は64-bit IDを改変しないよう文字列で返します。
+公開一覧の `inputs` と `outputs` に含まれる表スナップショットIDも文字列です。
+スナップショットがまだない表は `null` です。金額などのDECIMALは文字列、日付時刻はISO形式です。 `total_rows` と `truncated` で参照件数の限界を確認できます。未公開は404、認証エラーは401、処理中の別操作は409です。
 
 ### 取込状態と公開中のデータ
 
@@ -37,6 +39,13 @@ Goldのデータセット名は `factory_daily_production`、`sales_fulfillment`
 （`raw`）、正規化済み（`normalized`）、形式不備（`rejected`）で数えます。
 取込が途中で失敗し、受付票の集計を返すところまで進まなかった場合は
 `received_deliveries` に `null` が返ります。
+
+業務が確定して設備だけに失敗した場合、ジョブはHTTP 200と `sensor` を返し、
+取込状態の `last_attempt.status` は `partial` になります。
+`sensor.status` が `retained` の場合、設備の4表は前回の正常版です。
+`unavailable` は設備の初回確定前を示します。設備Goldを世代指定で読むと、
+その世代の `sensor` と、計測結果を作った変換の `recipe` を取得できます。
+運用では設備の `built_at` とエラー種別を確認します。
 
 公開マニフェストに保存される `published` の件数は直近の成功世代です。
 取込試行が失敗しても、公開世代は最後の成功時点に維持されます。

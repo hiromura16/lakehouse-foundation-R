@@ -13,6 +13,26 @@ from scripts.raw_file_input import RawFile, ready_files, source_bytes
 class RawFileTests(unittest.TestCase):
     """原本の順序・境界と、完了印の拒否を固定する。"""
 
+    def test_lane_filter_precedes_hash_validation(self):
+        """不正な設備完了印が業務側のハッシュ検査を止めない。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            sensor = root / "sensor"
+            sensor.mkdir()
+            (sensor / "batch.jsonl").write_bytes(b"{}\n")
+            (sensor / "batch.jsonl.ready").write_text("invalid\n")
+            original = root / "header.csv"
+            original.write_bytes(b"id\n")
+            (root / "header.csv.ready").write_text(
+                sha256(original.read_bytes()).hexdigest() + "\n"
+            )
+            self.assertEqual(
+                [item.relative for item in ready_files(root, lane="business")],
+                ["header.csv"],
+            )
+            with self.assertRaisesRegex(ValueError, "Invalid completion"):
+                list(ready_files(root, lane="sensor"))
+
     def test_sorted_lazy_reads_and_sha_check(self):
         """後続の不一致は先行ファイルを返した後ではじめて検出する。"""
         with tempfile.TemporaryDirectory() as tmp:

@@ -49,6 +49,7 @@ def ingestion_status(core):
         "released_at": release["released_at"],
         "gold_rows": None,
         "quarantine_rows": None,
+        "sensor": release.get("sensor"),
     }
     if counts is not None:
         for layer in ("gold", "quarantine"):
@@ -106,22 +107,41 @@ def run_job(core, action, body):
         else:
             from native.landing import ingest
 
-            result = ingest()
+            result = ingest(
+                lane="business" if action == "medallion" else "all"
+            )
             attempt = {
                 **attempt,
                 "skipped_files": result["skipped"],
                 "received_deliveries": result["received_deliveries"],
             }
             if action == "medallion":
-                result.update(engine.medallion(core))
-        core.STATE["successful_runs"] += 1
-        core.STATE["last_success"] = time.time()
+                # 設備の受付・変換を業務の成功条件から分ける。
+                def receive_sensor():
+                    """独立した設備受付の結果を、ジョブの件数に加える。"""
+                    sensor_files = ingest(lane="sensor")
+                    result["skipped"] += sensor_files["skipped"]
+
+                result.update(
+                    engine.medallion(core, receive_sensor=receive_sensor)
+                )
+                if result["sensor"]["error"] == "SENSOR_INTAKE_FAILED":
+                    result["skipped"] = None
+                attempt = {**attempt, "skipped_files": result["skipped"]}
+                result["imported"] = core.STATE["imported_files"] - before
+        sensor_error = result.get("sensor", {}).get("error")
+        if sensor_error:
+            core.STATE["partial_runs"] += 1
+        else:
+            core.STATE["successful_runs"] += 1
+            core.STATE["last_success"] = time.time()
         if track:
             core.INGESTION_ATTEMPT = {
                 **attempt,
-                "status": "succeeded",
+                "status": "partial" if sensor_error else "succeeded",
                 "finished_at": datetime.now(timezone.utc).isoformat(),
                 "imported_files": core.STATE["imported_files"] - before,
+                "error": sensor_error,
             }
         return result
     except Exception:
@@ -241,7 +261,16 @@ def handler(core):
                 try:
                     value = engine.latest_release(core, core.catalog())
                     if value:
+                        # 64-bit IDをJavaScriptの整数精度から保護する。
+                        for field in ("inputs", "outputs"):
+                            value[field] = {
+                                name: str(snapshot)
+                                if snapshot is not None
+                                else None
+                                for name, snapshot in value[field].items()
+                            }
                         value.pop("sensor_inputs", None)
+                        value.pop("sensor_recipe", None)
                     return self.respond(
                         200 if value else 404,
                         value or {"error": "RELEASE_NOT_READY"},

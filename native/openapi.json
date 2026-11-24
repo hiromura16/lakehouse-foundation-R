@@ -2,7 +2,7 @@
   "openapi": "3.2.1",
   "info": {
     "title": "Lakehouse Foundation R",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "description": "取込、公開済みIcebergスナップショットの読取、監視の契約。"
   },
   "servers": [
@@ -615,6 +615,17 @@
           },
           "truncated": {
             "type": "boolean"
+          },
+          "sensor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SensorPublication"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "設備の表でのみ返す、指定した公開世代の設備結果の状態。"
           }
         },
         "additionalProperties": false
@@ -645,7 +656,8 @@
             "additionalProperties": {
               "anyOf": [
                 {
-                  "type": "integer"
+                  "type": "string",
+                  "pattern": "^[0-9]{1,19}$"
                 },
                 {
                   "type": "null"
@@ -658,7 +670,8 @@
             "additionalProperties": {
               "anyOf": [
                 {
-                  "type": "integer"
+                  "type": "string",
+                  "pattern": "^[0-9]{1,19}$"
                 },
                 {
                   "type": "null"
@@ -672,6 +685,9 @@
               "type": "integer",
               "minimum": 0
             }
+          },
+          "sensor": {
+            "$ref": "#/components/schemas/SensorPublication"
           }
         },
         "additionalProperties": true
@@ -731,6 +747,7 @@
             "enum": [
               "running",
               "succeeded",
+              "partial",
               "failed"
             ]
           },
@@ -820,7 +837,8 @@
           "release_snapshot_id",
           "released_at",
           "gold_rows",
-          "quarantine_rows"
+          "quarantine_rows",
+          "sensor"
         ],
         "properties": {
           "release_snapshot_id": {
@@ -853,6 +871,16 @@
                   "type": "integer",
                   "minimum": 0
                 }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sensor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SensorPublication"
               },
               {
                 "type": "null"
@@ -904,6 +932,40 @@
             "additionalProperties": false
           }
         ]
+      },
+      "SensorPublication": {
+        "type": "object",
+        "description": "設備経路の状態。業務と異なる時点の設備結果を保持する場合があります。",
+        "required": [
+          "status",
+          "built_at",
+          "error"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "retained",
+              "unavailable"
+            ]
+          },
+          "built_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "error": {
+            "enum": [
+              null,
+              "SENSOR_INTAKE_FAILED",
+              "SENSOR_TRANSFORM_FAILED"
+            ]
+          }
+        },
+        "additionalProperties": false
       }
     }
   }

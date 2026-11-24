@@ -44,6 +44,7 @@ STATE = {
     "blocked": False,
     "successful_runs": 0,
     "failed_runs": 0,
+    "partial_runs": 0,
     "last_success": 0,
     "imported_files": 0,
 }

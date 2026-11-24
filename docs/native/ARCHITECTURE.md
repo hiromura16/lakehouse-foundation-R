@@ -72,11 +72,21 @@ flowchart LR
 | CDC | SQL Serverのストリーミング変更はsnapshot読取より後とし、commit/change LSNとserialで順序を決めます。業務DELETEは現在値を取り消し、Kafka tombstoneは別の生配送記録です。 |
 | 時系列 | 設備の品質コードを残し、良品判定とは分離します。センサーの1分窓はUTC基準で、GOODだけを統計に使います。 |
 
-`medallion/sources.json` と既存SQLを正本とし、列と集計仕様を固定するSHA-256は [契約マニフェスト](../../contracts/native/contract-lock.json) に記録します。 `python3 native/check_contracts.py` で一致を確認できます。業務上の「訂正」「取消」「生産日」「品質」を変更する場合は、業務オーナーと意味を決めてからSQL・独立期待値を更新します。構想書のSail、RisingWave、GreptimeDB/InfluxDB、DataFusion、Ballista、Cometは評価候補です。標準構成はDuckDBとPyIcebergで、時系列はIcebergバッチです。ミリ秒級のオンラインTSDB性能、分散処理、候補製品間の比較結果は現時点で未計測です。
+`medallion/sources.json` と既存SQLを正本とし、列と集計仕様を固定するSHA-256は [契約マニフェスト](../../contracts/native/contract-lock.json) に記録します。 `python3 native/check_contracts.py` で一致を確認できます。業務上の「訂正」「取消」「生産日」「品質」を変更する場合は、業務オーナーと意味を決めてからSQL・独立期待値を更新します。標準構成ではDuckDBとPyIcebergを使い、設備ファイルはIcebergバッチで集計します。追加構成のSail、RisingWave、GreptimeDB、InfluxDB、DataFusion、Ballista、Cometは、[比較試験](EVALUATION.md) と [運用ツール](TOOLS.md) に起動方法と検証条件があります。
 
 ## 公開と失敗時の一貫性
 
-Icebergは表ごとにcommitします。14本のMES/ERP SQLと、該当する設備時系列をすべて保存できた時点で、最後に `gold._release` に出力スナップショットを登録します。APIはその世代だけを参照します。途中で失敗すると直接Icebergを読む利用者には各表の最新状態が見えるため、一貫した世代が必要な場合は公開マニフェストを参照してください。read APIから古い公開世代も指定できます。参照する表スナップショットも一緒に保持する必要があります。
+Icebergは表ごとにコミットします。同期の `medallion` ジョブが、
+業務、設備の順に処理し、それぞれの完了済みスナップショットを
+`gold._release` に登録します。業務側が失敗した場合は公開を進めません。
+設備側が失敗した場合は、正常に完了した業務と最後に確定した設備を公開し、
+設備の確定日時と更新保留を示します。設備が一度も確定していなければ、
+その世代の設備表は未公開です。
+
+途中で失敗するとIcebergの各表を直接読む利用者には `main` の途中結果が
+見える場合があります。複数表を同じ条件で読むときは公開世代を固定します。
+公開世代を参照可能にしている間は、そこから参照する表スナップショットも
+失効させないよう保全します。[公開世代と設備の状態](API.md)
 
 1つのCompose projectで各namespaceのwriterは1つです。複数レプリカや他製品からの並行書き込みは運用範囲外です。CPU、メモリ、原本サイズ、テーブル走査の行数とサイズには上限を設けています。単体100,000行・業務表64 MiBの走査上限を超えた場合は、別のdataset分割や分散構成を検証してから適用します。
 

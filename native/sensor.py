@@ -1,7 +1,7 @@
 """受け渡しが完了した設備JSONLを、Icebergの長期時系列データへ変換する。
 
 原本の整合性と取込台帳は共通のファイル取込側が管理する。このモジュールは
-計測点の識別、品質、重複排除、時間窓を扱い、結果をMES・ERPと同じ世代に公開する。
+計測点の識別、品質、重複排除、時間窓を扱い、結果を独立して確定し、業務と合わせて参照できる公開世代に載せる。
 """
 
 import json
@@ -46,6 +46,12 @@ REJECT_SCHEMA = pa.schema(
         ("reason", pa.string()),
         ("original_json", pa.string()),
     ]
+)
+OUTPUTS = (
+    "silver.sensor_history",
+    "quarantine.sensor_events",
+    "gold.sensor_latest",
+    "gold.sensor_minute",
 )
 MAX_FILES = 256
 MAX_BYTES = 32 * 1024 * 1024

@@ -73,13 +73,18 @@ def source_bytes(path):
     return read_stable(path, MAX_BYTES, "Landing file")
 
 
-def ready_files(directory):
-    """完了印のパス順に、従来の照合を通過した原本だけを返す。"""
+def ready_files(directory, *, lane="all"):
+    """完了印を照合する前に受付経路を分け、該当する原本を返す。"""
+    if lane not in {"all", "business", "sensor"}:
+        raise ValueError("Unknown landing lane.")
     for marker in sorted(directory.rglob("*.ready")):
         path = marker.with_name(marker.name[:-6])
+        relative = path.relative_to(directory).as_posix()
+        sensor_path = relative.startswith("sensor/")
+        if lane != "all" and sensor_path != (lane == "sensor"):
+            continue
         if marker.is_symlink() or path.is_symlink() or not path.is_file():
             continue
-        relative = path.relative_to(directory).as_posix()
         expected = completion_hash(marker)
         data = source_bytes(path)
         digest = sha256(data).hexdigest()
