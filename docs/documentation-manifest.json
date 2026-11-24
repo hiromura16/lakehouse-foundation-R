@@ -309,6 +309,24 @@
         "docs/native/ROADMAP.md"
       ],
       "status": "active"
+    },
+    {
+      "path": "docs/native/CLOUDFLARE.md",
+      "title": "オンプレとCloudflareをつなぐ",
+      "purpose": "Cloudflare TunnelとAccessで承認済みGoldを読み取る経路を配備します。",
+      "audience": [
+        "基盤構築担当",
+        "運用担当"
+      ],
+      "when_to_use": "オンプレの業務集計を拠点外の承認済みアプリへ提供するとき。",
+      "category": "04 配備・接続",
+      "prerequisites": [
+        "docs/native/START.md"
+      ],
+      "next": [
+        "docs/native/ACCEPTANCE.md"
+      ],
+      "status": "active"
     }
   ]
 }

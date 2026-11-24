@@ -1,0 +1,53 @@
+# 任意のCloudflare出口。標準構成と同じプロジェクトに追加する。
+# 工場内のAPIやDBに、トンネルから直接接続する経路を作らない。
+services:
+  edge-gold:
+    build:
+      context: .
+      dockerfile: native/edge/Dockerfile
+      secrets: [corporate-ca]
+    user: "${LANDING_UID}:${LANDING_GID}"
+    networks: [default, edge]
+    environment:
+      HTTPS_PROXY: ${CF_EDGE_HTTPS_PROXY:-}
+    secrets: [edge-policy, edge-reader-token]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    read_only: true
+    restart: unless-stopped
+    mem_limit: 128m
+    healthcheck:
+      test: [CMD, /opt/edge/bin/python, -c, "import socket; socket.create_connection(('127.0.0.1', 8080), 2).close()"]
+      interval: 10s
+      timeout: 4s
+      retries: 6
+    labels:
+      traefik.enable: 'false'
+
+  cloudflared:
+    image: docker.io/cloudflare/cloudflared:2026.11.2@sha256:55c7e3e8d89d5e8d20b75a82f3602cbf98e06db406e73e282073cfdc5a9a3af6
+    command: [tunnel, --no-autoupdate, --protocol, "${CF_TUNNEL_PROTOCOL:-http2}", run, --token-file, /run/secrets/tunnel-token]
+    user: "${LANDING_UID}:${LANDING_GID}"
+    networks: [edge]
+    depends_on:
+      edge-gold:
+        condition: service_healthy
+    secrets: [tunnel-token]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    read_only: true
+    restart: unless-stopped
+    mem_limit: 128m
+    labels:
+      traefik.enable: 'false'
+
+networks:
+  edge:
+
+secrets:
+  tunnel-token:
+    file: ${CF_TUNNEL_TOKEN_FILE:?非公開のトンネルトークンのファイルを指定してください}
+  edge-policy:
+    file: ${CF_EDGE_POLICY_FILE:?承認済みの公開ポリシーのファイルを指定してください}
+  edge-reader-token:
+    file: ${CF_EDGE_READER_FILE:?非公開の読取トークンのファイルを指定してください}

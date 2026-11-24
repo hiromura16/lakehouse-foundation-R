@@ -1,0 +1,11 @@
+{
+  "team": "example",
+  "audience": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "datasets": {
+    "factory_daily_production": {
+      "release": "123",
+      "columns": ["factory_id", "production_date", "good_qty"],
+      "max_rows": 200
+    }
+  }
+}

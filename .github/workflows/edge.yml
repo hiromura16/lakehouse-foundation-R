@@ -1,0 +1,44 @@
+name: Cloudflare連携の認証境界
+
+on:  # yamllint disable-line rule:truthy
+  push:
+    paths: ['compose.cloudflare.yaml', 'native/edge/**', 'tests/integration/edge/**', '.github/workflows/edge.yml']
+  pull_request:
+    paths: ['compose.cloudflare.yaml', 'native/edge/**', 'tests/integration/edge/**', '.github/workflows/edge.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  access-policy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
+        with:
+          python-version: '3.14'
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+        with:
+          version: '0.13.7'
+          checksum: c5221ff41b7892bfc223543883600125f6a47fe845093e0f5bdff4f359196d83
+          enable-cache: false
+      - name: 署名、期限、AUD、許可列、配備設定の検査
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          uv venv --python 3.14 "$RUNNER_TEMP/edge-check"
+          uv pip sync --python "$RUNNER_TEMP/edge-check/bin/python" \
+            --require-hashes native/edge/requirements.lock
+          "$RUNNER_TEMP/edge-check/bin/python" -m unittest discover \
+            -s tests/integration/edge -p acceptance.py
+          python3 native/setup.py --output "$RUNNER_TEMP/edge-site.env" \
+            --landing "$RUNNER_TEMP/edge-landing"
+          CF_TUNNEL_TOKEN_FILE="$RUNNER_TEMP/synthetic-tunnel" \
+            CF_EDGE_POLICY_FILE="$PWD/native/edge/policy.example.json" \
+            CF_EDGE_READER_FILE="$RUNNER_TEMP/synthetic-reader" \
+            docker compose --env-file "$RUNNER_TEMP/edge-site.env" \
+              -f compose.yaml -f compose.cloudflare.yaml config --quiet

@@ -50,6 +50,12 @@
 | --- | --- | --- | --- |
 | [合成入力を最初に作る](<../samples/README.md>) | 実データを使わずに最初の6契約素材を生成し、出力と後続処理の境界を確認する。 | 空の検証用landingに小さい固定条件の合成入力を初めて用意するとき。 | active |
 
+### 04 配備・接続
+
+| 文書 | 何のために読むか | 読むタイミング | 区分 |
+| --- | --- | --- | --- |
+| [オンプレとCloudflareをつなぐ](<native/CLOUDFLARE.md>) | Cloudflare TunnelとAccessで承認済みGoldを読み取る経路を配備します。 | オンプレの業務集計を拠点外の承認済みアプリへ提供するとき。 | active |
+
 ### 05 運用・検証
 
 | 文書 | 何のために読むか | 読むタイミング | 区分 |
@@ -100,6 +106,7 @@
 | [会社VMの受入手順と合格条件](<native/ACCEPTANCE.md>) | 導入後の検査を観測できる合格条件と照合します。 |
 | [認証付きAPIとLangChain](<native/API.md>) | 固定API操作とスナップショットを根拠にしたLangChain利用を確認します。 |
 | [アーキテクチャと業務契約](<native/ARCHITECTURE.md>) | コンポーネントの役割と採用理由、業務契約と公開世代を確認します。 |
+| [オンプレとCloudflareをつなぐ](<native/CLOUDFLARE.md>) | Cloudflare TunnelとAccessで承認済みGoldを読み取る経路を配備します。 |
 | [Dokployと企業ネットワーク](<native/COMPANY.md>) | Git・Docker・BuildKitの通信を準備し、Dokployで配備します。 |
 | [レイクハウスの設計思想](<native/DESIGN.md>) | データの保存、品質、所有、AI利用の考え方をFoundation Rの実装と照らし合わせます。 |
 | [データ閲覧と管理画面を追加する](<native/GUI.md>) | Gold・Lakekeeper・Prometheusの認証付き閲覧画面を用意します。 |
@@ -124,6 +131,7 @@
 | 文書 | 目的 |
 | --- | --- |
 | [目的・読者から探す文書マニフェスト](<DOCUMENTATION-MANIFEST.md>) | 公開Markdown全件の固有の目的・読者・読む時点を、目的別と読者別に引く。 |
+| [オンプレとCloudflareをつなぐ](<native/CLOUDFLARE.md>) | Cloudflare TunnelとAccessで承認済みGoldを読み取る経路を配備します。 |
 | [運用ポータルと追加ツール](<native/TOOLS.md>) | n8n、OpenObserve、InfluxDBの設置と初回操作を確認します。 |
 
 ### 開発・設計担当
