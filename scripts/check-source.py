@@ -47,6 +47,7 @@ REVIEWED_PNG_SHA256 = {
         "e5a2f3d37f2857efc41da18dc0510fe865992757d7bc74d0d39acb4349828e2c",
     },
     "docs/native/images/runtime-demo.png": {
+        "0f36bc0a0c5ec5f6691f4990a24ccc66cecad72530ccb25e5389993ee873445d",
         "7db25e0b7cc1c46713bd4ae0d4908425fad04caf099b88458fff2478a4af1d7a",
         "6adf680ec34e760609cdaf494d2d7a20041b43c92df497ba2be5fe11565835f2",
     },
