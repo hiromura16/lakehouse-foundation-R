@@ -91,6 +91,11 @@ docker compose -p "$project" --env-file "$site" --env-file "$tools/tools.env" \
   -f compose.yaml -f compose.tools.yaml --profile tools-metrics up -d --wait
 ```
 
+Dokployの **Docker → Containers** に表示される `observe-forwarder` が
+healthyになると、転送用Agentの受付準備が完了しています。
+OpenObserveへの到着は受信側で確認します。
+[Prometheusのreadiness](https://prometheus.io/docs/prometheus/latest/management_api/#readiness-check)
+
 1分ほど経ってからOpenObserveにログインし、**Dashboards → Foundation R 運用監視** を開きます。4パネルで、アプリ別の応答と所要時間、ジョブの成功件数、失敗件数を調べられます。
 
 ![OpenObserveの合成データ環境。アプリ別の応答・所要時間と、ジョブの成功・失敗の4パネル](images/openobserve-runtime.png)

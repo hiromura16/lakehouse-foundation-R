@@ -136,6 +136,12 @@ services:
         condition: service_healthy
       prometheus:
         condition: service_started
+    # Agentの受付準備をローカルで確認する。転送先への到着は別に照合する。
+    healthcheck:
+      test: [CMD, /bin/promtool, check, ready, "--url=http://127.0.0.1:9090"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
     restart: unless-stopped
     mem_limit: 256m
     logging: *tool-logging

@@ -47,7 +47,7 @@ ssh -N -o ExitOnForwardFailure=yes \
 | --- | --- | --- |
 | カタログの初期化 | Dokployの `catalog-migrate` | 実行が終了してコード0 |
 | 自動化の専用PostgreSQL | Dokployの `tools-db` とGrafanaのn8n | DBがhealthy、n8nのreadinessが応答 |
-| OpenObserveへの転送 | Dokployの `observe-forwarder` とOpenObserve | 転送を選んだ環境でプロセスが起動し、対象の時系列に最新の点が入る |
+| OpenObserveへの転送 | Dokployの `observe-forwarder` とOpenObserve | 転送を選んだ環境でAgentがhealthy、対象の時系列に最新の点が入る |
 | CDCの進み具合 | 認証付きのCDC状態API | `ready: true`、`blocked: false`、会社が決めた遅延以内 |
 | Cloudflareのトンネルと公開用Gold | Zero Trustのトンネル状態と承認済みクライアントのHTTPS | トンネルが接続し、承認済み世代を取得。無認証の要求は拒否 |
 
