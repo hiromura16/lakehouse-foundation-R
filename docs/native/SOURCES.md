@@ -369,9 +369,9 @@ SQL Rawへ残る原本は抽出したJSONです。SQLiteのDBバックアップ�
 
 ## Kafka互換ブローカーでCDCを取り込む
 
-外部のDebeziumがSQL Server CDCのJSONを発行している環境向けの任意構成です。コネクターは外部のKafka Connectで管理します。標準RのComposeとconsumerにはJavaが不要です。Debezium Kafka Connectの実行環境にはJVMが必要です。
+外部のDebeziumがSQL Server CDCのJSONを発行している環境向けの任意構成です。コネクターは外部のKafka Connectで管理します。Foundation RのComposeとコンシューマーにはJavaが不要です。Debezium Kafka Connectの実行環境にはJVMが必要です。
 
-1. Kafka管理者が専用consumer groupのACLと対象6 topicへの読取権限を用意します。初回に必要な履歴を確保し、topicの保持期間と鍵ごとのpartition整合性を確認します。
+1. Kafka管理者が専用consumer groupのACLと対象6トピックへの読取権限を用意します。購読を始める前に表マッピングと一致する6トピックが作られていることを確認します。初回の履歴、保持期間、同じ業務キーが使う区画も確認します。
 2. [設定例](../../native/kafka-settings.example.json) をcheckout外のprivateファイルへコピーして、broker、DB、topic prefix、`lakehouse-r-` から始まる専用groupを入力します。実接続ではTLSまたはSASL_SSLを使い、brokerが広告する全アドレスへ直接接続できるようにします。OSの信頼ストアを使う場合は設定例のCAパスを維持し、broker専用のCAを使う場合は `site.env` に `CDC_BROKER_CA_FILE` の絶対パスを、Kafka設定の `ssl.ca.location` に `/run/cdc/broker-ca.pem` を入力します。
 3. Sourceと契約の対応を `{"tables":[...]}` で記述します。項目は `source_schema`、`source_table`、`target_table`、`columns` です。 `columns` はsource列名をkey、契約列をvalueにし、6表・全列を一対一対応させます。 `topic_has_database` は `prefix.database.schema.table` 形式ならtrueです。
 4. 専用空ディレクトリを同じUIDで作り、`site.env` に絶対パスの `CDC_STATE_DIR`、`CDC_SETTINGS_FILE`、`CDC_TABLE_MAP_FILE` を追加します。configファイルは0600、stateディレクトリは0700を使用します。

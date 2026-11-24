@@ -104,6 +104,7 @@ FORBIDDEN_SUFFIXES = {
     ".sqlite",
     ".sqlite3",
 }
+# 全履歴を検査するため、過去に使った固定コンテナユーザー名も保持する。
 CONTAINER_USERS = {"airflow", "curl_user", "jovyan", "node", "nonroot", "rill"}
 IPV4 = re.compile(r"(?<![\w.])(?:\d{1,3}\.){3}\d{1,3}(?:/\d{1,2})?")
 SVG_NAMESPACE = "http://www.w3.org/2000/svg"

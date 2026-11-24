@@ -51,6 +51,20 @@ Kafkaクラスタ・トピックの識別と区画一覧を別途確認します
 SQLiteの識別値、設定・対応表を照合します。
 [Kafkaの区画内の順序](https://kafka.apache.org/documentation/) · [SQL Server CDCのコミットLSN](https://learn.microsoft.com/sql/relational-databases/track-changes/about-change-data-capture-sql-server/)
 
+## 実Kafkaから確定した履歴の照合
+
+隔離したKafka互換ブローカーに、6表を1区画ずつ用意して合成イベント14件を配送しました。
+製品の訂正、削除、トゥームストーン、コンシューマー停止後の再登録に加え、
+計画・実績・停止・受注・出荷を含めています。SQLiteの最終完了位置と、
+Kafkaにコミットされた次の位置を全6区画で確認してから、固定のIceberg Rawを採取しました。
+
+同じRawを別の作業領域に再生し、公開したGold 2表と隔離6表について、型、件数、全行の
+ハッシュを照合しました。日次生産は計画20・良品12・不良2・停止15分、受注出荷は
+受注20・出荷7・未出荷13で一致しました。製品の型不正1行と、他5表の隔離0行も一致し、
+再生後のSQLiteの全6区画が採取時の確定位置に戻りました。
+[隔離受入ワークフロー](../../.github/workflows/cdc.yml)
+· [照合プログラム](../../tests/integration/native/cdc_replay_parity.py)
+
 ## 書き出し
 
 1. 消費と公開を一時停止し、承認済みの公開世代、Iceberg Rawの表UUIDとスナップショット、SQLiteの `metadata.identity`、Kafkaのクラスタ・各トピックの識別と全区画一覧、各区画の処理済みoffsetを、独立した承認記録に採取する。Kafkaにコミットされたoffsetは次に読む位置で、SQLiteの処理済みoffsetより1大きい。
