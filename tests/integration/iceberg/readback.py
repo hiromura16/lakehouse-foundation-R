@@ -47,7 +47,7 @@ def upsert(catalog):
         }
     ) as engine:
         # 拡張の暗黙の取得を無効にし、既定の署名検証付きで読み込む。
-        for module in ("httpfs", "iceberg"):
+        for module in ("httpfs", "avro", "iceberg"):
             engine.execute(
                 f"LOAD '/opt/upsert-extensions/{module}.duckdb_extension'"
             )

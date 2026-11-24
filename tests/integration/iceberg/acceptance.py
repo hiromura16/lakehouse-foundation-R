@@ -36,6 +36,9 @@ DUCKDB_EXTENSIONS = {
     "httpfs": (
         "b66f800b84197768a9cc4d65c293d824c94f37f04b3d640c970d2e79aad8f7b0"
     ),
+    "avro": (
+        "a6ba0dc733b78f5a7541fa59ed7b72edb6ae205d93e2f471b2935191e51b9e21"
+    ),
     "iceberg": (
         "42d781e40bdb23f9c89e9b7218d2bbe17568449fa1cbdae3bf9d9e0f773ef2b0"
     ),
