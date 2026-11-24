@@ -4,7 +4,7 @@ import importlib.util
 import json
 import re
 import tempfile
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from hashlib import sha256
 from pathlib import Path
@@ -222,6 +222,8 @@ def fixture(path, scenario):
         data = {name: [] for name in data}
     elif scenario == "extended":
         extended_rows(data)
+    elif scenario == "legacy":
+        data = legacy_rows(data)
     sources = DEMO.encoded_sources(data)
     for item in schema.CONTRACT:
         relative = item["path"]
@@ -276,6 +278,73 @@ def extended_rows(data):
     )
 
 
+def legacy_rows(data):
+    """同じ業務キーへ、変換の採否が業務結果を変える値を配置する。"""
+    product = {
+        **data["erp_products"][0],
+        "product_id": "P-LEGACY",
+        "product_name": "旧版",
+        "updated_at": "2024-10-30T00:00:00Z",
+    }
+    return {
+        "erp_products": [
+            product,
+            {
+                **product,
+                "product_name": "新版",
+                "updated_at": "2024/11/01T00:00:00+09:00",
+            },
+        ],
+        "erp_work_orders": [
+            {
+                **data["erp_work_orders"][0],
+                "work_order_id": "WO-CIVIL",
+                "factory_id": "F-LEGACY",
+                "product_id": "P-LEGACY",
+                "planned_date": "2024-11-01T00:00:00+09:00",
+                "planned_qty": "17",
+            },
+        ],
+        "erp_sales_orders": [
+            {
+                **data["erp_sales_orders"][0],
+                "sales_order_id": "SO-EXPONENT",
+                "factory_id": "F-LEGACY",
+                "product_id": "P-LEGACY",
+                "order_date": "2024-10-31",
+                "promised_date": "2024-11-01",
+                "ordered_qty": "4",
+                "unit_price": "1e6",
+            },
+        ],
+        "erp_shipments": [
+            {
+                **data["erp_shipments"][0],
+                "sales_order_id": "SO-EXPONENT",
+                "shipped_at": "2024-11-01T01:00:00Z",
+                "shipped_qty": "3",
+            },
+        ],
+        "mes_events": [
+            {
+                **data["mes_events"][0],
+                "work_order_id": "WO-CIVIL",
+                "event_time": "2024/11/01T00:00:00.1234567+09:00",
+                "good_qty": "11",
+                "reject_qty": "2",
+            },
+        ],
+        "mes_downtime": [
+            {
+                **data["mes_downtime"][0],
+                "work_order_id": "WO-CIVIL",
+                "start_time": "2024-10-31T15:00:00.100000Z",
+                "end_time": "2024-10-31T15:01:30.899999Z",
+            },
+        ],
+    }
+
+
 def read_result(ctx, query):
     """公式SQL APIで計画し、ストリームのArrow上限を既存実装で調べる。"""
     frame = ctx.sql(query, options=READ_ONLY)
@@ -309,20 +378,23 @@ def read_outputs(catalog, refs):
     }
 
 
-def datafusion_outputs(sources, catalog):
-    """固定Bronze世代からRustで派生14表を作り、試験warehouseへ確定する。"""
+def datafusion_outputs(sources, catalog, *, gold_from_silver=False):
+    """固定Bronzeの派生14表か、型付きSilverからのGold2表を試験用に確定する。"""
     ctx = connect_datafusion()
     for layer in engine.LAYERS:
         ctx.sql(f"CREATE SCHEMA {layer}").collect()
+    input_layer = "silver" if gold_from_silver else "bronze"
     for name, (table, snap) in sources.items():
         arrow = engine.bounded_scan(table, snap)
-        ctx.register_table(f"bronze.{name}", ctx.from_arrow(arrow))
+        ctx.register_table(f"{input_layer}.{name}", ctx.from_arrow(arrow))
     refs = {}
     for statement in statements(sql_datafusion):
         target = engine.CTAS.match(statement)
         if target is None:
             raise ValueError("MEDALLION_CTAS")
         name = target[1]
+        if gold_from_silver and not name.startswith("gold."):
+            continue
         # CTASをカタログ操作から切り離し、結果だけを登録・確定する。
         body_start = target.end()
         out = read_result(ctx, statement[body_start:])
@@ -378,6 +450,86 @@ def run_checks(sources, outputs, kind):
     return len(checks["checks"])
 
 
+def assert_same_table(name, left, right):
+    """Icebergから読戻した行とArrowスキーマを、順序非依存で照合する。"""
+    assert left.schema.equals(right.schema, check_metadata=True), (
+        name,
+        left.schema,
+        right.schema,
+    )
+    assert sorted(left.to_pylist(), key=repr) == sorted(
+        right.to_pylist(), key=repr
+    ), name
+
+
+def check_legacy(duck, datafusion):
+    """変換差が採用版、隔離理由、業務日、公開件数を変えることを固定する。"""
+
+    def daily(outputs):
+        """計画と実績が集約される営業日と数量を返す。"""
+        return sorted(
+            (
+                row["production_date"].isoformat(),
+                row["planned_qty"],
+                row["good_qty"],
+            )
+            for row in outputs["gold.factory_daily_production"].to_pylist()
+        )
+
+    left, right = daily(duck), daily(datafusion)
+    assert left == [("2024-10-31", 0, 11), ("2024-11-01", 17, 0)], left
+    assert right == [("2024-10-31", 17, 0)], right
+    assert duck["silver.erp_products"]["product_name"].to_pylist() == ["新版"]
+    assert datafusion["silver.erp_products"]["product_name"].to_pylist() == [
+        "旧版"
+    ]
+    assert duck["silver.mes_events"]["event_time"].to_pylist() == [
+        datetime.fromisoformat("2024-10-31T15:00:00.123456+00:00")
+    ]
+    assert datafusion["silver.mes_events"].num_rows == 0
+    (order,) = duck["gold.sales_fulfillment"].to_pylist()
+    assert order["unit_price"] == Decimal("1000000.00")
+    assert order["shipped_qty"] == 3
+    assert datafusion["gold.sales_fulfillment"].num_rows == 0
+    for table, reason in (
+        ("erp_sales_orders", "invalid_type"),
+        ("erp_shipments", "unknown_sales_order"),
+        ("mes_events", "invalid_timestamp"),
+    ):
+        name = f"quarantine.{table}"
+        assert duck[name].num_rows == 0, name
+        assert datafusion[name]["validation_reason"].to_pylist() == [reason], (
+            name
+        )
+    return {"duckdb_daily": left, "direct_datafusion_daily": right}
+
+
+def check_gold_from_silver(directory, duckdb, duck_refs, duck):
+    """標準Silverの版を固定し、Rustで得たGoldを別カタログで照合する。"""
+    silver = {
+        name.removeprefix("silver."): (duckdb.load_table(name), snap)
+        for name, snap in duck_refs.items()
+        if name.startswith("silver.")
+    }
+    assert len(silver) == 6
+    assert all(snap is not None for _, snap in silver.values())
+    evaluation = local_catalog(directory, "gold-from-silver")
+    evaluation.create_namespace("gold")
+    refs = datafusion_outputs(silver, evaluation, gold_from_silver=True)
+    assert set(refs) == {
+        "gold.factory_daily_production",
+        "gold.sales_fulfillment",
+    }
+    for name, result in read_outputs(evaluation, refs).items():
+        assert_same_table(name, duck[name], result)
+        # Iceberg自身のスキーマ比較には、各列のフィールドIDも含まれる。
+        assert (
+            duckdb.load_table(name).schema()
+            == evaluation.load_table(name).schema()
+        ), name
+    return sorted(refs)
+
+
 def run(scenario):
     """ローカルの一時環境で業務表と確定後のスキーマをすべて照合する。"""
     with tempfile.TemporaryDirectory(prefix="fr-ordinary-") as tmp:
@@ -397,16 +549,25 @@ def run(scenario):
         duck = read_outputs(duckdb, duck_refs)
         other = read_outputs(datafusion, data_refs)
         assert duck.keys() == other.keys() and len(duck) == 14
-        for name in duck:
-            left, right = duck[name], other[name]
-            assert left.schema.equals(right.schema, check_metadata=True), (
-                name,
-                left.schema,
-                right.schema,
+        if scenario == "legacy":
+            legacy = check_legacy(duck, other)
+            gold = check_gold_from_silver(directory, duckdb, duck_refs, duck)
+            print(
+                json.dumps(
+                    {
+                        "scenario": scenario,
+                        "inputs": counts,
+                        "outputs": len(duck),
+                        **legacy,
+                        "gold_from_fixed_silver": gold,
+                        "status": "pass",
+                    }
+                )
             )
-            assert sorted(left.to_pylist(), key=repr) == sorted(
-                right.to_pylist(), key=repr
-            ), name
+            return
+        for name in duck:
+            left = duck[name]
+            assert_same_table(name, left, other[name])
             print(
                 json.dumps(
                     {
@@ -478,6 +639,6 @@ SELECT
 
 
 if __name__ == "__main__":
-    for scenario in ("edge", "extended", "empty"):
+    for scenario in ("edge", "extended", "empty", "legacy"):
         run(scenario)
     difference_checks()

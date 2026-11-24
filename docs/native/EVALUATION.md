@@ -163,11 +163,19 @@ UTCのマイクロ秒へ固定、JSONの原文を同じキー順で直列化、�
 DECIMALへ広げてArrowで範囲を検査する処理です。DataFusion 55.0.0の
 BIGINT集計は、上限を超えると符号が回り込むことを試験で確認します。
 
-この照合は合成データとローカルストレージを使う評価です。標準エンジンを
-切り替える前には、入力契約で受け付けるレガシー文字列と隔離理由を揃える
-受入が必要です。例えば、`2024-11-01T00:00:00+09:00` を日付へ変換した
-結果は両エンジンで日が異なり、指数表記の小数やスラッシュ区切りの日時は
-採否が異なります。試験はこれらの既知の差も結果に残します。
+レガシー入力も別に照合します。計画日 `2024-11-01T00:00:00+09:00` を
+DuckDBは11月1日、DataFusionは10月31日として扱います。DuckDBは
+スラッシュ区切りの実績時刻と更新時刻を採用し、UTCの10月31日に良品11を
+計上して製品の新版を選びます。DataFusionの直接実行では、その実績は
+`invalid_timestamp` に隔離され、製品は旧版が選ばれます。指数表記の
+単価 `1e6` はDuckDBで `1000000.00` となり、DataFusionでは受注が
+`invalid_type`、参照先を失った出荷が `unknown_sales_order` になります。
+
+同じレガシー入力で標準DuckDBが確定した型付きSilver 6表のスナップショットを
+固定し、DataFusionでGold 2表だけを計算する評価も行います。別のIceberg
+warehouseから読戻し、標準Goldと全行・型・IcebergフィールドIDが一致することを
+検査します。標準構成はDuckDBで業務表を更新し、この比較処理は隔離した合成評価に
+限定しています。
 [DataFusionの設定](https://datafusion.apache.org/python/user-guide/configuration.html) · [実行プログラム](../../native/evaluation/business_parity.py)
 
 ## RisingWaveでKafkaの現在値を確認する
