@@ -128,13 +128,18 @@ def reject_duplicate_keys(pairs):
 
 
 def mappings(path):
-    """6表すべてについて、表と列の明示的な1対1対応だけを許可する。"""
+    """稼働コンシューマーの非公開ファイルから表対応を読んで検証する。"""
     path = Path(path)
     if not path.is_file() or path.is_symlink():
         raise ValueError("Provide the private table-map.json file.")
     document = json.loads(
         path.read_text(), object_pairs_hook=reject_duplicate_keys
     )
+    return mapping_document(document)
+
+
+def mapping_document(document):
+    """6表すべてについて、表と列の明示的な1対1対応だけを許可する。"""
     if not isinstance(document, dict) or set(document) != {"tables"}:
         raise ValueError("A CDC mapping must contain a tables array.")
     tables = document["tables"]

@@ -15,6 +15,10 @@ RAW_COLUMNS = [
     "envelope_json",
     "ingested_at",
 ]
+GENERIC_NULL_FIELDS = (
+    ("key", "key_json", "key_is_null"),
+    ("value", "envelope_json", "value_is_null"),
+)
 FIXED_RAW_COLUMNS = RAW_COLUMNS + [
     "operation",
     "tombstone",
@@ -104,6 +108,70 @@ def raw_rows(records, *, fixed=False):
     return rows
 
 
+class RawDecodeError(ValueError):
+    """汎用Rawを元の配送へ戻せないときの固定理由。"""
+
+
+def generic_rows(records):
+    """既存の文字列列の値を保ったまま、NULLを判定できる列を加える。"""
+    rows = raw_rows(records)
+    for row, record in zip(rows, records, strict=True):
+        row.update(
+            {
+                marker: record[field] is None
+                for field, _, marker in GENERIC_NULL_FIELDS
+            }
+        )
+    return rows
+
+
+def generic_null_columns(schema):
+    """既存表にある判定列を検査し、将来の追加列は読み飛ばす。"""
+    import pyarrow as pa
+
+    markers = []
+    for _, _, name in GENERIC_NULL_FIELDS:
+        if name in schema.names:
+            field = schema.field(name)
+            if not field.nullable or not pa.types.is_boolean(field.type):
+                raise RawDecodeError("CDC_RAW_NULL_SCHEMA_INVALID")
+            markers.append(name)
+    return tuple(markers)
+
+
+def generic_payload(row):
+    """型付きの判定列を読み、曖昧な既存の空文字をNULLに変換しない。"""
+    result = {}
+    for field, text_name, marker_name in GENERIC_NULL_FIELDS:
+        text = row[text_name]
+        marker = row.get(marker_name)
+        if (
+            not isinstance(text, str)
+            or (marker is not None and type(marker) is not bool)
+            or (marker is True and text != "")
+        ):
+            raise RawDecodeError("CDC_RAW_NULL_MARKER_INVALID")
+        if marker is None and not text:
+            raise RawDecodeError("CDC_RAW_LEGACY_EMPTY")
+        result[field] = None if marker is True else text
+    return result
+
+
+def add_generic_null_columns(table, existing):
+    """古いParquetをそのまま残し、追加列のない履歴はNULLとして読ませる。"""
+    from pyiceberg.types import BooleanType
+
+    missing = [
+        marker
+        for _, _, marker in GENERIC_NULL_FIELDS
+        if marker not in existing
+    ]
+    if missing:
+        with table.update_schema() as update:
+            for marker in missing:
+                update.add_column(marker, BooleanType(), required=False)
+
+
 def append_raw(catalog, records, *, namespace="cdc_events", identity=None):
     """イベントの業務解釈より前に、未保存の配送位置をrawへcommitする。
 
@@ -129,9 +197,14 @@ def append_raw(catalog, records, *, namespace="cdc_events", identity=None):
     if fixed:
         properties["lakehouse.fixed-cdc.identity"] = identity
     if not catalog.table_exists(identifier):
+        fields = [(name, pa.string()) for name in columns]
+        if not fixed:
+            fields.extend(
+                (name, pa.bool_()) for _, _, name in GENERIC_NULL_FIELDS
+            )
         catalog.create_table(
             identifier,
-            schema=pa.schema([(name, pa.string()) for name in columns]),
+            schema=pa.schema(fields),
             properties=properties,
         )
     table = catalog.load_table(identifier)
@@ -140,14 +213,21 @@ def append_raw(catalog, records, *, namespace="cdc_events", identity=None):
         or table.schema().as_arrow().names != columns
     ):
         raise ValueError("Fixed CDC raw table ownership or schema differs.")
-    rows = raw_rows(records, fixed=fixed)
-    # 再配送と同batch内の重複を区別せず、配送位置で一度だけrawへ追記する。
+    markers = () if fixed else generic_null_columns(table.schema().as_arrow())
+    rows = raw_rows(records, fixed=True) if fixed else generic_rows(records)
+    checked_markers = (
+        () if fixed else tuple(name for _, _, name in GENERIC_NULL_FIELDS)
+    )
+    # 再配送は同じ位置へ追記しない。既存史料の判定列も推測で埋めない。
     existing = (
         table.scan(
             row_filter=In("event_id", [row["event_id"] for row in rows]),
-            selected_fields=("event_id", "key_json", "envelope_json")
-            if fixed
-            else ("event_id",),
+            selected_fields=(
+                "event_id",
+                "key_json",
+                "envelope_json",
+                *markers,
+            ),
         )
         .to_arrow()
         .to_pylist()
@@ -156,19 +236,26 @@ def append_raw(catalog, records, *, namespace="cdc_events", identity=None):
     pending = []
     for row in rows:
         previous = seen.get(row["event_id"])
-        if (
-            fixed
-            and previous is not None
-            and any(
-                previous[column] != row[column]
-                for column in ("key_json", "envelope_json")
-            )
-        ):
-            raise ValueError("A fixed CDC delivery position changed payload.")
         if previous is None:
             pending.append(row)
             seen[row["event_id"]] = row
+            continue
+        if any(
+            previous[column] != row[column]
+            for column in ("key_json", "envelope_json")
+        ) or any(
+            previous.get(marker) is not None
+            and previous[marker] != row[marker]
+            for marker in checked_markers
+        ):
+            if fixed:
+                raise ValueError(
+                    "A fixed CDC delivery position changed payload."
+                )
+            raise ValueError("CDC_RAW_DELIVERY_CHANGED")
     if pending:
+        if not fixed:
+            add_generic_null_columns(table, markers)
         table.append(
             pa.Table.from_pylist(pending, schema=table.schema().as_arrow())
         )

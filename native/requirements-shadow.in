@@ -1,0 +1,4 @@
+# 隔離した汎用CDC復旧だけで使用するローカルカタログ依存。
+duckdb==2.0.1
+pyarrow==26.0.1
+pyiceberg[pyarrow,sql-sqlite]==0.12.0

@@ -93,6 +93,14 @@ def check(core, expected_count, expected_product):
                 assert len({row["event_id"] for row in raw}) == expected_count
                 offsets = sorted(int(row["offset"]) for row in raw)
                 assert offsets == list(range(expected_count))
+                assert all(row["key_is_null"] is False for row in raw)
+                deleted = [
+                    int(row["offset"])
+                    for row in raw
+                    if row["value_is_null"] is True
+                ]
+                assert deleted == ([6] if expected_count >= 8 else [])
+                assert all(type(row["value_is_null"]) is bool for row in raw)
                 print(
                     json.dumps(
                         {

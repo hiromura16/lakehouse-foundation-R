@@ -235,3 +235,7 @@ docker compose --env-file "$site" -f compose.yaml -f compose.cdc.yaml \
 ```
 
 まず `cdc_events.events` に配送IDと原本を保存し、LSNで現在値を選びます。派生テーブルの公開に成功した後にローカルcheckpointとKafkaの確認位置を進めます。 `/v1/cdc/gold/<dataset>` はCDCの公開世代を参照します。SQLiteは現在値と配送位置を持つため、Kafka・Iceberg・state directoryを揃えて復旧してください。履歴が切れた場合はconsumerを停止して原因を確認します。手動で状態を入れ替える前に、Kafkaの保持範囲と保存済みRawの照合を実施します。Rでの実SQL Server、社内Kafka TLS、長期保持からの復元は会社環境の受入対象です。 [Debezium SQL Server公式](https://debezium.io/documentation/reference/stable/connectors/sqlserver.html)
+
+確定位置までのRawを隔離したIcebergに再生して照合する手順があります。
+復元する履歴の範囲と、旧世代に含まれるNULL判定の条件を確認してください。
+[CDCの確定履歴を隔離復元する](CDC-SHADOW.md)

@@ -18,6 +18,24 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
+        with:
+          python-version: '3.14'
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+        with:
+          version: '0.13.7'
+          checksum: c5221ff41b7892bfc223543883600125f6a47fe845093e0f5bdff4f359196d83
+          enable-cache: false
+      - name: 確定済みRawの採取範囲、NULL、復元の拒否条件を検査
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          shadow="$RUNNER_TEMP/cdc-shadow"
+          uv venv --python 3.14 "$shadow"
+          uv pip sync --python "$shadow/bin/python" --require-hashes \
+            --only-binary :all: native/requirements-shadow.lock
+          "$shadow/bin/python" -m unittest discover \
+            -s tests/integration/native -p cdc_shadow_unit.py
       - name: 合成CDCの更新、削除、重複防止、再開位置を検査
         shell: bash
         run: |

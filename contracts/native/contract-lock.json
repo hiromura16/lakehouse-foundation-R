@@ -17,7 +17,7 @@
     "medallion/expected-demo.json": "bcb4f1bf215c1b845c70db68297ea09786a49520ba8fc140d5d3c2f9457016f1",
     "medallion/sources.json": "f4760de1b8757855ea79f6dfc49947009980770dc31c174e0cfce79db0d77105",
     "infra/cdc/state.py": "940d1419a9a84a0bf0aece86947a317f5bceed1ea3e1d56346ae5628518252de",
-    "infra/cdc/raw_writer.py": "7176eb407c4428c84297dc615317e1e082d594299fd9b781c414d915212f99f6",
+    "infra/cdc/raw_writer.py": "fd46629ad1cb0f946bce911cde3a7ae6efe15c485dbfd8389dc12e8913cb5de2",
     "infra/cdc/raw_history.py": "31994a6a3f1c925fc0f6b09885ad710ca409a1656fac2e1a15d28adad0c6ac35",
     "infra/cdc/cdc_replay.py": "db507846412b7605aa4f8cc6853e86954492d3f0478a9b8dd55b6170e0c38dfc",
     "contracts/native/data-products.json": "6154cef443c827635d5f27258e7bacf6943bb1bfbd76e419e1c601ed178eecda"

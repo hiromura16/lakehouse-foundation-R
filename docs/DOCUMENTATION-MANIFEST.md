@@ -63,6 +63,7 @@
 
 | 文書 | 何のために読むか | 読むタイミング | 区分 |
 | --- | --- | --- | --- |
+| [標準CDCのRawから隔離復元する](<native/CDC-SHADOW.md>) | 汎用CDCの確定済みRawを読み出し、元環境から切り離したSQLiteとIcebergへ再現する。 | 固定したRawスナップショットからの復元を、稼働中の保存先に影響を与えず検証するとき。 | active |
 | [ネイティブ処理系の比較試験](<native/EVALUATION.md>) | Sail、RisingWave、GreptimeDB、DataFusion、Ballista、Cometを合成データで起動・検証します。 | ネイティブ製品を分けて実行し、結果を確認するとき。 | active |
 | [運用ポータルと追加ツール](<native/TOOLS.md>) | n8n、OpenObserve、InfluxDBの設置と初回操作を確認します。 | 運用自動化、監視調査、設備時系列を追加するとき。 | active |
 
@@ -111,6 +112,7 @@
 | [会社VMの受入手順と合格条件](<native/ACCEPTANCE.md>) | 導入後の検査を観測できる合格条件と照合します。 |
 | [認証付きAPIとLangChain](<native/API.md>) | 固定API操作とスナップショットを根拠にしたLangChain利用を確認します。 |
 | [アーキテクチャと業務契約](<native/ARCHITECTURE.md>) | コンポーネントの役割と採用理由、業務契約と公開世代を確認します。 |
+| [標準CDCのRawから隔離復元する](<native/CDC-SHADOW.md>) | 汎用CDCの確定済みRawを読み出し、元環境から切り離したSQLiteとIcebergへ再現する。 |
 | [オンプレとCloudflareをつなぐ](<native/CLOUDFLARE.md>) | Cloudflare TunnelとAccessで承認済みGoldを読み取る経路を配備します。 |
 | [Dokployと企業ネットワーク](<native/COMPANY.md>) | Git・Docker・BuildKitの通信を準備し、Dokployで配備します。 |
 | [レイクハウスの設計思想](<native/DESIGN.md>) | データの保存、品質、所有、AI利用の考え方をFoundation Rの実装と照らし合わせます。 |
@@ -139,6 +141,7 @@
 | 文書 | 目的 |
 | --- | --- |
 | [目的・読者から探す文書マニフェスト](<DOCUMENTATION-MANIFEST.md>) | 公開Markdown全件の固有の目的・読者・読む時点を、目的別と読者別に引く。 |
+| [標準CDCのRawから隔離復元する](<native/CDC-SHADOW.md>) | 汎用CDCの確定済みRawを読み出し、元環境から切り離したSQLiteとIcebergへ再現する。 |
 | [オンプレとCloudflareをつなぐ](<native/CLOUDFLARE.md>) | Cloudflare TunnelとAccessで承認済みGoldを読み取る経路を配備します。 |
 | [工場テレメトリの接続と受入](<native/TELEMETRY.md>) | 設備のMQTTを集め、Kafka経由の再送とGreptimeDBの時系列検索を検証します。 |
 | [運用ポータルと追加ツール](<native/TOOLS.md>) | n8n、OpenObserve、InfluxDBの設置と初回操作を確認します。 |

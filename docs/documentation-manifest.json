@@ -383,6 +383,24 @@
         "docs/native/GUI.md"
       ],
       "status": "active"
+    },
+    {
+      "path": "docs/native/CDC-SHADOW.md",
+      "title": "標準CDCのRawから隔離復元する",
+      "purpose": "汎用CDCの確定済みRawを読み出し、元環境から切り離したSQLiteとIcebergへ再現する。",
+      "audience": [
+        "基盤構築担当",
+        "運用担当"
+      ],
+      "when_to_use": "固定したRawスナップショットからの復元を、稼働中の保存先に影響を与えず検証するとき。",
+      "category": "05 運用・検証",
+      "prerequisites": [
+        "docs/native/SOURCES.md"
+      ],
+      "next": [
+        "docs/native/OPERATIONS.md"
+      ],
+      "status": "active"
     }
   ]
 }
