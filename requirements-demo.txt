@@ -1,2 +1,2 @@
-# Optional SQL Server destination only. Landing generation uses the standard library.
+# 合成データをSQL Serverへ書く場合だけ入れます。着地ファイルの生成は標準ライブラリで動きます。
 pymssql==2.4.6

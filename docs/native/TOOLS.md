@@ -68,7 +68,7 @@ docker compose -p "$project" --env-file "$site" --env-file "$tools/tools.env" \
 
 ## OpenObserveに監視メトリクスを送る
 
-初回のprovisionは転送用パスコードを `observe-passcode` に0600で保存し、[4パネルのダッシュボード](../../native/tools/openobserve-dashboard.json) を登録します。次に転送サービスを起動します。既存の同名ボードは維持します。変更する場合は画面から編集するか、設定JSONの内容を **Dashboards → Import** からインポートします。
+初回のprovisionは転送用パスコードを `observe-passcode` に0600で保存し、[4パネルのダッシュボード](../../native/tools/openobserve-dashboard.json) を登録します。次に転送サービスを起動します。既存の同名ボードは維持します。既存の設定を変更するときは、画面で編集する前にJSONをエクスポートして保存します。リポジトリの設定を別ボードとして試すには、JSONのタイトルを変え、**Dashboards → Import → Custom** から読み込みます。
 
 **Bash / Zsh共通**
 
@@ -85,7 +85,11 @@ docker compose -p "$project" --env-file "$site" --env-file "$tools/tools.env" \
   -f compose.yaml -f compose.tools.yaml --profile tools-metrics up -d --wait
 ```
 
-1分ほど経ってから確認します。ローカルのPrometheusが疎通とジョブ数値を取得し、転送サービスが監視系列を選んでOpenObserveへ送ります。ダッシュボードの「サービスの応答」は `probe_success` です。1は応答あり、0は取得失敗を示し、系列がなければ対象登録と転送を確認します。
+1分ほど経ってからOpenObserveにログインし、**Dashboards → Foundation R 運用監視** を開きます。4パネルで、アプリ別の応答と所要時間、ジョブの成功件数、失敗件数を調べられます。
+
+![OpenObserveの合成データ環境。アプリ別の応答・所要時間と、ジョブの成功・失敗の4パネル](images/openobserve-runtime.png)
+
+「サービスの応答」の1は期待したHTTP応答、0は疎通失敗です。同じアプリに複数の監視先がある場合は、失敗を見落とさないよう最小値を表示します。所要時間はアプリごとの最大値をミリ秒に換算します。凡例で表示するアプリを切り替えられます。系列がない場合は、画面の期間とRefresh、対象登録と転送を順に確認します。
 
 **Bash / Zsh共通**
 
@@ -93,7 +97,7 @@ docker compose -p "$project" --env-file "$site" --env-file "$tools/tools.env" \
 python3 -m native.tools.observe verify --directory "$tools"
 ```
 
-採取対象は [targets.yml](../../native/tools/targets.yml) を編集します。Grafana側の編集は [監視設定](MONITORING.md) を参照してください。[Prometheus remote write](https://openobserve.ai/docs/ingestion/metrics/prometheus/) · [OpenObserveダッシュボード](https://openobserve.ai/docs/user-guide/analytics/dashboards/)
+採取対象は [targets.yml](../../native/tools/targets.yml) を編集します。Grafana側の編集は [監視設定](MONITORING.md) を参照してください。[Prometheus remote write](https://openobserve.ai/docs/ingestion/metrics/prometheus/) · [OpenObserveのインポート](https://openobserve.ai/docs/user-guide/analytics/dashboards/dashboards-in-openobserve/) · [OpenObserve 1.1.2の192列レイアウト](https://github.com/openobserve/openobserve/blob/v1.1.2/web/src/views/Dashboards/RenderDashboardCharts.vue#L865-L870)
 
 ## 設備の合成測定点を確認する
 

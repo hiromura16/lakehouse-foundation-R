@@ -51,6 +51,9 @@ REVIEWED_PNG_SHA256 = {
         "7db25e0b7cc1c46713bd4ae0d4908425fad04caf099b88458fff2478a4af1d7a",
         "6adf680ec34e760609cdaf494d2d7a20041b43c92df497ba2be5fe11565835f2",
     },
+    "docs/native/images/openobserve-runtime.png": {
+        "c0b79ac7197063ecdca5c4c5fd824628fd9921964861a4b8bbae5f9f669f906a",
+    },
     "docs/native/images/iceberg-metadata.png": {
         "2081bca6c5b85bdb6710fc764b7f9ecff60cd3c87e30dd78665e530928443c10",
     },

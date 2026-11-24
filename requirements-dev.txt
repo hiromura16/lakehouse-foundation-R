@@ -1,4 +1,4 @@
-# Optional source-quality tools; no runtime credentials or company data needed.
+# ソースの品質検査に使う任意依存です。運用用の認証情報や会社データは不要です。
 ruff==0.17.4
 pycodestyle==2.15.0
 sqlfluff==4.5.0

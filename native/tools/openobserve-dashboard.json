@@ -11,7 +11,7 @@
           "id": "foundation-1",
           "type": "line",
           "title": "サービスの応答",
-          "description": "1 はHTTP応答あり、0 は取得失敗。",
+          "description": "1 は期待したHTTP応答、0 は疎通失敗。アプリに複数の対象があれば最小値を表示。",
           "queryType": "promql",
           "config": {
             "show_legends": true
@@ -19,13 +19,13 @@
           "layout": {
             "x": 0,
             "y": 0,
-            "w": 24,
-            "h": 10,
+            "w": 96,
+            "h": 20,
             "i": 0
           },
           "queries": [
             {
-              "query": "probe_success",
+              "query": "min by (app) (probe_success)",
               "customQuery": true,
               "fields": {
                 "stream": "probe_success",
@@ -39,7 +39,7 @@
                 }
               },
               "config": {
-                "promql_legend": "{{app}}"
+                "promql_legend": "{app}"
               }
             }
           ]
@@ -47,22 +47,22 @@
         {
           "id": "foundation-2",
           "type": "line",
-          "title": "疎通の所要時間（秒）",
-          "description": "HTTP確認の開始から完了までの時間。",
+          "title": "疎通の所要時間（ミリ秒）",
+          "description": "HTTP確認の開始から完了までの時間。アプリに複数の対象があれば最大値を表示。",
           "queryType": "promql",
           "config": {
             "show_legends": true
           },
           "layout": {
-            "x": 24,
+            "x": 96,
             "y": 0,
-            "w": 24,
-            "h": 10,
+            "w": 96,
+            "h": 20,
             "i": 1
           },
           "queries": [
             {
-              "query": "probe_duration_seconds",
+              "query": "1000 * max by (app) (probe_duration_seconds)",
               "customQuery": true,
               "fields": {
                 "stream": "probe_duration_seconds",
@@ -76,7 +76,7 @@
                 }
               },
               "config": {
-                "promql_legend": "{{app}}"
+                "promql_legend": "{app}"
               }
             }
           ]
@@ -92,9 +92,9 @@
           },
           "layout": {
             "x": 0,
-            "y": 10,
-            "w": 24,
-            "h": 10,
+            "y": 20,
+            "w": 96,
+            "h": 20,
             "i": 2
           },
           "queries": [
@@ -128,10 +128,10 @@
             "show_legends": true
           },
           "layout": {
-            "x": 24,
-            "y": 10,
-            "w": 24,
-            "h": 10,
+            "x": 96,
+            "y": 20,
+            "w": 96,
+            "h": 20,
             "i": 3
           },
           "queries": [

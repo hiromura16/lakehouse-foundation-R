@@ -7,6 +7,8 @@ from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
+from native.tools.observe import DASHBOARD, local_api
+
 HEALTH_TARGETS = (
     "lakehouse",
     "grafana",
@@ -18,6 +20,37 @@ HEALTH_TARGETS = (
     "explorer",
     "influxdb",
 )
+
+
+def verify_observe_board(directory, port):
+    """登録済み4パネルの実配置とアプリ別の凡例・単位を照合する。"""
+    config = json.loads(DASHBOARD.read_text(encoding="utf-8"))
+    request = local_api(directory, port)
+    matches = [
+        item
+        for item in request("/dashboards")["dashboards"]
+        if item["title"] == config["title"]
+    ]
+    assert len(matches) == 1, "標準ボードが一意に登録されていません。"
+    dashboard_id = matches[0]["dashboard_id"]
+    board = request(f"/dashboards/{dashboard_id}")["v8"]
+    (tab,) = board["tabs"]
+    panels = tab["panels"]
+    assert [panel["id"] for panel in panels] == [
+        panel["id"] for panel in config["tabs"][0]["panels"]
+    ]
+    assert [
+        tuple(panel["layout"][key] for key in ("x", "y", "w", "h"))
+        for panel in panels
+    ] == [(0, 0, 96, 20), (96, 0, 96, 20), (0, 20, 96, 20), (96, 20, 96, 20)]
+    assert [panel["queries"][0]["query"] for panel in panels[:2]] == [
+        "min by (app) (probe_success)",
+        "1000 * max by (app) (probe_duration_seconds)",
+    ]
+    assert [
+        panel["queries"][0]["config"]["promql_legend"] for panel in panels[:2]
+    ] == ["{app}", "{app}"]
+    print("OpenObserveの192列、アプリ別の凡例、ミリ秒換算を確認しました。")
 
 
 def verify(directory, port):
@@ -53,3 +86,4 @@ if __name__ == "__main__":
     parser.add_argument("--port", type=int, default=18506)
     args = parser.parse_args()
     verify(args.directory, args.port)
+    verify_observe_board(args.directory, args.port + 2)

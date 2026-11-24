@@ -107,7 +107,7 @@ jobs:
             test "$attempt" -lt 12
             sleep 5
           done
-          python3 tests/integration/native/tools_acceptance.py "$tools"
+          python3 -m tests.integration.native.tools_acceptance "$tools"
           python3 tests/integration/native/network_acceptance.py \
             --project native-ci --site "$site" --tools "$tools/tools.env"
       - name: 停止ボリュームを採取し、保全後の破損を検出
