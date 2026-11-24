@@ -1,8 +1,8 @@
 FROM docker.io/library/python:3.14-slim@sha256:ac25e5afbfdb4a94ff99cc24b0345719210133144481480bcba6085efa36a341 AS base
 COPY --from=ghcr.io/astral-sh/uv:0.13.7@sha256:96f40d3904aad8d0bd010539001d36c8e2188b981e1334471a90c4a1d93bb490 /uv /usr/local/bin/uv
 
-# Preserve the base trust store and add only the optional public corporate CA.
-# BuildKit's predefined proxy args never become runtime ENV declarations.
+# 元の信頼ストアを保ったまま、任意で会社CAの公開証明書を追加する。
+# BuildKitの標準プロキシ引数は実行時の環境変数に残さない。
 ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt \
     REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt \
     AWS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt \
@@ -20,7 +20,7 @@ RUN uv --no-cache venv /opt/venv \
     && uv --no-cache pip sync --python /opt/venv/bin/python \
        --require-hashes --only-binary :all: requirements.lock
 
-# The runtime stage keeps only the trust store, environment and explicit code.
+# 実行ステージへは信頼ストア、仮想環境、実行に必要なコードだけを移す。
 FROM docker.io/library/python:3.14-slim@sha256:ac25e5afbfdb4a94ff99cc24b0345719210133144481480bcba6085efa36a341
 COPY --from=base /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=base /opt/venv /opt/venv

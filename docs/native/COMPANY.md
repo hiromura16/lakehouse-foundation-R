@@ -14,6 +14,26 @@
 > **文書一覧:** [目的・読者から探す文書マニフェスト](<../DOCUMENTATION-MANIFEST.md>)
 <!-- doc-purpose:end -->
 
+## 通信と配置の全体図
+
+```mermaid
+flowchart TB
+  DEV["操作端末・Git"] -->|HTTPS| GH["GitHub"]
+  DK["Dokploy・Compose"] -->|リポジトリ取得| GH
+  DE["Dockerデーモン"] -->|必要に応じて社内プロキシ| REG["コンテナレジストリ"]
+  BK["BuildKit"] -->|プロキシ引数・会社CA| PY["PyPI"]
+  DK --> APP["Foundation R<br/>Compose内部ネットワーク"]
+  BK --> APP
+  VIEW["利用者ブラウザー"] -->|TLS終端またはSSH転送| ENTRY["ホストの閲覧入口"]
+  ENTRY --> G["Grafana"]
+  ENTRY --> N["認証付きの閲覧ゲートウェイ"]
+  N --> U["Streamlit・Lakekeeper UI・Prometheus UI"]
+  APP --> G
+  APP --> U
+```
+
+会社向けの疎通はGit取得、イメージ取得、依存取得、利用者のブラウザー経路で分けて確認します。
+
 ## プロキシの設定箇所を確認する
 
 | どこで通信するか | 準備するもの | 確認方法 |
@@ -53,6 +73,8 @@ Dokployの既定コマンドに待機・再生成を追加する場合は、UI�
 ```text
 compose -p APP_NAME_FROM_HEADER --env-file .env -f compose.yaml up -d --build --wait --wait-timeout 180 --remove-orphans
 ```
+
+[任意の閲覧画面](GUI.md) を有効にする場合は、非公開の認証ファイルを準備して、Run Commandに `-f compose.gui.yaml` を追加します。
 
 Dokployの再取得後も、名前付きデータvolumeおよびcheckout外のlanding・設定・CAを維持します。既存のFoundationを同じホストで起動する場合は、別appName、別ポート、別landingを割り当てます。標準ポートはAPI 18502、Grafana 18501です。社内の実プロキシ、IdP、証明書とDokployのGUI操作は、導入先で [受入手順](OPERATIONS.md) を実行して確認します。
 

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Foundation R sensor event v1",
+  "title": "Foundation R 設備イベント v1",
   "type": "object",
   "additionalProperties": false,
   "required": ["factory_id", "line_id", "equipment_id", "sensor_id", "measurement", "unit", "timestamp", "sequence_no", "value", "quality_code"],

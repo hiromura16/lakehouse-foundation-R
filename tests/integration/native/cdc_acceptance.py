@@ -1,7 +1,7 @@
-"""Exercise native CDC against the bundled disposable broker and topics.
+"""使い捨てのブローカーとトピックを使い、ネイティブCDCを検証する。
 
-Pass this file to Python inside the isolated Lakehouse test container.
-Run phases first, delete, then restart the consumer and run resume.
+隔離したLakehouseのテストコンテナでこのファイルをPythonへ渡す。
+first、deleteの順に実行し、コンシューマーを再起動してresumeを実行する。
 """
 
 import argparse
@@ -24,7 +24,7 @@ DATA = {
 
 
 def event(operation, sequence, row):
-    """Create the source envelope expected by the Foundation decoder."""
+    """Foundationが解釈する形式でソースイベントを作る。"""
     return json.dumps(
         {
             "op": operation,
@@ -43,12 +43,12 @@ def event(operation, sequence, row):
 
 
 def publish(events):
-    """Send to the synthetic Docker DNS alias and check acknowledgments."""
+    """テスト用DockerのDNS名へイベントを発行し、配信確認を検査する。"""
     producer = Producer({"bootstrap.servers": "test-broker:9092"})
     errors = []
 
     def delivered(error, _):
-        """Track failures without printing the original event values."""
+        """イベントの原値を表示せず、配信の失敗を記録する。"""
         if error:
             errors.append(error)
 
@@ -60,11 +60,11 @@ def publish(events):
             on_delivery=delivered,
         )
     if producer.flush(15) or errors:
-        raise RuntimeError("Sending to the test broker failed.")
+        raise RuntimeError("試験用ブローカーへの送信に失敗しました。")
 
 
 def check(core, expected_count, expected_product):
-    """Wait for one coherent release and inspect it alongside immutable Raw."""
+    """整合した世代の公開を待ち、変更しないRawと照合する。"""
     catalog = core.catalog()
     for _ in range(90):
         if not catalog.table_exists("cdc_events.events"):
@@ -107,11 +107,11 @@ def check(core, expected_count, expected_product):
                 )
                 return
         time.sleep(1)
-    raise AssertionError("The expected CDC generation was not published.")
+    raise AssertionError("期待したCDCの世代が公開されませんでした。")
 
 
 def main():
-    """Run one synthetic phase and await its expected Raw/Silver outcome."""
+    """合成試験の1段階を実行し、期待するRaw・Silverの結果を待つ。"""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("phase", choices=["first", "delete", "resume"])
     args = parser.parse_args()

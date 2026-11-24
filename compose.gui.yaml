@@ -1,0 +1,99 @@
+# 標準構成に重ねて、閲覧画面と管理画面の入口を追加する。
+services:
+  catalog:
+    environment:
+      LAKEKEEPER__UI__LAKEKEEPER_URL: ${LAKEHOUSE_CATALOG_URL:-http://localhost:18504}
+
+  data-browser:
+    build:
+      context: .
+      dockerfile: native/gui/Dockerfile
+      args:
+        HTTP_PROXY: ${HTTP_PROXY:-${http_proxy:-}}
+        HTTPS_PROXY: ${HTTPS_PROXY:-${https_proxy:-}}
+        http_proxy: ${http_proxy:-${HTTP_PROXY:-}}
+        https_proxy: ${https_proxy:-${HTTPS_PROXY:-}}
+      secrets: [corporate-ca]
+    restart: unless-stopped
+    mem_limit: 512m
+    cpus: 1
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: ["/tmp:size=64m,mode=1777"]
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    environment:
+      READER_TOKEN: ${READER_TOKEN:?native/setup.pyで設定を生成してください}
+      LAKEHOUSE_BROWSER_HOST: ${LAKEHOUSE_BROWSER_HOST:-localhost}
+    depends_on:
+      lakehouse:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen("http://127.0.0.1:8501/_stcore/health", timeout=2)
+      interval: 10s
+      timeout: 4s
+      retries: 10
+
+  ops-proxy:
+    # digestを固定し、認証と経路の設定は読み取り専用でマウントする。
+    image: docker.io/library/nginx:stable-alpine@sha256:8eb2b5540eae779603cc3db84b3986a15ecb5308b54303146eee9837c137b51a
+    restart: unless-stopped
+    entrypoint: [nginx]
+    command: [-g, daemon off;]
+    user: "${LANDING_UID}:${LANDING_GID}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: ["/tmp:size=32m,mode=1777"]
+    mem_limit: 96m
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    configs:
+      - source: ops-proxy
+        target: /etc/nginx/nginx.conf
+      - source: ops-proxy-headers
+        target: /etc/nginx/lakehouse-proxy.conf
+    volumes:
+      - type: bind
+        source: ${LAKEHOUSE_OPS_HTPASSWD:?運用画面の認証ファイルを指定してください}
+        target: /run/lakehouse-auth/htpasswd
+        read_only: true
+        bind:
+          create_host_path: false
+    ports:
+      - "127.0.0.1:${LAKEHOUSE_BROWSER_PORT:-18503}:8501"
+      - "127.0.0.1:${LAKEHOUSE_CATALOG_PORT:-18504}:8181"
+      - "127.0.0.1:${LAKEHOUSE_PROMETHEUS_PORT:-18505}:9090"
+    depends_on:
+      data-browser:
+        condition: service_healthy
+      catalog:
+        condition: service_healthy
+      prometheus:
+        condition: service_started
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, "http://127.0.0.1:8501/_proxy-health"]
+      interval: 10s
+      timeout: 4s
+      retries: 10
+
+  prometheus:
+    volumes:
+      - ./native/monitoring/gui-targets:/etc/prometheus/optional-targets:ro
+
+configs:
+  ops-proxy:
+    file: ./native/gui/nginx.conf
+  ops-proxy-headers:
+    file: ./native/gui/lakehouse-proxy.conf

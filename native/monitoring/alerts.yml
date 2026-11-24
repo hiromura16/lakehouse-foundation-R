@@ -1,4 +1,4 @@
-# Rules appear under Prometheus Alerts. Add Alertmanager for notifications.
+# ルールはPrometheusのアラート画面に表示する。通知にはAlertmanagerを使う。
 groups:
   - name: lakehouse-r
     rules:
@@ -7,15 +7,15 @@ groups:
         for: 1m
         labels: {severity: warning}
         annotations:
-          summary: "{{ $labels.app }} failed its availability check"
+          summary: "{{ $labels.app }} の稼働確認に失敗しました"
       - alert: LakehouseApplicationMetricsDown
         expr: up{job="native-metrics"} == 0
         for: 1m
         labels: {severity: warning}
         annotations:
-          summary: "{{ $labels.app }} metrics are unavailable"
+          summary: "{{ $labels.app }} のメトリクスを取得できません"
       - alert: LakehouseJobFailure
         expr: increase(lakehouse_failed_runs[15m]) > 0
         labels: {severity: warning}
         annotations:
-          summary: "A native batch job failed in the last 15 minutes"
+          summary: "過去15分に変換ジョブの失敗が発生しました"

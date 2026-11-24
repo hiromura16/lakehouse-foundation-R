@@ -243,7 +243,7 @@ def run(
     mapping = selected_mapping(values, mapping_file)
     topics = topic_names(values, mapping)
     if topic_has_database is not None:
-        # A native deployment can subscribe only to its broker's naming mode.
+        # 指定されたブローカーの命名方式に合うトピックを購読する。
         expected_parts = 4 if topic_has_database else 3
         topics = {
             topic: target

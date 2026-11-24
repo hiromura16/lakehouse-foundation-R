@@ -1,4 +1,4 @@
-"""Create private Foundation R settings and a landing directory."""
+"""Foundation R用の非公開設定とファイル受け渡しディレクトリを作る。"""
 
 import argparse
 import os
@@ -7,18 +7,22 @@ from pathlib import Path
 
 
 def initialize(output: Path, landing: Path) -> None:
-    """Write unique URL-safe credentials once with owner-only permissions.
+    """URLで安全に扱える資格情報を一度だけ生成し、所有者限定で保存する。
 
-    Docker mounts the directory read-only at the matching numerical UID/GID.
-    The host writer publishes a file and its SHA-256 ready marker separately.
-    Reusing an installation always means reusing the existing settings file.
+    Dockerは数値のUID・GIDを作成者に合わせ、受け渡し先を読取専用でマウントする。
+    ホスト側の書込み元は原本とSHA-256完了印を別々に確定する。
+    既存環境を再開する場合は、同じ設定ファイルを引き継ぐ。
     """
     if not landing.is_absolute() or not output.is_absolute():
-        raise ValueError("Specify absolute settings and landing paths.")
+        raise ValueError("設定と受け渡し先は絶対パスで指定してください。")
     if any(ch in str(landing) for ch in ("'", "\n", "\r", "\\")):
-        raise ValueError("Choose a landing path without quotes or escapes.")
+        raise ValueError(
+            "受け渡し先のパスには引用符やエスケープ文字を使えません。"
+        )
     if not os.getuid() or not os.getgid():
-        raise ValueError("Run setup as the unprivileged landing owner.")
+        raise ValueError(
+            "受け渡し先を所有する一般ユーザーでセットアップしてください。"
+        )
     output.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
     landing.mkdir(parents=True, mode=0o750, exist_ok=True)
     values = {
@@ -46,7 +50,7 @@ def initialize(output: Path, landing: Path) -> None:
 
 
 def main() -> None:
-    """Report the settings path without disclosing any generated value."""
+    """生成した値を表示せず、設定ファイルの場所だけを返す。"""
     parser = argparse.ArgumentParser(description=__doc__)
     config = Path.home() / ".config/lakehouse-foundation-r"
     parser.add_argument("--output", type=Path, default=config / "site.env")
@@ -55,8 +59,8 @@ def main() -> None:
     try:
         initialize(args.output, args.landing)
     except (OSError, ValueError) as error:
-        parser.exit(1, f"Setup failed. {error}\n")
-    print(f"Private settings created at {args.output}")
+        parser.exit(1, f"セットアップに失敗しました。{error}\n")
+    print(f"非公開設定を作成しました。{args.output}")
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-# file_sd lets operators add targets without editing the Prometheus scrape jobs.
+# file_sdによって、取得ジョブを編集せず監視先を追加できる。
 global:
   scrape_interval: 15s
   scrape_timeout: 5s
@@ -22,7 +22,7 @@ scrape_configs:
   - job_name: app-probes
     metrics_path: /probe
     file_sd_configs:
-      - files: [/etc/prometheus/targets/*.yml]
+      - files: [/etc/prometheus/targets/*.yml, /etc/prometheus/optional-targets/*.yml]
         refresh_interval: 30s
     relabel_configs:
       - source_labels: [__address__]

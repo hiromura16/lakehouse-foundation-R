@@ -1,8 +1,7 @@
-"""Convert completed equipment JSONL objects to long-term Iceberg time series.
+"""受け渡しが完了した設備JSONLを、Icebergの長期時系列データへ変換する。
 
-Boundary: the shared landing importer owns object integrity and the file
-ledger. This module owns sensor identity, quality, deduplication and time
-windows. Its outputs are published alongside the MES/ERP release.
+原本の整合性と取込台帳は共通のファイル取込側が管理する。このモジュールは
+計測点の識別、品質、重複排除、時間窓を扱い、結果をMES・ERPと同じ世代に公開する。
 """
 
 import json
@@ -55,7 +54,7 @@ MAX_LINE_BYTES = 65536
 
 
 def ledger(core, catalog, prefix):
-    """Return only active, versioned sensor objects from the private ledger."""
+    """非公開の取込台帳から、現在有効な設備原本とその版だけを取得する。"""
     if prefix:
         return []
     table = catalog.load_table("bronze.files")
@@ -80,7 +79,7 @@ def ledger(core, catalog, prefix):
 
 
 def point(text):
-    """Validate v1 primitive types and normalize time to UTC microseconds."""
+    """v1の値の型を検証し、時刻をUTC・マイクロ秒精度へ正規化する。"""
     value = json.loads(text)
     if not isinstance(value, dict) or set(value) != COLUMNS:
         raise ValueError("invalid_fields")
@@ -117,7 +116,7 @@ def point(text):
 
 
 def read_objects(core, entries):
-    """Read immutable archives, bound bytes and validate file hashes again."""
+    """変更しない原本を読み、バイト数の上限とハッシュを再検査する。"""
     accepted = {}
     conflicts = set()
     rejected = []
@@ -179,7 +178,7 @@ def read_objects(core, entries):
 
 
 def tables(core, db, entries):
-    """Return typed history, quarantine, latest state and minute rollups."""
+    """型付けした履歴、隔離、最新値、1分窓の集計表を返す。"""
     rows, rejected = read_objects(core, entries)
     raw = pa.Table.from_pylist(rows, schema=RAW_SCHEMA)
     group = ", ".join(IDENTITY)

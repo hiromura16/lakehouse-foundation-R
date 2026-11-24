@@ -1,4 +1,4 @@
-# Only Prometheus can reach the probe listener from the standard host setup.
+# プローブ用の待受はCompose内部で、通常はPrometheusから接続する。
 modules:
   http_ready:
     prober: http

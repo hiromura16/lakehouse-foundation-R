@@ -18,7 +18,7 @@
       "id": 1,
       "type": "stat",
       "title": "現在の稼働状態",
-      "description": "Status is from the Compose network. A direct probe failure or a failed scrape is red.",
+      "description": "Composeネットワークからの稼働確認。プローブまたは監視データの取得に失敗すると赤で表示します。",
       "gridPos": {
         "x": 0,
         "y": 0,
@@ -87,7 +87,7 @@
       "id": 2,
       "type": "state-timeline",
       "title": "稼働履歴",
-      "description": "HTTP means a successful status response. TCP means that the port was reachable.",
+      "description": "HTTPは正常なステータス応答、TCPはポートへの到達を確認します。",
       "gridPos": {
         "x": 0,
         "y": 6,
@@ -150,7 +150,7 @@
       "id": 3,
       "type": "timeseries",
       "title": "ヘルスチェック応答時間",
-      "description": "Probe duration includes connection and HTTP processing when applicable.",
+      "description": "監視先への接続にかかった時間を表示します。HTTPの場合は応答時間も含みます。",
       "gridPos": {
         "x": 0,
         "y": 16,
@@ -181,7 +181,7 @@
       "id": 4,
       "type": "timeseries",
       "title": "取込・変換ジョブ",
-      "description": "Counters reset when the worker restarts.",
+      "description": "カウンターはワーカーの再起動時にリセットされます。",
       "gridPos": {
         "x": 12,
         "y": 16,
@@ -212,7 +212,7 @@
       "id": 5,
       "type": "stat",
       "title": "最終ジョブ成功からの経過時間",
-      "description": "No data indicates no successful job has been recorded since the worker started.",
+      "description": "ワーカー起動後に成功したジョブがない間は値を表示しません。",
       "gridPos": {
         "x": 0,
         "y": 24,
@@ -252,7 +252,7 @@
       "id": 6,
       "type": "stat",
       "title": "プロセス監視",
-      "description": "Scrape availability helps distinguish a monitoring failure from a target application failure.",
+      "description": "監視データの取得状況を併せて確認し、監視側とアプリ側の障害を見分けます。",
       "gridPos": {
         "x": 12,
         "y": 24,

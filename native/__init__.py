@@ -1,1 +1,1 @@
-"""Native execution, publication, and operator interfaces for Foundation R."""
+"""Foundation Rの変換、公開、運用インターフェースをまとめる。"""

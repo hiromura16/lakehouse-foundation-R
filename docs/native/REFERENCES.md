@@ -27,6 +27,7 @@
 | SeaweedFS、PostgreSQL | 4.53、18.6 | [SeaweedFS release](https://github.com/seaweedfs/seaweedfs/releases/tag/4.53) · [公式PostgreSQL Dockerイメージ](https://hub.docker.com/_/postgres) |
 | Prometheus、Blackbox Exporter、Grafana | 3.16.0、0.29.1、13.3.0 | [Prometheus設定](https://prometheus.io/docs/prometheus/latest/configuration/configuration/) · [Blackbox](https://github.com/prometheus/blackbox_exporter/releases/tag/v0.29.1) · [Grafana provisioning](https://grafana.com/docs/grafana/latest/administration/provisioning/) |
 | Debezium、Redpanda | 外部Debeziumは設置先の採用版。Redpanda 26.3.1は隔離試験のみ | [SQL Server connector](https://debezium.io/documentation/reference/stable/connectors/sqlserver.html) · [Redpanda単一broker](https://docs.redpanda.com/labs/docker-compose/single-broker/) · [Redpandaのライセンス](https://github.com/redpanda-data/redpanda/blob/dev/licenses/bsl.md) |
+| Streamlit、NGINX | 1.67.0、1.30.8 | [Streamlitの表](https://docs.streamlit.io/develop/api-reference/data/st.dataframe) · [NGINXのBasic認証](https://nginx.org/en/docs/http/ngx_http_auth_basic_module.html) · [WebSocket中継](https://nginx.org/en/docs/http/websocket.html) |
 | LangChain Core | 1.7.6 | [Tools](https://docs.langchain.com/oss/python/langchain/tools) |
 
 既存互換構成の採用版・仕様は [Foundationの公式リファレンス一覧](../REFERENCES.md) にあります。更新時は依存の版とhash、イメージdigest、入力契約の参照commit、受入試験結果を同じ差分で確認します。

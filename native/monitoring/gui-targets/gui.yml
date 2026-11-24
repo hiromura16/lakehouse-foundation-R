@@ -1,0 +1,5 @@
+# 閲覧用Composeを追加した環境だけで読み込む。
+- targets: [http://data-browser:8501/_stcore/health]
+  labels: {app: データ閲覧, module: http_ready}
+- targets: [http://ops-proxy:8501/_proxy-health]
+  labels: {app: 閲覧ゲートウェイ, module: http_ready}

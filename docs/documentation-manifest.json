@@ -1477,6 +1477,24 @@
         "docs/native/COMPANY.md"
       ],
       "status": "active"
+    },
+    {
+      "path": "docs/native/GUI.md",
+      "title": "データ閲覧と管理画面を追加する",
+      "purpose": "Gold・Lakekeeper・Prometheusの認証付き閲覧画面を用意します。",
+      "audience": [
+        "初めて使う人",
+        "基盤構築担当"
+      ],
+      "when_to_use": "ブラウザーで実データと運用状態を確認するとき。",
+      "category": "01 入口・学習",
+      "prerequisites": [
+        "docs/native/START.md"
+      ],
+      "next": [
+        "docs/native/MONITORING.md"
+      ],
+      "status": "active"
     }
   ]
 }

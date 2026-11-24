@@ -474,13 +474,13 @@ def query(sql):
 
 
 def with_sql_provenance(statement):
-    """Pass SQL Server observation metadata through the shared projections."""
-    # Preserve SQL origin columns through each typed/final SELECT.
-    # Keep the same qualifier when a source is selected via alias.
+    """共通の列選択処理でSQL Serverの観測メタデータを引き継ぐ。"""
+    # 型変換と最終出力のSELECTで、SQL由来の列を保持する。
+    # 入力に別名がある場合は同じ修飾子を付ける。
     from scripts.sql_batch_worker import SQL_SOURCE_COLUMNS
 
     def sql_provenance(match):
-        """Extend a projection, retaining its source alias."""
+        """入力側の別名を維持したまま、SELECTの列を追加する。"""
         qualifier = match.group("qualifier") or ""
         return (
             ", ".join(qualifier + column for column in SQL_SOURCE_COLUMNS)
@@ -530,7 +530,7 @@ def medallion(prefix=""):
 
 
 def legacy_verify_query(sql, prefix):
-    """Resolve controlled oracle SQL to the isolated Trino namespaces."""
+    """所定の受入検査SQLを、隔離したTrinoの名前空間へ向ける。"""
     for layer in ["bronze", "silver", "gold", "quarantine"]:
         sql = sql.replace(
             "iceberg." + layer + ".",
@@ -546,7 +546,7 @@ def verify(*, transform=None, run_query=None):
     結果は成功した検査名と取込件数。通常の業務表は変更対象にしない。
     後片付けもこの実行の表・原本だけへ限定し、取消未確定なら保全する。
     """
-    # Both compute engines use exactly the same source fixture and oracle.
+    # 二つの処理エンジンが同じ入力素材と期待値を使う。
     transform = medallion if transform is None else transform
     run_query = legacy_verify_query if run_query is None else run_query
     # 実行ごとの隔離先を使い、通常業務表を検証・削除の対象にしない。

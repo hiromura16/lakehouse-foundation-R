@@ -1,4 +1,4 @@
-name: Native Lakehouse acceptance
+name: Foundation R 標準構成の受入検査
 
 on:  # yamllint disable-line rule:truthy
   push:
@@ -16,36 +16,46 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
-      - name: Verify Foundation source contracts
+      - name: 元のFoundationと業務契約を照合
         run: python3 native/check_contracts.py
-      - name: Validate and launch a dedicated Compose project
+      - name: 隔離したCompose構成を検査して起動
         shell: bash
         run: |
           set -Eeuo pipefail
           site="$RUNNER_TEMP/native-site.env"
           landing="$RUNNER_TEMP/native-landing"
-          chmod -R a+rX native/monitoring
+          auth="$RUNNER_TEMP/native-htpasswd"
+          chmod -R a+rX native/gui native/monitoring
           python3 native/setup.py --output "$site" --landing "$landing"
-          printf '%s\n' \
-            LAKEHOUSE_API_PORT=18502 LAKEHOUSE_GRAFANA_PORT=18501 >> "$site"
-          docker compose --env-file "$site" -p native-ci config --quiet
-          docker compose --env-file "$site" -p native-ci up \
+          umask 077
+          password=$(openssl rand -hex 24)
+          hash=$(printf '%s\n' "$password" | openssl passwd -6 -stdin)
+          printf 'operator:%s\n' "$hash" > "$auth"
+          printf 'OPS_USER=operator\nOPS_PASSWORD=%s\n' "$password" \
+            > "$RUNNER_TEMP/native-operator.env"
+          printf '%s\n' LAKEHOUSE_API_PORT=18502 LAKEHOUSE_GRAFANA_PORT=18501 \
+            "LAKEHOUSE_OPS_HTPASSWD=$auth" >> "$site"
+          docker compose --env-file "$site" config --quiet
+          docker compose --env-file "$site" -p native-ci \
+            -f compose.yaml -f compose.gui.yaml config --quiet
+          docker compose --env-file "$site" -p native-ci \
+            -f compose.yaml -f compose.gui.yaml up \
             -d --build --wait --wait-timeout 180
-      - name: Check live SQL parity, Iceberg versions, API and UI
+      - name: 業務SQL・公開世代・API・閲覧画面を検査
         run: |
           python3 tests/integration/native/acceptance.py \
             --env-file "$RUNNER_TEMP/native-site.env" \
             --landing "$RUNNER_TEMP/native-landing" --api-port 18502 \
-            --grafana-port 18501
+            --grafana-port 18501 --gui-env-file "$RUNNER_TEMP/native-operator.env"
           docker compose --env-file "$RUNNER_TEMP/native-site.env" -p native-ci \
             exec -T prometheus promtool check config /etc/prometheus/prometheus.yml
           docker compose --env-file "$RUNNER_TEMP/native-site.env" -p native-ci \
             exec -T blackbox /bin/blackbox_exporter \
             --config.file=/etc/blackbox/blackbox.yml --config.check
-      - name: Dispose of the test project and synthetic data
+      - name: 試験プロジェクトと合成データを破棄
         if: always()
         run: |
           if test -f "$RUNNER_TEMP/native-site.env"; then
             docker compose --env-file "$RUNNER_TEMP/native-site.env" -p native-ci \
-              down --volumes --remove-orphans
+              -f compose.yaml -f compose.gui.yaml down --volumes --remove-orphans
           fi

@@ -33,6 +33,7 @@
 | [認証付きAPIとLangChain](<native/API.md>) | 固定API操作とスナップショットを根拠にしたLangChain利用を確認します。 | 分析やAIのツールを実装するとき。 | active |
 | [アーキテクチャと業務契約](<native/ARCHITECTURE.md>) | 責務、元の業務契約、公開世代、既存機能の関係を確認します。 | 実装を理解・変更するとき。 | active |
 | [Dokployと企業ネットワーク](<native/COMPANY.md>) | Git・Docker・BuildKitの通信を準備し、Dokployで配備します。 | 会社環境の準備と配置時。 | active |
+| [データ閲覧と管理画面を追加する](<native/GUI.md>) | Gold・Lakekeeper・Prometheusの認証付き閲覧画面を用意します。 | ブラウザーで実データと運用状態を確認するとき。 | active |
 | [Grafanaの稼働監視を設定ファイルで管理する](<native/MONITORING.md>) | PrometheusとGrafanaの監視対象・パネルを変更します。 | 起動確認や監視対象の変更時。 | active |
 | [運用、バックアップ、受入試験](<native/OPERATIONS.md>) | 障害対応、状態の保全と合成データでの受入を行います。 | 導入先で検証・運用するとき。 | active |
 | [公式リファレンスと採用バージョン](<native/REFERENCES.md>) | 固定した版と公式仕様への参照を調べます。 | 採用版の理由や更新差分を調べるとき。 | active |
@@ -181,6 +182,7 @@
 | [認証付きAPIとLangChain](<native/API.md>) | 固定API操作とスナップショットを根拠にしたLangChain利用を確認します。 |
 | [アーキテクチャと業務契約](<native/ARCHITECTURE.md>) | 責務、元の業務契約、公開世代、既存機能の関係を確認します。 |
 | [Dokployと企業ネットワーク](<native/COMPANY.md>) | Git・Docker・BuildKitの通信を準備し、Dokployで配備します。 |
+| [データ閲覧と管理画面を追加する](<native/GUI.md>) | Gold・Lakekeeper・Prometheusの認証付き閲覧画面を用意します。 |
 | [Grafanaの稼働監視を設定ファイルで管理する](<native/MONITORING.md>) | PrometheusとGrafanaの監視対象・パネルを変更します。 |
 | [運用、バックアップ、受入試験](<native/OPERATIONS.md>) | 障害対応、状態の保全と合成データでの受入を行います。 |
 | [公式リファレンスと採用バージョン](<native/REFERENCES.md>) | 固定した版と公式仕様への参照を調べます。 |
@@ -228,6 +230,7 @@
 | [認証付きAPIとLangChain](<native/API.md>) | 固定API操作とスナップショットを根拠にしたLangChain利用を確認します。 |
 | [アーキテクチャと業務契約](<native/ARCHITECTURE.md>) | 責務、元の業務契約、公開世代、既存機能の関係を確認します。 |
 | [Dokployと企業ネットワーク](<native/COMPANY.md>) | Git・Docker・BuildKitの通信を準備し、Dokployで配備します。 |
+| [データ閲覧と管理画面を追加する](<native/GUI.md>) | Gold・Lakekeeper・Prometheusの認証付き閲覧画面を用意します。 |
 | [Grafanaの稼働監視を設定ファイルで管理する](<native/MONITORING.md>) | PrometheusとGrafanaの監視対象・パネルを変更します。 |
 | [運用、バックアップ、受入試験](<native/OPERATIONS.md>) | 障害対応、状態の保全と合成データでの受入を行います。 |
 | [公式リファレンスと採用バージョン](<native/REFERENCES.md>) | 固定した版と公式仕様への参照を調べます。 |

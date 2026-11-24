@@ -5,7 +5,7 @@ providers:
     type: file
     disableDeletion: false
     allowUiUpdates: false
-    # Polling survives bind mounts where file watcher notifications are lost.
+    # マウント先でファイル変更通知が失われても、定期読み込みで反映する。
     updateIntervalSeconds: 30
     options:
       path: /etc/lakehouse/dashboards

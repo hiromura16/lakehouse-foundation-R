@@ -1,4 +1,4 @@
-"""Verify native Compose with synthetic sensor data and a provisioned UI."""
+"""合成センサーデータと自動設定された画面で標準Composeを検証する。"""
 
 import argparse
 import base64
@@ -7,11 +7,12 @@ import json
 import time
 from pathlib import Path
 from urllib.error import HTTPError
+from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 
 def fixture(root):
-    """Publish five synthetic sensor lines and an adjacent integrity marker."""
+    """合成したセンサー5行と、隣接する整合性確認用の完了印を配置する。"""
     point = {
         "factory_id": "F-SYNTHETIC",
         "line_id": "L1",
@@ -42,7 +43,7 @@ def fixture(root):
 
 
 def sql_fixture(root):
-    """Prepare the extractor's six-table format with one synthetic product."""
+    """抽出側の6表形式に合わせ、合成製品1件を含むバッチを作る。"""
     contracts = json.loads(
         (
             Path(__file__).resolve().parents[3] / "medallion/sources.json"
@@ -98,7 +99,7 @@ def sql_fixture(root):
 
 
 def fetch(url, *, authorization=None, body=None):
-    """Use a bounded request and return only decoded JSON."""
+    """タイムアウト付きでHTTP要求を送り、復号したJSONを返す。"""
     headers = {"Content-Type": "application/json"}
     if authorization:
         headers["Authorization"] = authorization
@@ -110,7 +111,7 @@ def fetch(url, *, authorization=None, body=None):
 
 
 def load_test_env(path):
-    """Read only generated test settings without shell evaluation."""
+    """生成済みのテスト設定だけを、シェルで評価せずに読み込む。"""
     return dict(
         line.split("=", 1)
         for line in path.read_text().splitlines()
@@ -119,7 +120,7 @@ def load_test_env(path):
 
 
 def check(args, env):
-    """Check token roles, replay, pinned Gold, and Grafana provisioning."""
+    """トークン分離、再実行、固定したGold、Grafanaの自動設定を確認する。"""
     reader = "Bearer " + env["READER_TOKEN"]
     writer = "Bearer " + env["WORKER_TOKEN"]
     http = f"http://127.0.0.1:{args.api_port}"
@@ -130,7 +131,7 @@ def check(args, env):
         except HTTPError as error:
             assert error.code == 401
         else:
-            raise AssertionError("Gold accepted an invalid credential.")
+            raise AssertionError("Gold APIが無効な資格情報を受け付けました。")
     try:
         fetch(
             http + "/run", authorization=reader, body={"action": "medallion"}
@@ -138,7 +139,7 @@ def check(args, env):
     except HTTPError as error:
         assert error.code == 401
     else:
-        raise AssertionError("Writer accepted the reader credential.")
+        raise AssertionError("書込APIが読取用の資格情報を受け付けました。")
 
     build = fetch(
         http + "/run", authorization=writer, body={"action": "medallion"}
@@ -201,7 +202,9 @@ def check(args, env):
         except (OSError, HTTPError):
             time.sleep(1)
     else:
-        raise AssertionError("Grafana did not provision the dashboard.")
+        raise AssertionError(
+            "Grafanaにダッシュボードが自動設定されませんでした。"
+        )
     assert len(result["dashboard"]["panels"]) >= 6
     assert result["meta"]["provisioned"]
     print(
@@ -220,16 +223,69 @@ def check(args, env):
     )
 
 
+def check_gui(args):
+    """同じ認証で3画面が開き、カタログの書込みが拒否されることを確認する。"""
+    env = load_test_env(args.gui_env_file)
+    encoded = base64.b64encode(
+        (env["OPS_USER"] + ":" + env["OPS_PASSWORD"]).encode()
+    ).decode()
+    auth = "Basic " + encoded
+    checks = (
+        (18503, "/_stcore/health"),
+        (18504, "/ui/"),
+        (18505, "/targets"),
+    )
+    for port, path in checks:
+        url = f"http://127.0.0.1:{port}{path}"
+        try:
+            urlopen(url, timeout=5)
+        except HTTPError as error:
+            assert error.code == 401, (port, error.code)
+        else:
+            raise AssertionError(f"認証なしの閲覧が可能です。ポート {port}")
+        request = Request(url, headers={"Authorization": auth})
+        with urlopen(request, timeout=5) as response:
+            assert response.status == 200, port
+
+    try:
+        fetch(
+            "http://127.0.0.1:18504/health",
+            authorization=auth,
+            body={},
+        )
+    except HTTPError as error:
+        assert error.code == 403
+    else:
+        raise AssertionError("Lakekeeperへの書込みが可能です。")
+
+    query = urlencode({"query": "probe_success"})
+    url = f"http://127.0.0.1:18505/api/v1/query?{query}"
+    deadline = time.monotonic() + 65
+    while time.monotonic() < deadline:
+        result = fetch(url, authorization=auth)["data"]["result"]
+        probes = {item["metric"]["app"]: item["value"][1] for item in result}
+        if len(probes) == 9 and set(probes.values()) == {"1"}:
+            print(
+                "閲覧3画面の認証、Lakekeeperの書込み拒否、全9監視先を確認しました。"
+            )
+            return
+        time.sleep(2)
+    raise AssertionError(f"監視先の初回取得が完了しませんでした。{probes}")
+
+
 def main():
-    """Run against an isolated Compose project with fresh credentials."""
+    """新規の資格情報を使い、隔離したComposeプロジェクトを検証する。"""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--env-file", required=True, type=Path)
     parser.add_argument("--landing", required=True, type=Path)
     parser.add_argument("--api-port", required=True, type=int)
     parser.add_argument("--grafana-port", required=True, type=int)
+    parser.add_argument("--gui-env-file", type=Path)
     args = parser.parse_args()
     fixture(args.landing)
     check(args, load_test_env(args.env_file))
+    if args.gui_env_file:
+        check_gui(args)
 
 
 if __name__ == "__main__":

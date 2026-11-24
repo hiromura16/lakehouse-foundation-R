@@ -1,4 +1,4 @@
-"""Serve authenticated, fixed native jobs and read-only Gold data over HTTP."""
+"""認証付きの定型ジョブと、読取専用のGoldデータをHTTPで提供する。"""
 
 import argparse
 import json
@@ -21,23 +21,23 @@ from native import engine
 
 
 def core_module():
-    """Load the shared storage/landing adapter after environment validation."""
+    """検証済みの環境設定で、共有の保存・取込アダプターを読み込む。"""
     import admin
 
     return admin
 
 
 def json_value(value):
-    """Keep decimal precision and timestamp timezone in the wire response."""
+    """小数の精度と日時のタイムゾーンをAPI応答に保持する。"""
     if isinstance(value, (date, datetime)):
         return value.isoformat()
     if isinstance(value, Decimal):
         return str(value)
-    raise TypeError("Unexpected JSON field type.")
+    raise TypeError("JSON応答に対応していない型です。")
 
 
 def run_job(core, action, body):
-    """Serialize writes and record successful job completion."""
+    """書込みを直列化し、正常に完了したジョブを記録する。"""
     if not core.LOCK.acquire(blocking=False):
         return None
     try:
@@ -69,7 +69,7 @@ def run_job(core, action, body):
 
 
 def report_error(error):
-    """Log exception class and location without input or credentials."""
+    """入力値や資格情報を含めず、例外の型と発生箇所を記録する。"""
     frames = traceback.extract_tb(error.__traceback__)
     print(
         json.dumps(
@@ -86,30 +86,30 @@ def report_error(error):
 
 
 def handler(core):
-    """Bind shared storage state to the inherited, restricted HTTP adapter."""
+    """共有ストレージの状態を、機能を限定した既存のHTTP処理に渡す。"""
 
     class Handler(core.Handler):
-        """Allow health, metrics, fixed operator jobs and snapshot reads."""
+        """稼働確認、メトリクス、定型ジョブ、スナップショット参照を提供する。"""
 
         def setup(self):
-            """Limit idle clients before the parent reads any HTTP bytes."""
+            """親クラスがHTTPを読み始める前に、待機時間の上限を設ける。"""
             self.request.settimeout(10)
             super().setup()
 
         def authorized(self, setting):
-            """Compare the requested independent token in constant time."""
+            """用途別のトークンを一定時間で比較する。"""
             supplied = self.headers.get("Authorization", "").encode("utf-8")
             expected = f"Bearer {os.environ[setting]}".encode()
             return secrets.compare_digest(supplied, expected)
 
         def respond(self, status, value, content_type="application/json"):
-            """Serialize dates and decimals for the shared response writer."""
+            """共通の応答処理へ渡す日付・日時・小数を直列化する。"""
             if content_type == "application/json":
                 value = json.loads(json.dumps(value, default=json_value))
             return super().respond(status, value, content_type)
 
         def do_GET(self):
-            """Serve registered resources and bound the returned rows."""
+            """登録済みのデータだけを、指定された行数の上限まで返す。"""
             try:
                 parsed = urlsplit(self.path)
             except ValueError:
@@ -177,7 +177,7 @@ def handler(core):
                 return self.respond(503, {"error": "GOLD_UNAVAILABLE"})
 
         def do_POST(self):
-            """Run a declared job after token, path and payload validation."""
+            """トークン、パス、要求内容を検証し、許可済みのジョブを実行する。"""
             if self.path != "/run":
                 return self.respond(404, {"error": "UNKNOWN_RESOURCE"})
             if not self.authorized("WORKER_TOKEN"):
@@ -221,15 +221,15 @@ def handler(core):
 
 
 def serve():
-    """Validate the keys and initialize storage before serving HTTP."""
+    """トークンの検証と保存先の初期化を済ませてからHTTPを受け付ける。"""
     worker, reader = (os.environ[k] for k in ("WORKER_TOKEN", "READER_TOKEN"))
     if worker == reader or not all(
         re.fullmatch(r"[a-f0-9]{64}", token) for token in (worker, reader)
     ):
-        raise ValueError("Generate independent 64-character token values.")
+        raise ValueError("64文字の異なるトークンを生成してください。")
     core = core_module()
-    # Lakekeeper health is a dependency. S3 starts in the same Compose wave;
-    # an initial connection failure is recoverable without starting HTTP early.
+    # Lakekeeperの健全性はComposeで待機する。S3の初回接続に失敗した場合は
+    # 初期化を再試行し、成功するまでHTTPを受け付けない。
     for attempt in range(15):
         try:
             core.bootstrap()
@@ -237,7 +237,9 @@ def serve():
         except Exception as error:
             if attempt == 14:
                 raise
-            print(f"Bootstrap pending ({type(error).__name__}).", flush=True)
+            print(
+                f"初期化を再試行します（{type(error).__name__}）。", flush=True
+            )
             time.sleep(2)
     core.STATE["ready"] = True
     with ThreadingHTTPServer(("0.0.0.0", 8080), handler(core)) as http:
@@ -245,7 +247,7 @@ def serve():
 
 
 def operation(action, dataset=None, limit=50):
-    """Call the local service without putting tokens in CLI arguments."""
+    """トークンをCLIの引数に載せず、同じコンテナのAPIを呼ぶ。"""
     origin = "http://127.0.0.1:8080"
     if action == "health":
         request = Request(origin + "/health")
@@ -272,7 +274,7 @@ def operation(action, dataset=None, limit=50):
 
 
 def main():
-    """Use standard output for JSON results and exit nonzero on failure."""
+    """結果は標準出力へJSONで返し、失敗時は非ゼロで終了する。"""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "action",
@@ -292,7 +294,10 @@ def main():
         if args.action == "serve":
             report_error(error)
         elif args.action != "health":
-            print(f"Request failed ({type(error).__name__}).", file=sys.stderr)
+            print(
+                f"要求に失敗しました（{type(error).__name__}）。",
+                file=sys.stderr,
+            )
         return 1
     return 0
 

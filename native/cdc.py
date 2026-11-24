@@ -1,8 +1,8 @@
-"""Consume a private Kafka-compatible SQL Server CDC feed with native compute.
+"""非公開のKafka互換経路からSQL ServerのCDCイベントを取り込む。
 
-The established Debezium decoder, offset guard, raw writer and state machine
-remain shared with Foundation. This adapter supplies a different SQL engine
-and explicit Kafka client settings. Source registration is an upstream task.
+Debeziumのイベント解釈、オフセット検査、Raw保存、状態管理は既存Foundationと共用する。
+このアダプターがDuckDBによる変換とKafkaクライアント設定を渡す。
+SQL Server側のソース登録は上流で行う。
 """
 
 import json
@@ -27,7 +27,7 @@ ALLOWED_KAFKA = {
 
 
 def settings(path):
-    """Read bounded site settings and protect offset-control options."""
+    """サイズ上限付きでサイト設定を読み、オフセット制御の上書きを防ぐ。"""
     with path.open("rb") as stream:
         document = json.loads(stream.read(64 * 1024 + 1))
     if set(document) != {"source", "kafka", "topic_has_database"}:
@@ -73,9 +73,9 @@ def settings(path):
 
 
 def main():
-    """Run a single bounded consumer against its dedicated state directory."""
-    # The original image uses flat modules. Keep the adapter's own imports
-    # separate and use the same controlled path inside both image variants.
+    """専用の状態ディレクトリを使い、単一のコンシューマーを実行する。"""
+    # 既存イメージの平坦なモジュール配置を使う。アダプターの読み込み先は分け、
+    # どちらのイメージ構成でも同じ管理下のパスを追加する。
     sys.path.insert(0, str(engine.ROOT / "cdc"))
     from config import settings as foundation_settings
     from consumer import run

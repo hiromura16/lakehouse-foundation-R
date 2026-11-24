@@ -1,12 +1,12 @@
-# Use with compose.yaml on the same isolated site. The Kafka broker and
-# Debezium connector are managed separately and receive no source writes here.
+# 同じ隔離環境でcompose.yamlと重ねて使う。Kafkaブローカーと
+# Debeziumコネクターは上流で管理し、この構成から書き込まない。
 services:
   native-cdc:
     image: ${COMPOSE_PROJECT_NAME:-lakehouse-r}-lakehouse
     pull_policy: never
     command: [python, -m, native.cdc]
     restart: on-failure:5
-    user: "${LANDING_UID:?Run native/setup.py}:${LANDING_GID:?Run native/setup.py}"
+    user: "${LANDING_UID:?native/setup.pyで非公開設定を作成してください}:${LANDING_GID:?native/setup.pyで非公開設定を作成してください}"
     read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
@@ -19,30 +19,30 @@ services:
         max-size: 10m
         max-file: '3'
     environment:
-      S3_ACCESS_KEY: ${S3_ACCESS_KEY:?Run native/setup.py}
-      S3_SECRET_KEY: ${S3_SECRET_KEY:?Run native/setup.py}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:?native/setup.pyで非公開設定を作成してください}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:?native/setup.pyで非公開設定を作成してください}
       S3_BUCKET_RAW: lakehouse-r-raw
       S3_BUCKET_WAREHOUSE: lakehouse-r-warehouse
       WAREHOUSE_NAME: foundation-r
-      WORKER_TOKEN: ${WORKER_TOKEN:?Run native/setup.py}
+      WORKER_TOKEN: ${WORKER_TOKEN:?native/setup.pyで非公開設定を作成してください}
       CDC_ALLOW_PLAINTEXT: ${CDC_ALLOW_PLAINTEXT:-0}
     depends_on:
       lakehouse:
         condition: service_healthy
     volumes:
       - type: bind
-        source: ${CDC_STATE_DIR:?Set an empty private CDC state directory}
+        source: ${CDC_STATE_DIR:?CDC用の非公開状態ディレクトリを指定してください}
         target: /state
         bind:
           create_host_path: false
       - type: bind
-        source: ${CDC_SETTINGS_FILE:?Set private Kafka consumer settings}
+        source: ${CDC_SETTINGS_FILE:?Kafkaコンシューマーの非公開設定を指定してください}
         target: /run/cdc/settings.json
         read_only: true
         bind:
           create_host_path: false
       - type: bind
-        source: ${CDC_TABLE_MAP_FILE:?Set private six-table mapping}
+        source: ${CDC_TABLE_MAP_FILE:?6表の非公開マッピングを指定してください}
         target: /run/cdc/table-map.json
         read_only: true
         bind:

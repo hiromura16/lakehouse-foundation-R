@@ -1,4 +1,4 @@
-"""Expose a snapshot-aware Foundation R read-only tool to LangChain."""
+"""Foundation Rの公開スナップショットをLangChainから読み取る。"""
 
 import argparse
 import json
@@ -22,10 +22,10 @@ Dataset = Literal[
 
 
 class NoRedirect(HTTPRedirectHandler):
-    """Keep the reader credential on the configured origin."""
+    """読取用の資格情報を設定済みの接続先内に留める。"""
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
-        """Reject any redirect so the credential cannot cross origins."""
+        """資格情報が他の接続先へ渡らないよう、リダイレクトを拒否する。"""
         return None
 
 
@@ -33,14 +33,15 @@ class NoRedirect(HTTPRedirectHandler):
 def lakehouse_gold(
     dataset: Dataset, limit: int = 25, release: str | None = None
 ) -> dict:
-    """Read a published Gold table and return rows plus Iceberg evidence.
+    """公開済みのGold表を読み、行データとIcebergの参照情報を返します。
 
-    Use the first response's release_snapshot_id in subsequent calls to
-    compare data from the same release. The server only accepts registered
-    Gold datasets and a maximum of 200 rows per call.
+    最初の応答のrelease_snapshot_idを後続の呼出しに渡すと、同じ公開世代の
+    データを比較できます。登録済みのGoldデータセットを1回につき200行まで取得できます。
     """
     if dataset not in Dataset.__args__ or not 1 <= limit <= 200:
-        raise ValueError("Use a registered dataset and a limit from 1 to 200.")
+        raise ValueError(
+            "登録済みのデータセット名と1〜200の件数を指定してください。"
+        )
     origin = os.environ.get("LAKEHOUSE_API_URL", "http://127.0.0.1:18502")
     url = urlsplit(origin)
     if (
@@ -58,7 +59,9 @@ def lakehouse_gold(
             )
         )
     ):
-        raise ValueError("Use an HTTPS origin or an HTTP loopback endpoint.")
+        raise ValueError(
+            "HTTPSの接続先またはHTTPのループバック接続先を指定してください。"
+        )
     params = {"limit": str(limit)}
     if release is not None:
         params["release"] = release
@@ -73,12 +76,12 @@ def lakehouse_gold(
 
 
 def main():
-    """Run one tool invocation without initializing a model or tracing."""
+    """モデルやトレーシングを初期化せずに、ツールを1回呼び出す。"""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("dataset", choices=Dataset.__args__)
     parser.add_argument("--limit", type=int, default=25)
     parser.add_argument(
-        "--release", help="Iceberg release snapshot ID to reuse."
+        "--release", help="後続の参照で使用するIcebergの公開世代ID"
     )
     args = parser.parse_args()
     result = lakehouse_gold.invoke(vars(args))

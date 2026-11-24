@@ -1,5 +1,5 @@
-# Give every app a unique app label. This is the dashboard's row identity.
-# Catalog migration is a one-shot. Its exit code gates Lakekeeper readiness.
+# appにはアプリごとに異なる表示名を付ける。ダッシュボード行の識別に使う。
+# カタログ移行は一度だけ実行し、正常終了してからLakekeeperを起動する。
 - targets: [catalog-db:5432]
   labels: {app: PostgreSQL, module: tcp_connect}
 - targets: [storage:8333]

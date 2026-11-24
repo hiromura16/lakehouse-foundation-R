@@ -37,6 +37,19 @@ flowchart LR
   P[PrometheusとBlackbox] --> O[Grafana 稼働監視]
 ```
 
+## DuckDBとは
+
+DuckDBは分析用のSQLエンジンです。Pythonのワーカーに組み込み、列指向のArrowデータをSQLで集計できます。Foundation Rでは1台のホスト上で、受注・出荷の結合、工場ごとの日次集計、設備の1分窓集計などを担当します。
+
+| 役割 | 製品 | 受け持つ処理 |
+| --- | --- | --- |
+| 計算 | DuckDB | Arrowを入力に、業務SQLの型変換・検査・集計を実行 |
+| テーブルの読み書き | PyIceberg | Icebergの行をArrowで読み、変換結果を書き込み、スナップショットを確定 |
+| カタログ | LakekeeperとPostgreSQL | 名前空間・表・メタデータの位置とカタログの永続状態を管理 |
+| 保存 | SeaweedFS S3 | 原本とIcebergのデータファイルを永続化 |
+
+処理上限は下記の単一ホスト構成に合わせて設定しています。複数ホストでの分散実行や既存PySparkジョブは互換構成のSparkを使います。
+
 ## UNIXの責務分離とDDD
 
 投入アプリは原本を作ります。入力アダプターは完了印とバイト列を照合して保管します。DuckDBはバッチごとにUTCのインメモリ接続を作り、承認されたSQLだけをArrowへ実行します。永続化の責務はLakekeeper、PostgreSQLとS3にあります。APIは固定された処理名とGoldデータセットを提供します。CLIとCIは同じAPIで確認できます。モデルは読取専用の利用者です。
@@ -57,6 +70,46 @@ flowchart LR
 Icebergは表ごとにcommitします。14本のMES/ERP SQLと、該当する設備時系列をすべて保存できた時点で、最後に `gold._release` に出力スナップショットを登録します。APIはその世代だけを参照します。途中で失敗すると直接Icebergを読む利用者には各表の最新状態が見えるため、一貫した世代が必要な場合は公開マニフェストを参照してください。read APIから古い公開世代も指定できます。参照する表スナップショットも一緒に保持する必要があります。
 
 1つのCompose projectで各namespaceのwriterは1つです。複数レプリカや他製品からの並行書き込みは運用範囲外です。CPU、メモリ、原本サイズ、テーブル走査の行数とサイズには上限を設けています。単体100,000行・業務表64 MiBの走査上限を超えた場合は、別のdataset分割や分散構成を検証してから適用します。
+
+### ファイル受け渡しから公開まで
+
+```mermaid
+sequenceDiagram
+  participant F as データ投入アプリ
+  participant W as Lakehouse ワーカー
+  participant S as SeaweedFS S3
+  participant I as Iceberg表・Lakekeeper
+  participant D as DuckDB
+  participant R as 読取API・画面
+  F->>W: 原本とSHA-256完了印を受け渡す
+  W->>S: 照合した原本を保存する
+  W->>I: Bronzeとファイル台帳を確定する
+  I-->>W: 固定したBronzeのスナップショットを返す
+  W->>D: Arrowを登録して業務SQLを実行する
+  D-->>W: Silver・Quarantine・Goldを返す
+  W->>I: 派生表のスナップショットを確定する
+  alt 全ての表を保存できた
+    W->>I: gold._releaseに公開世代を記録する
+    R->>I: 公開世代が指す表の版を読む
+  else 保存中に失敗した
+    R->>I: 前回の公開世代を読む
+  end
+```
+
+## 元のFoundationとの比較
+
+比較元は [既存Foundationのmain](https://github.com/hiromura16/lakehouse-foundation/tree/8adaef6d28a4fa01f2e409fd01a568cd6770e071) です。既存の6ソース契約と合成データの期待値を両構成で共有します。
+
+| 観点 | 元のFoundation | Foundation R |
+| --- | --- | --- |
+| 標準の変換・参照 | Trinoで業務SQLを実行。Sparkクラスタを追加可能 | 組み込みのDuckDBとPyIcebergで単一ホスト実行。スナップショットを固定したAPIを提供 |
+| 取り込み | ファイル、SQL Server、既存Debezium/Kafka用の配置と管理 | 同じファイル・SQLバッチ契約。外部Kafka互換ブローカー向けのネイティブCDCと設備JSONLを追加 |
+| 業務・運用GUI | 操作ポータル、Superset、Kafka UI、n8n、監視などが豊富 | Grafana、Gold閲覧、Lakekeeper、Prometheusを使う軽量な入口。既存の各画面は互換構成で起動可能 |
+| 監視・オーケストレーション | Prometheus、Grafana、Loki、Vector、Airflow、n8nなど | 設定ファイルで標準アプリの監視を配備。ログ基盤とオーケストレーションは互換構成 |
+| 新しいデータ利用 | Gold API、MCP、LangChainのサンプル | 設備の最新値・1分集計と全表の公開世代。Gold閲覧画面とLangChainで表の版を確認可能 |
+| 処理規模 | Spark分散構成・外部分析ツールを追加可能 | 標準は単一ホスト。複数ノードと既存Sparkジョブには互換構成を使用 |
+
+標準構成の機能数は既存Foundationの全プロファイルより少なく、JVMなしで配備できる変換・閲覧の経路と設備時系列の扱いが増えています。
 
 ## 既存機能の入口
 

@@ -16,7 +16,7 @@
 
 ## 毎日の確認
 
-1. `docker compose --env-file "$site" ps -a` で状態を確認し、Grafanaに7つの監視先が表示されるか見ます。
+1. `docker compose --env-file "$site" ps -a` で状態を確認し、Grafanaで標準7件、閲覧構成を追加した場合は9件の監視先を確認します。
 2. `catalog-migrate` の終了コード0と、Lakehouseのhealthyを確認します。
 3. 取り込み後は件数とGold公開世代を控えます。 `JOB_FAILED` のときは `docker compose --env-file "$site" logs --tail 80 lakehouse` で例外型・行番号を確認し、完了印、列、空き領域、監視状態を照合します。
 4. 入力修正後に同じジョブを再実行し、アプリが示す公開世代が更新されたことを確認します。古い世代を読む利用者がいる間は、そのIceberg表のスナップショットを失効させないでください。
@@ -46,4 +46,4 @@
 - 専用の空の検証projectで `tests/integration/native/acceptance.py` を実行し、センサー、公開世代の固定、読み書きトークンの分離、Grafanaのプロビジョニングを確認します。このテストは指定landingへ合成ファイルを書き込みます。
 - 会社の受入では、Git取得と認証、デーモンpull、BuildKitの依存取得、配置後の接続、実データと運用上限、バックアップからの復元をそれぞれ確認します。
 
-監視設定の検査は [Grafanaの設定変更手順](MONITORING.md) にあります。契約やソース変更をレビューする場合は、 [品質検査規約](../../CONTRIBUTING.md) とCIの `Native Lakehouse acceptance` および既存の `Validate public source` を確認します。
+監視設定の検査は [Grafanaの設定変更手順](MONITORING.md) にあります。契約やソース変更をレビューする場合は、 [品質検査規約](../../CONTRIBUTING.md) とCIの `Foundation R 標準構成の受入検査` および既存の `Validate public source` を確認します。

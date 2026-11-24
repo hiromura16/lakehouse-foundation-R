@@ -1,8 +1,8 @@
-"""Run the Foundation business SQL with DuckDB and publish Iceberg snapshots.
+"""Foundationの業務SQLをDuckDBで実行し、Icebergのスナップショットを公開する。
 
-The catalog and object store retain table state. DuckDB starts in memory for
-each run, with no network extensions, local input files or user-supplied SQL.
-Only the batch runner resolves table names and translates checked-in SQL.
+表の永続状態はカタログとオブジェクトストレージに置く。DuckDBは処理ごとに
+メモリ上で起動し、ネットワーク拡張、ローカル入力ファイル、利用者指定のSQLは扱わない。
+表名の解決とコミット済みSQLの移植処理はバッチ実行側に集約する。
 """
 
 import json
@@ -53,7 +53,7 @@ CTAS = re.compile(
 
 
 def connect():
-    """Use a fresh UTC connection restricted to explicitly registered Arrow."""
+    """明示的に登録するArrowを入力とする新しいUTC接続を作る。"""
     db = duckdb.connect(
         ":memory:",
         config={
@@ -69,11 +69,10 @@ def connect():
 
 
 def sql_for_duckdb(sql):
-    """Adapt the audited Foundation dialect constructs without changing rules.
+    """業務規則を保ったまま、検証済みのFoundation SQLをDuckDB向けに調整する。
 
-    The Trino source files are the business contract. The substitutions here
-    are for those files and the independent acceptance SQL only. A change to
-    the source hash and the oracle tests must accompany new SQL constructs.
+    既存のTrino SQLを業務契約とする。ここで置換するのはそのSQLと独立した
+    受入検査SQLに限定する。新しい構文へ対応する際は、同期元ハッシュと期待値テストも更新する。
     """
     sql = re.sub(r"^\s*--.*$", "", sql, flags=re.MULTILINE)
     sql = re.sub(
@@ -91,8 +90,8 @@ def sql_for_duckdb(sql):
         sql,
         flags=re.DOTALL | re.IGNORECASE,
     )
-    # DuckDB BIGINT rounds a decimal string while Trino's VARCHAR cast rejects
-    # it. Validation must preserve the original invalid_type outcome.
+    # DuckDBは小数文字列を丸めてBIGINTにする。整数形式を先に検証し、
+    # Trinoでのinvalid_type判定を引き継ぐ。
     sql = re.sub(
         r"TRY_CAST\((\w+) AS BIGINT\)",
         r"CASE WHEN regexp_full_match(trim(\1), '[+-]?[0-9]+') "
@@ -110,7 +109,7 @@ def sql_for_duckdb(sql):
 
 
 def bounded_scan(table, snapshot_id):
-    """Read one pinned snapshot and reject oversized batches as they arrive."""
+    """固定したスナップショットを読み、途中でもサイズ上限の超過を検出する。"""
     if snapshot_id is None:
         return table.schema().as_arrow().empty_table()
     batches = []
@@ -128,13 +127,13 @@ def bounded_scan(table, snapshot_id):
 
 
 def current_id(table):
-    """Return the exact main snapshot, or None for a newly empty table."""
+    """mainのスナップショットIDを返す。未作成または空の初期表ではNoneを返す。"""
     snapshot = table.current_snapshot()
     return snapshot.snapshot_id if snapshot else None
 
 
 def write_table(catalog, identifier, arrow):
-    """Overwrite one Iceberg V2 table with stable schema and return its ID."""
+    """スキーマを保ってIceberg V2の1表を上書きし、スナップショットIDを返す。"""
     if not catalog.table_exists(identifier):
         catalog.create_table(
             identifier, schema=arrow.schema, properties={"format-version": "2"}
@@ -142,8 +141,8 @@ def write_table(catalog, identifier, arrow):
     table = catalog.load_table(identifier)
     expected = table.schema().as_arrow()
     if not arrow.schema.equals(expected, check_metadata=False):
-        # DuckDB can canonicalize Arrow timezone aliases and string widths.
-        # Arrow rejects incompatible casts before the catalog commit.
+        # DuckDBはArrowのタイムゾーン別名や文字列型を正規化する。
+        # 互換性のない変換は、カタログへの確定前にArrowが拒否する。
         arrow = arrow.cast(expected)
     if arrow.num_rows or current_id(table) is not None:
         table.overwrite(arrow)
@@ -151,13 +150,13 @@ def write_table(catalog, identifier, arrow):
 
 
 def release_table(core, prefix):
-    """Resolve one manifest table inside the matching batch/CDC namespace."""
+    """バッチまたはCDCの名前空間から公開マニフェスト表を特定する。"""
     namespace = core.schema(prefix, "gold")
     return f"{namespace}._release"
 
 
 def latest_release(core, catalog, prefix="", release_id=None):
-    """Load a pinned or latest successful manifest, including its own ID."""
+    """指定世代または最新の正常公開のマニフェストを、自身のIDとともに取得する。"""
     identifier = release_table(core, prefix)
     if not catalog.table_exists(identifier):
         return None
@@ -174,7 +173,7 @@ def latest_release(core, catalog, prefix="", release_id=None):
 
 
 def input_tables(core, catalog, prefix):
-    """Pin the six Bronze tables before loading any rows from storage."""
+    """ストレージから行を読み始める前に、6つのBronze表の読み取り版を確定する。"""
     identifiers = {
         source["table"]: catalog.load_table(
             f"{core.schema(prefix, 'bronze')}.{source['table']}"
@@ -187,7 +186,7 @@ def input_tables(core, catalog, prefix):
 
 
 def add_arrow(db, relation, target, arrow):
-    """Materialize an Arrow input and release its Python reference."""
+    """Arrowの入力を表に取り込み、Python側の参照を解放する。"""
     db.register(relation, arrow)
     try:
         db.execute(f"CREATE TABLE {target} AS SELECT * FROM {relation}")
@@ -196,11 +195,11 @@ def add_arrow(db, relation, target, arrow):
 
 
 def medallion(core, prefix=""):
-    """Commit derived tables and publish their snapshot IDs as the last step.
+    """派生表を保存し、全表のスナップショットIDを最後に公開する。
 
-    Iceberg commits individual tables. Readers use the previous manifest
-    until every new output commit succeeds. Restart and rerun after failure.
-    The single-writer rule applies per prefix and must hold across processes.
+    Icebergは表ごとに確定する。全表の保存が完了するまで、利用者は前回の
+    マニフェストを参照する。途中で失敗したら復旧後に再実行する。
+    同じ接頭辞へ書き込む実行元は、プロセスをまたいで1つに限定する。
     """
     core.ensure_tables(prefix)
     catalog = core.catalog()
@@ -246,8 +245,8 @@ def medallion(core, prefix=""):
             local = match[1]
             db.execute(statement)
             arrow = db.sql(f"SELECT * FROM {local}").to_arrow_table()
-            # Trino SUM(BIGINT) produces BIGINT. DuckDB's integer SUM produces
-            # HUGEINT; explicitly narrow counts and retain true decimals.
+            # TrinoのSUM(BIGINT)はBIGINT、DuckDBの整数SUMはHUGEINTを返す。
+            # 集計した整数を明示的に縮め、小数の列は精度を保つ。
             columns = [
                 pa.field(field.name, pa.int64())
                 if pa.types.is_decimal(field.type) and field.type.scale == 0
@@ -285,7 +284,7 @@ def medallion(core, prefix=""):
 
 
 def verify_query(core, sql, prefix):
-    """Check published Silver, Quarantine, Gold and pinned Bronze in DuckDB."""
+    """公開済みのSilver・Quarantine・Goldと、固定したBronzeをDuckDBで検査する。"""
     catalog = core.catalog()
     release = latest_release(core, catalog, prefix)
     with connect() as db:
@@ -311,9 +310,9 @@ def verify_query(core, sql, prefix):
             )
         rows = db.execute(sql_for_duckdb(sql)).fetchall()
 
-    # Trino REST encodes dates and decimals into JSON scalar values.
+    # Trino RESTの応答に合わせ、日付と小数をJSONの値に変換する。
     def oracle_value(value):
-        """Match the independent reference JSON's scalar representation."""
+        """独立した期待値JSONで使われるスカラー値の表現へそろえる。"""
         if isinstance(value, date):
             return value.isoformat()
         return float(value) if isinstance(value, Decimal) else value
@@ -322,7 +321,7 @@ def verify_query(core, sql, prefix):
 
 
 def gold_rows(core, name, limit, prefix="", release_id=None):
-    """Return bounded, deterministically ordered Gold rows with provenance."""
+    """由来情報付きのGoldを、一定の順序で指定行数の上限まで返す。"""
     if name not in GOLD or not 1 <= limit <= 200:
         raise ValueError("INVALID_GOLD_REQUEST")
     catalog = core.catalog()
