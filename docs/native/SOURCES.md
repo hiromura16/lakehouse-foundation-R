@@ -209,6 +209,18 @@ PostgreSQLの両方を使う場合、別プロジェクトと別カタログ・�
 この抽出は全件スナップショット専用で、増分取得とCDCは別の経路です。
 [PostgreSQLのトランザクション分離](https://www.postgresql.org/docs/18/transaction-iso.html) · [PostgreSQLのMVCCに関する注意](https://www.postgresql.org/docs/18/mvcc-caveats.html) · [libpqの証明書検証](https://www.postgresql.org/docs/18/libpq-ssl.html) · [Psycopgの型変換](https://www.psycopg.org/psycopg3/docs/basic/adapt.html)
 
+[PostgreSQL専用のGitHub Actions](../../.github/workflows/postgresql.yml) は、
+一時証明書と合成6表でTLSの受入・拒否、実IcebergのGoldと同一観測の再送を
+確認します。ローカルで再現する場合は、使い捨て環境でDockerとComposeを用意し、
+上で固定依存を入れたPythonを指定して、リポジトリのルートから実行します。
+試験用のPostgreSQLはループバックの自動割当ポートだけを公開します。
+
+**Bash / Zsh共通**
+
+```bash
+bash tests/integration/postgresql/run.sh "$config/venv/bin/python"
+```
+
 ## 固定SQLバッチをAPIで受け取る
 
 上流の固定SQL観測が生成した `<batch_id>.json` と完了印を `sql-batches/` に置く経路です。 `POST /run` に操作トークンと `batch_id`、`observed_at` を送ります。ファイル抽出CLIの出力は上記の通常取込に渡します。[操作APIとSQLバッチ例](API.md)

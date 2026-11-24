@@ -1,0 +1,53 @@
+name: PostgreSQLソースの受入検査
+
+on:  # yamllint disable-line rule:truthy
+  push:
+    paths: &postgresql_paths
+      - .github/workflows/postgresql.yml
+      - compose.yaml
+      - contracts/native/**
+      - infra/proxy/**
+      - infra/source/postgresql-*
+      - infra/source/requirements-postgresql.*
+      - medallion/**
+      - native/**
+      - scripts/extract-postgresql.py
+      - scripts/sql_batch_worker.py
+      - scripts/sqlserver_batch.py
+      - tests/integration/postgresql/**
+  pull_request:
+    paths: *postgresql_paths
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
+        with:
+          python-version: '3.14'
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+        with:
+          version: '0.13.7'
+          checksum: c5221ff41b7892bfc223543883600125f6a47fe845093e0f5bdff4f359196d83
+          enable-cache: false
+      - name: 合成TLSと実Icebergへの反映・再送を検査
+        shell: bash
+        timeout-minutes: 12
+        run: |
+          set -Eeuo pipefail
+          uv venv --python 3.14 "$RUNNER_TEMP/postgresql-check"
+          uv pip sync --python "$RUNNER_TEMP/postgresql-check/bin/python" \
+            --require-hashes infra/source/requirements-postgresql.lock
+          bash tests/integration/postgresql/run.sh "$RUNNER_TEMP/postgresql-check/bin/python"

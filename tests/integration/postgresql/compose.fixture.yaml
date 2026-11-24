@@ -1,0 +1,49 @@
+# 合成ソースはカタログDBや通常のComposeネットワークと分ける。
+services:
+  lakehouse:
+    # /runはコンテナ内から呼び出す。ホストに書込APIを公開しない。
+    ports: !reset []
+  postgres-source:
+    image: postgres:18.6-alpine@sha256:300ebd02c6d4de9ee27ad7f6855d5d21b4d3a4a5117767c1197d284c635d9736
+    mem_limit: 384m
+    cpus: 1
+    environment:
+      POSTGRES_DB: factory
+      POSTGRES_PASSWORD_FILE: /fixture/admin-password
+    entrypoint: [/bin/sh, -ec]
+    # 一時鍵をPostgreSQLの実行ユーザーだけが読める場所に移す。
+    command:
+      - |
+        mkdir -p /run/source-tls
+        cp /fixture/server.pem /fixture/server-key.pem /run/source-tls/
+        chown postgres:postgres /run/source-tls/server.pem /run/source-tls/server-key.pem
+        chmod 600 /run/source-tls/server-key.pem
+        exec docker-entrypoint.sh postgres -c ssl=on \
+          -c ssl_cert_file=/run/source-tls/server.pem \
+          -c ssl_key_file=/run/source-tls/server-key.pem \
+          -c shared_buffers=32MB -c max_connections=16
+    volumes:
+      - type: bind
+        source: ${POSTGRES_FIXTURE_INPUT:?合成ソースの一時設定を作成してください}
+        target: /fixture
+        read_only: true
+        bind:
+          create_host_path: false
+      - postgres-source:/var/lib/postgresql
+    ports:
+      - target: 5432
+        published: '0'
+        host_ip: 127.0.0.1
+    networks:
+      - postgres_source
+    healthcheck:
+      test: [CMD, pg_isready, -h, 127.0.0.1, -U, postgres, -d, factory]
+      interval: 3s
+      timeout: 2s
+      retries: 20
+
+networks:
+  postgres_source:
+
+volumes:
+  postgres-source:
