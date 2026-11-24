@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="工場データの受入、保存、集計、閲覧、監視を導入するための20枚の説明資料。">
+  <meta name="description" content="工場データの受入、保存、集計、閲覧、監視を導入するための26枚の説明資料。">
   <title>Lakehouse Foundation R｜導入と運用</title>
   <link rel="stylesheet" href="slides.css">
   <script src="slides.js" defer></script>
@@ -18,7 +18,7 @@
       <button id="next" type="button" aria-label="次のスライド"><span>次へ</span><span aria-hidden="true">→</span></button>
       <button id="print" type="button">印刷・PDF</button>
     </div>
-    <progress id="progress" aria-label="スライドの進み具合" max="20" value="1"></progress>
+    <progress id="progress" aria-label="スライドの進み具合" max="26" value="1"></progress>
     <span id="announcer" class="sr-only" role="status"></span>
   </nav>
 
@@ -36,7 +36,7 @@
   <!-- 確認や印刷はJavaScriptが使えない環境でも行えるよう、全スライドをHTMLに置く。 -->
   <main id="deck" aria-label="Lakehouse Foundation R 導入と運用">
     <section id="foundation-r" class="slide cover" aria-labelledby="title-foundation-r" data-chapter="設計">
-      <header class="slide-header"><span>設計</span><span class="folio">01 / 20</span></header>
+      <header class="slide-header"><span>設計</span><span class="folio">01 / 26</span></header>
       <div class="slide-body cover-grid">
         <div>
           <h1 id="title-foundation-r">Lakehouse<br>Foundation R</h1>
@@ -57,7 +57,7 @@
     </section>
 
     <section id="responsibilities" class="slide" aria-labelledby="title-responsibilities" data-chapter="設計">
-      <header class="slide-header"><span>設計</span><span class="folio">02 / 20</span></header>
+      <header class="slide-header"><span>設計</span><span class="folio">02 / 26</span></header>
       <h2 id="title-responsibilities">工場・業務・運用の責務を分ける</h2>
       <p class="lead">誰が値を決め、誰が運び、誰が公開を保証するかを先に決める。</p>
       <div class="slide-body cards three">
@@ -70,7 +70,7 @@
     </section>
 
     <section id="architecture" class="slide" aria-labelledby="title-architecture" data-chapter="設計">
-      <header class="slide-header"><span>設計</span><span class="folio">03 / 20</span></header>
+      <header class="slide-header"><span>設計</span><span class="folio">03 / 26</span></header>
       <h2 id="title-architecture">オンプレを中心に役割を接続する</h2>
       <p class="lead">保存・カタログ・計算・利用を別々に変更できる構成。</p>
       <div class="slide-body figure-layout wide-figure">
@@ -89,7 +89,7 @@
     </section>
 
     <section id="data-layers" class="slide" aria-labelledby="title-data-layers" data-chapter="設計">
-      <header class="slide-header"><span>設計</span><span class="folio">04 / 20</span></header>
+      <header class="slide-header"><span>設計</span><span class="folio">04 / 26</span></header>
       <h2 id="title-data-layers">原本から公開集計までを追跡する</h2>
       <p class="lead">Medallionの各層で、保存した事実と業務上の判断を記録する。</p>
       <div class="slide-body">
@@ -105,7 +105,7 @@
     </section>
 
     <section id="data-contracts" class="slide" aria-labelledby="title-data-contracts" data-chapter="設計">
-      <header class="slide-header"><span>設計</span><span class="folio">05 / 20</span></header>
+      <header class="slide-header"><span>設計</span><span class="folio">05 / 26</span></header>
       <h2 id="title-data-contracts">業務の粒度を揃えてから結合する</h2>
       <p class="lead">列名のほか、キー・時刻・品質・重複・不成立時の扱いをデータ契約にする。</p>
       <div class="slide-body">
@@ -123,7 +123,7 @@
     </section>
 
     <section id="intake" class="slide" aria-labelledby="title-intake" data-chapter="データと調査">
-      <header class="slide-header"><span>データと調査</span><span class="folio">06 / 20</span></header>
+      <header class="slide-header"><span>データと調査</span><span class="folio">06 / 26</span></header>
       <h2 id="title-intake">データ源に合う受け渡しを選ぶ</h2>
       <p class="lead">出せる形式から始め、変換を増やす前に原本と受領結果を残す。</p>
       <div class="slide-body cards two">
@@ -136,7 +136,7 @@
     </section>
 
     <section id="telemetry" class="slide" aria-labelledby="title-telemetry" data-chapter="データと調査">
-      <header class="slide-header"><span>データと調査</span><span class="folio">07 / 20</span></header>
+      <header class="slide-header"><span>データと調査</span><span class="folio">07 / 26</span></header>
       <h2 id="title-telemetry">設備の測定点と業務集計を使い分ける</h2>
       <p class="lead">時刻・品質・設備IDの契約を揃え、調査の時間幅に合わせて保存先を選ぶ。</p>
       <div class="slide-body">
@@ -151,7 +151,7 @@
     </section>
 
     <section id="iceberg" class="slide" aria-labelledby="title-iceberg" data-chapter="データと調査">
-      <header class="slide-header"><span>データと調査</span><span class="folio">08 / 20</span></header>
+      <header class="slide-header"><span>データと調査</span><span class="folio">08 / 26</span></header>
       <h2 id="title-iceberg">Icebergで公開時点の表を指定する</h2>
       <p class="lead">ファイルと表の版、業務製品の公開世代を結び付ける。</p>
       <div class="slide-body figure-layout">
@@ -170,7 +170,7 @@
     </section>
 
     <section id="data-browser" class="slide" aria-labelledby="title-data-browser" data-chapter="データと調査">
-      <header class="slide-header"><span>データと調査</span><span class="folio">09 / 20</span></header>
+      <header class="slide-header"><span>データと調査</span><span class="folio">09 / 26</span></header>
       <h2 id="title-data-browser">業務画面から数字の出所を調べる</h2>
       <p class="lead">日次生産・出荷・設備から調べたい製品を選び、数値と公開時点を突き合わせる。</p>
       <div class="slide-body figure-layout">
@@ -188,7 +188,7 @@
     </section>
 
     <section id="monitoring" class="slide" aria-labelledby="title-monitoring" data-chapter="データと調査">
-      <header class="slide-header"><span>データと調査</span><span class="folio">10 / 20</span></header>
+      <header class="slide-header"><span>データと調査</span><span class="folio">10 / 26</span></header>
       <h2 id="title-monitoring">状態・履歴・処理遅延を調べる</h2>
       <p class="lead">接続先の応答と、公開ジョブの成否や経過時間を分けて見る。</p>
       <div class="slide-body figure-layout wide-figure">
@@ -207,7 +207,7 @@
     </section>
 
     <section id="operations-tools" class="slide" aria-labelledby="title-operations-tools" data-chapter="連携と配備">
-      <header class="slide-header"><span>連携と配備</span><span class="folio">11 / 20</span></header>
+      <header class="slide-header"><span>連携と配備</span><span class="folio">11 / 26</span></header>
       <h2 id="title-operations-tools">調査と自動化の入口を揃える</h2>
       <p class="lead">運用ポータルで応答を確認し、作業に合うツールへ移動する。</p>
       <div class="slide-body figure-layout">
@@ -226,7 +226,7 @@
     </section>
 
     <section id="ai-access" class="slide" aria-labelledby="title-ai-access" data-chapter="連携と配備">
-      <header class="slide-header"><span>連携と配備</span><span class="folio">12 / 20</span></header>
+      <header class="slide-header"><span>連携と配備</span><span class="folio">12 / 26</span></header>
       <h2 id="title-ai-access">AIの回答に表の版を添える</h2>
       <p class="lead">LLMへの質問を、対象製品と公開時点が明確な読取操作に分ける。</p>
       <div class="slide-body">
@@ -241,7 +241,7 @@
     </section>
 
     <section id="dokploy" class="slide" aria-labelledby="title-dokploy" data-chapter="連携と配備">
-      <header class="slide-header"><span>連携と配備</span><span class="folio">13 / 20</span></header>
+      <header class="slide-header"><span>連携と配備</span><span class="folio">13 / 26</span></header>
       <h2 id="title-dokploy">Dokployから標準構成を配備する</h2>
       <p class="lead">会社VMで通信とファイルの配置を確認し、DokployがComposeを取得して起動する。</p>
       <div class="slide-body">
@@ -257,7 +257,7 @@
     </section>
 
     <section id="proxy" class="slide" aria-labelledby="title-proxy" data-chapter="連携と配備">
-      <header class="slide-header"><span>連携と配備</span><span class="folio">14 / 20</span></header>
+      <header class="slide-header"><span>連携と配備</span><span class="folio">14 / 26</span></header>
       <h2 id="title-proxy">プロキシの障害を4つの経路に分ける</h2>
       <p class="lead">Gitが取得できても、イメージやPythonパッケージの取得に別設定が必要になる。</p>
       <div class="slide-body">
@@ -276,7 +276,7 @@
     </section>
 
     <section id="cloudflare" class="slide" aria-labelledby="title-cloudflare" data-chapter="連携と配備">
-      <header class="slide-header"><span>連携と配備</span><span class="folio">15 / 20</span></header>
+      <header class="slide-header"><span>連携と配備</span><span class="folio">15 / 26</span></header>
       <h2 id="title-cloudflare">承認済みの集計だけを外部へ届ける</h2>
       <p class="lead">Cloudflareは任意の出口。取込、処理、Iceberg公開は工場側で完結する。</p>
       <div class="slide-body">
@@ -291,7 +291,7 @@
     </section>
 
     <section id="compute" class="slide" aria-labelledby="title-compute" data-chapter="評価と運用">
-      <header class="slide-header"><span>評価と運用</span><span class="folio">16 / 20</span></header>
+      <header class="slide-header"><span>評価と運用</span><span class="folio">16 / 26</span></header>
       <h2 id="title-compute">Sparkが担う処理を用途別に選ぶ</h2>
       <p class="lead">標準の業務SQLは単一VMで実行。実行量や互換性が必要になったら同じデータで評価する。</p>
       <div class="slide-body cards two">
@@ -304,7 +304,7 @@
     </section>
 
     <section id="alternatives" class="slide" aria-labelledby="title-alternatives" data-chapter="評価と運用">
-      <header class="slide-header"><span>評価と運用</span><span class="folio">17 / 20</span></header>
+      <header class="slide-header"><span>評価と運用</span><span class="folio">17 / 26</span></header>
       <h2 id="title-alternatives">置き換え候補は役割ごとに検証する</h2>
       <p class="lead">実データを導入する前に、Rust製の候補も互換性と復元を確認する。</p>
       <div class="slide-body">
@@ -323,7 +323,7 @@
     </section>
 
     <section id="acceptance" class="slide" aria-labelledby="title-acceptance" data-chapter="評価と運用">
-      <header class="slide-header"><span>評価と運用</span><span class="folio">18 / 20</span></header>
+      <header class="slide-header"><span>評価と運用</span><span class="folio">18 / 26</span></header>
       <h2 id="title-acceptance">合成データの期待値と受入結果を照合する</h2>
       <p class="lead">入力、処理、公開結果、再実行を同じ記録に残す。</p>
       <div class="slide-body">
@@ -341,7 +341,7 @@
     </section>
 
     <section id="first-day" class="slide" aria-labelledby="title-first-day" data-chapter="評価と運用">
-      <header class="slide-header"><span>評価と運用</span><span class="folio">19 / 20</span></header>
+      <header class="slide-header"><span>評価と運用</span><span class="folio">19 / 26</span></header>
       <h2 id="title-first-day">初日の合格条件と復旧点を決める</h2>
       <p class="lead">会社VMでは実際のプロキシ、接続元、保存先で順に受け入れる。</p>
       <div class="slide-body cards three">
@@ -354,7 +354,7 @@
     </section>
 
     <section id="component-guide" class="slide" aria-labelledby="title-component-guide" data-chapter="評価と運用">
-      <header class="slide-header"><span>評価と運用</span><span class="folio">20 / 20</span></header>
+      <header class="slide-header"><span>評価と運用</span><span class="folio">20 / 26</span></header>
       <h2 id="title-component-guide">構成要素と資料を作業から探す</h2>
       <p class="lead">変更する場所を絞り、必要になった構成から手を付ける。</p>
       <div class="slide-body">
@@ -369,7 +369,119 @@
           </tbody>
         </table>
       </div>
-      <footer class="slide-foot"><a href="https://github.com/hiromura16/lakehouse-foundation-R/blob/main/docs/native/PRESENTATION.md">PowerPoint・PDF・構成図</a><a href="https://github.com/hiromura16/lakehouse-foundation-R/blob/main/docs/DOCUMENTATION-MANIFEST.md">担当ごとの資料一覧</a></footer>
+      <footer class="slide-foot"><a href="#vm-preflight">技術付録へ</a><a href="https://github.com/hiromura16/lakehouse-foundation-R/blob/main/docs/native/PRESENTATION.md">PowerPoint・PDF・構成図</a><a href="https://github.com/hiromura16/lakehouse-foundation-R/blob/main/docs/DOCUMENTATION-MANIFEST.md">担当ごとの資料一覧</a></footer>
+    </section>
+
+    <section id="vm-preflight" class="slide" aria-labelledby="title-vm-preflight" data-chapter="技術付録">
+      <header class="slide-header"><span>技術付録</span><span class="folio">21 / 26</span></header>
+      <h2 id="title-vm-preflight">会社VMでDeploy前に容量と経路を確認する</h2>
+      <p class="lead">Dokployと同じ設定で診断する。必要なDockerブリッジの数は構成によって変わる。</p>
+      <div class="slide-body">
+        <div class="metrics" aria-label="プロジェクトごとに必要なIPv4ブリッジ">
+          <div><strong>6<span>本</span></strong><p>標準構成</p></div>
+          <div><strong>7<span>本</span></strong><p>標準＋閲覧GUI</p></div>
+          <div><strong>10<span>本</span></strong><p>標準＋閲覧GUI＋運用ツール</p></div>
+        </div>
+        <div class="cards two evidence-cards">
+          <article><h3>配置するVMで診断</h3><p>同じApp Name・環境ファイル・Compose順で <code>scripts/preflight.py</code> を実行。Docker接続、ファイル参照、IPv4の空きを読み取り、秘密値やCIDRを伏せて報告する。</p></article>
+          <article><h3>固定IPAMの割当を計画</h3><p>空きが足りない場合は管理者と、既存Dockerネットワーク、VM経路、会社VPNと重複しない範囲を確認する。警告はDeploy前に見直す。</p></article>
+        </div>
+      </div>
+      <footer class="slide-foot"><a href="https://github.com/hiromura16/lakehouse-foundation-R/blob/main/docs/native/COMPANY.md#初回deployの前に配備先vmを診断する">会社VMでの実行手順</a><a href="https://github.com/hiromura16/lakehouse-foundation-R/commit/1790f50">診断コマンドの実装と検証</a></footer>
+    </section>
+
+    <section id="sql-snapshots" class="slide" aria-labelledby="title-sql-snapshots" data-chapter="技術付録">
+      <header class="slide-header"><span>技術付録</span><span class="folio">22 / 26</span></header>
+      <h2 id="title-sql-snapshots">SQLの同一時点読取と公開世代を守る</h2>
+      <p class="lead">対象6表を同じ観測で取得し、内容IDと観測時刻を記録する。</p>
+      <div class="slide-body">
+        <div class="cards three">
+          <article><h3>SQL Server</h3><p><code>SNAPSHOT</code> トランザクションで、読取中に別接続が2表を更新しても同じ時点の6表を取得。未対応時は出力せず終了。</p></article>
+          <article><h3>PostgreSQL</h3><p>証明書を検査したTLSと <code>REPEATABLE READ READ ONLY</code> で取得。実Icebergへの公開と同一観測の再送を確認。</p></article>
+          <article><h3>SQLite</h3><p>内製アプリの閉じた単体バックアップを読取専用で取得。原本と同じ内容を再観測しても時刻は区別する。</p></article>
+        </div>
+        <ol class="proof-track" aria-label="SQLiteの3公開世代">
+          <li><strong>観測1 · A</strong><span>良品8／出荷3</span></li>
+          <li><strong>観測2 · B</strong><span>良品9／出荷0</span></li>
+          <li><strong>観測3 · A</strong><span>良品8／出荷3、内容IDを再利用</span></li>
+        </ol>
+        <div class="note">SQLiteの3公開世代は指定して読み直せる。同じ観測の再送は確定済みの結果を維持する。</div>
+      </div>
+      <footer class="slide-foot"><a href="https://github.com/hiromura16/lakehouse-foundation-R/actions/runs/45450984256">SQL Serverの受入</a><a href="https://github.com/hiromura16/lakehouse-foundation-R/actions/runs/45456509749">PostgreSQLの受入</a><a href="https://github.com/hiromura16/lakehouse-foundation-R/actions/runs/45454433487">SQLiteの受入</a></footer>
+    </section>
+
+    <section id="industrial-proofs" class="slide" aria-labelledby="title-industrial-proofs" data-chapter="技術付録">
+      <header class="slide-header"><span>技術付録</span><span class="folio">23 / 26</span></header>
+      <h2 id="title-industrial-proofs">設備の停止復帰で全計測点を照合する</h2>
+      <p class="lead">40台の合成設備からMQTTで送り、Vector停止中の500点をブローカーから復帰させる。</p>
+      <div class="slide-body">
+        <table class="data-table broker-table">
+          <thead><tr><th scope="col">Bakuの隔離試験</th><th scope="col">Redpanda</th><th scope="col">Nisshi</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">平常9,500点の送信・照合</th><td>1,025.9秒</td><td>1,015.9秒</td></tr>
+            <tr><th scope="row">500点の復帰</th><td>50.0秒</td><td>49.9秒</td></tr>
+            <tr><th scope="row">一致した全行</th><td>10,001件</td><td>10,001件</td></tr>
+          </tbody>
+        </table>
+        <div class="cards two evidence-cards">
+          <article><h3>全値を再読取</h3><p>50点を再送し、初出1点を加えて照合。各ブローカーを1回測定し、時刻・設備ID・値の一致を確認した。</p></article>
+          <article><h3>GitHub Actionsの6ケース</h3><p>MQTTとOPC UAを両ブローカーで検証し、Modbus TCPと仮想シリアルRTUも確認。CIのMQTTは各1,001件。</p></article>
+        </div>
+      </div>
+      <footer class="slide-foot"><a href="https://github.com/hiromura16/lakehouse-foundation-R/blob/main/docs/native/TELEMETRY.md#mqttの連続送信停止復帰を測る">隔離計測と条件</a><a href="https://github.com/hiromura16/lakehouse-foundation-R/actions/runs/45451288935">6ケースのCI</a></footer>
+    </section>
+
+    <section id="engine-parity" class="slide" aria-labelledby="title-engine-parity" data-chapter="技術付録">
+      <header class="slide-header"><span>技術付録</span><span class="folio">24 / 26</span></header>
+      <h2 id="title-engine-parity">20表の再計算と削除後の読取を試す</h2>
+      <p class="lead">計算を置き換える調査では、表の版・型・現在値まで読戻す。</p>
+      <div class="slide-body cards two">
+        <article class="proof-card">
+          <h3>DuckDBとDataFusionの業務計算</h3>
+          <p><strong>Bronze 6 ＋ Silver 6 ＋ Quarantine 6 ＋ Gold 2</strong></p>
+          <p>同じBronzeのIceberg V2を固定し、派生表を別々のwarehouseへ保存。行・型・フィールドIDを照合した。時刻境界や異常値、空入力も試験。</p>
+        </article>
+        <article class="proof-card">
+          <h3>RisingWaveのIceberg V2削除</h3>
+          <p><strong>位置削除</strong>　無分割の表をPyIcebergとDuckDBで読戻し、更新・削除とカタログ復旧後の行が一致。</p>
+          <p><strong>等価削除</strong>　<code>bucket[4]</code> 付き表はDuckDBで読戻し。採用版のPyIcebergではこの削除を読めない。</p>
+        </article>
+      </div>
+      <div class="note">RisingWaveを追加する場合は、テーブル分割、削除形式、利用側の読取エンジンを組で受け入れる。</div>
+      <footer class="slide-foot"><a href="https://github.com/hiromura16/lakehouse-foundation-R/actions/runs/45452449021">業務SQL 20表の照合</a><a href="https://github.com/hiromura16/lakehouse-foundation-R/actions/runs/45451420694">RisingWaveの削除・復旧検証</a></footer>
+    </section>
+
+    <section id="storage-proofs" class="slide" aria-labelledby="title-storage-proofs" data-chapter="技術付録">
+      <header class="slide-header"><span>技術付録</span><span class="folio">25 / 26</span></header>
+      <h2 id="title-storage-proofs">物理復元と256 MiB原本を照合する</h2>
+      <p class="lead">物理バックアップの復元と大容量原本の再起動耐性を、各試験条件で確かめる。</p>
+      <div class="slide-body">
+        <div class="cards two">
+          <article class="proof-card"><h3>PostgreSQLとSeaweedFSの物理復元</h3><p>停止した同じ時点の保全物を、新しい隔離Volumeへ戻す。Raw 6件のSHA-256、日次生産14行・受注20行、表UUIDと公開世代が一致。</p></article>
+          <article class="proof-card"><h3>RustFSで上限ちょうど256 MiB</h3><p>同じVolumeで再起動し、全バイトを1 MiBずつ読みSHA-256を再計算。再送しても原本やIceberg台帳のスナップショットは増えない。</p></article>
+        </div>
+        <div class="note"><strong>固定公開世代のS3監査</strong>　ローカル合成試験でIceberg参照先85件の存在と、記録済みのサイズを確認。欠落、サイズ不一致、復旧、監査上限も照合した。</div>
+      </div>
+      <footer class="slide-foot"><a href="https://github.com/hiromura16/lakehouse-foundation-R/actions/runs/45454248043">物理復元のCI</a><a href="https://github.com/hiromura16/lakehouse-foundation-R/actions/runs/45454247843">RustFS原本のCI</a><a href="https://github.com/hiromura16/lakehouse-foundation-R/commit/8bb5eda">S3監査の実装と検証</a></footer>
+    </section>
+
+    <section id="read-export-boundaries" class="slide" aria-labelledby="title-read-export-boundaries" data-chapter="技術付録">
+      <header class="slide-header"><span>技術付録</span><span class="folio">26 / 26</span></header>
+      <h2 id="title-read-export-boundaries">Gold読取と外部搬出の境界を確かめる</h2>
+      <p class="lead">混雑時の応答を決め、外部搬出は承認した世代だけ確定する。</p>
+      <div class="slide-body">
+        <div class="cards two">
+          <article class="proof-card"><h3>Goldの読取枠は既定で同時2件</h3><p>標準・SQL・CDCで枠を共有。満杯時は <code>503 GOLD_BUSY</code> と <code>Retry-After: 2</code>。絞り込み後の走査上限は10万行・Arrow 64 MiB。</p></article>
+          <article class="proof-card"><h3>R2の署名付き再送</h3><p>合成HTTPSへ実SDKで送信。不正な承認では通信0件。503や応答断から再開し、412またはバケットロックの特定409では既存内容を照合。</p></article>
+        </div>
+        <ol class="proof-track" aria-label="承認したR2搬出の確定順序">
+          <li><strong>承認と検査</strong><span>分類・サイズ・SHA-256</span></li>
+          <li><strong>成果物を作成</strong><span>条件付きPUT、競合時に読戻し</span></li>
+          <li><strong>manifestを最後に確定</strong><span>利用者は確定済み世代を開く</span></li>
+        </ol>
+        <div class="note">R2は合成HTTPSでの受入。実テナントでは専用権限と会社のTLS経路を合成データで確認する。</div>
+      </div>
+      <footer class="slide-foot"><a href="https://github.com/hiromura16/lakehouse-foundation-R/blob/main/docs/native/API.md">Gold APIの上限と再試行</a><a href="https://github.com/hiromura16/lakehouse-foundation-R/actions/runs/45455388775">Goldの読取枠のCI</a><a href="https://github.com/hiromura16/lakehouse-foundation-R/actions/runs/45452749505">署名付きR2搬出のCI</a></footer>
     </section>
   </main>
 </body>

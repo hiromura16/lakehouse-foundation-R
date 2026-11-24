@@ -280,6 +280,7 @@ code { font-family: "Noto Sans Mono CJK JP", ui-monospace, monospace; }
 .data-table thead { background: #234c40; color: var(--white); }
 .data-table tbody th { background: #e7efe7; color: var(--deep); }
 .data-table :is(th, td):first-child { width: 22%; }
+.broker-table :is(th, td):first-child { width: 40%; }
 .component-table :is(th, td):last-child { width: 25%; }
 .metrics div {
   padding: .94cqw 1.35cqw;
@@ -291,6 +292,26 @@ code { font-family: "Noto Sans Mono CJK JP", ui-monospace, monospace; }
 .metrics strong span { margin-inline-start: .3em; font-size: var(--item-title); }
 .metrics p { margin-block-start: .28em; color: var(--muted); }
 .evidence-cards { margin-block-start: var(--gap); }
+.proof-card strong { color: var(--deep); }
+.proof-track {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--gap);
+  margin: var(--gap) 0 0;
+  padding: 0;
+  list-style: none;
+}
+.proof-track li {
+  display: grid;
+  align-content: start;
+  gap: .18em;
+  padding: .7cqw 1.05cqw;
+  border-block-start: 2px solid var(--accent);
+  border-radius: .35cqw;
+  background: var(--soft);
+  color: var(--deep);
+}
+.proof-track span { color: var(--muted); }
 .network-diagram section { min-height: 15cqw; }
 .network-diagram section:nth-child(2) { background: #e2efe7; }
 
@@ -361,6 +382,8 @@ code { font-family: "Noto Sans Mono CJK JP", ui-monospace, monospace; }
   .metrics strong { font-size: 1.85rem; }
   .metrics strong span { display: block; margin: 0; font-size: .82rem; }
   .metrics p { font-size: .78rem; }
+  .proof-track { grid-template-columns: minmax(0, 1fr); gap: .4rem; }
+  .proof-track li { padding: .5rem .65rem; border-radius: .3rem; }
   .cover .cover-grid { gap: .9rem; }
   .cover h1 { font-size: clamp(2.55rem, 12cqw, 4rem); }
   .cover .lead { margin-block-start: .75rem; font-size: 1.15rem; }
