@@ -1,0 +1,62 @@
+# Rill Developerの検証専用。Notebookや本番のComposeとはネットワークを共有しない。
+services:
+  rill:
+    image: docker.io/rilldata/rill:v0.92.1@sha256:4a9b7c8729ab9fa4fff640c4023739d31690e2b77323b48dfbe95b018983afc6
+    working_dir: /project
+    command: [start, /project, --preview, --no-open, "--pull-env=false"]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 1g
+    cpus: 1.0
+    pids_limit: 128
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777
+      - /project/tmp:rw,noexec,nosuid,nodev,size=128m,uid=1001,gid=1001,mode=0700
+      - /home/rill/.rill:rw,noexec,nosuid,nodev,size=8m,uid=1001,gid=1001,mode=0700
+    volumes:
+      - ./project:/project:ro
+      - ./analytics.yaml:/home/rill/.rill/config.yaml:ro
+    networks: [offline]
+    healthcheck:
+      test: [CMD, curl, -fsS, "http://127.0.0.1:9009/v1/ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 25
+
+  gateway:
+    image: docker.io/library/nginx:stable-alpine@sha256:8eb2b5540eae779603cc3db84b3986a15ecb5308b54303146eee9837c137b51a
+    entrypoint: [nginx]
+    command: [-g, "daemon off;"]
+    user: "${RILL_GATEWAY_UID:-1000}:${RILL_GATEWAY_GID:-1000}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 48m
+    pids_limit: 32
+    tmpfs: ["/tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777"]
+    volumes:
+      - type: bind
+        source: ./nginx.conf
+        target: /etc/nginx/nginx.conf
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${RILL_PASSWORD_FILE:?Basic認証ファイルへの絶対パスを指定してください}
+        target: /run/operator.htpasswd
+        read_only: true
+        bind:
+          create_host_path: false
+    ports:
+      - target: 8080
+        host_ip: 127.0.0.1
+    networks: [frontend, offline]
+    depends_on:
+      rill:
+        condition: service_healthy
+
+networks:
+  frontend:
+  offline:
+    internal: true

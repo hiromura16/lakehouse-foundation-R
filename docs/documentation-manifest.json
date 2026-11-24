@@ -365,6 +365,24 @@
         "docs/native/ACCEPTANCE.md"
       ],
       "status": "active"
+    },
+    {
+      "path": "examples/rill/README.md",
+      "title": "Rillで工場別の日次生産を探索する",
+      "purpose": "承認した日次生産Goldから、工場と期間を切り替えてKPIを確認します。",
+      "audience": [
+        "データ利用担当",
+        "基盤構築担当"
+      ],
+      "when_to_use": "計画、実績、歩留まりを工場と日付で探索するとき。",
+      "category": "03 データ・操作",
+      "prerequisites": [
+        "examples/marimo/README.md"
+      ],
+      "next": [
+        "docs/native/GUI.md"
+      ],
+      "status": "active"
     }
   ]
 }

@@ -1,0 +1,6 @@
+# 事前に検証したファイルからDuckDBを開き、Rillにテーブルの更新権限を与えない。
+type: connector
+driver: duckdb
+path: /project/data/gold.duckdb
+mode: read
+allow_host_access: false

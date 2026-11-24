@@ -99,3 +99,8 @@ Dokployからは [企業向け配置手順](COMPANY.md) のRun Commandに同じC
 をmarimoに渡せます。工場ごとの日別グラフ・期間の歩留まりを確認でき、
 入力SHA-256と公開世代を記録します。配備は専用プロジェクトで行い、
 ブラウザー入口を認証で保護します。[Notebookの導入と合成データ](../../examples/marimo/README.md)
+
+Rill DeveloperのPreviewでは、承認済みの日次生産を工場・期間で絞り、
+YAMLで定義したKPIを確認します。日次計画の差や歩留まりの傾向を
+ブラウザーで探索する合成の追加構成で、Rillの公式イメージを使用します。
+[Rillで工場別KPIを探索する](../../examples/rill/README.md)

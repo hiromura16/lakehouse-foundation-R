@@ -1,0 +1,4 @@
+# 検証用に承認した日次Goldから、工場の指標を探索する。
+display_name: 工場の生産計画と実績
+description: Foundation Rの日次生産Goldから作る検証用の分析画面
+olap_connector: gold_snapshot

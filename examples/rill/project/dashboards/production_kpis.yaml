@@ -1,0 +1,26 @@
+# 工場別・期間別で再集計しても分母が変わらないよう、行ごとの率は平均しない。
+type: metrics_view
+version: 1
+table: production
+timeseries: production_date
+dimensions:
+  - name: factory_id
+    display_name: 工場
+    column: factory_id
+measures:
+  - name: plan
+    display_name: 計画数
+    expression: sum(planned_qty)
+    format_preset: humanize
+  - name: good
+    display_name: 良品数
+    expression: sum(good_qty)
+    format_preset: humanize
+  - name: rejected
+    display_name: 不良数
+    expression: sum(reject_qty)
+    format_preset: humanize
+  - name: yield
+    display_name: 歩留まり
+    expression: sum(good_qty) / nullif(sum(total_qty), 0)
+    format_preset: percentage

@@ -1,0 +1,10 @@
+# 工場ごとの指標と推移を、合成の公開済みGold形式で確認する。
+type: explore
+title: 工場別日次生産
+description: 承認済みの日次生産スナップショットの集計
+metrics_view: production_kpis
+dimensions: '*'
+measures: '*'
+defaults:
+  time_range: inf
+  comparison_mode: none

@@ -1,0 +1,5 @@
+# 手元で作る合成入力とローカル認証をコミットへ含めない。
+/private/
+/site.env
+/project/data/gold.duckdb
+/project/tmp/

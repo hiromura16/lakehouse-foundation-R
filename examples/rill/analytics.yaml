@@ -1,0 +1,2 @@
+# Rill Developer側の匿名分析を無効にする。ネットワークも内向きに限定する。
+analytics_enabled: "false"
