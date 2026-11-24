@@ -1,0 +1,52 @@
+name: 外部CDCの隔離受入
+
+on:  # yamllint disable-line rule:truthy
+  push:
+    paths: ['compose*.yaml', 'native/**', 'infra/cdc/**', 'tests/integration/native/**', '.github/workflows/cdc.yml']
+  pull_request:
+    paths: ['compose*.yaml', 'native/**', 'infra/cdc/**', 'tests/integration/native/**', '.github/workflows/cdc.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: 合成CDCの更新、削除、重複防止、再開位置を検査
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          stage="$RUNNER_TEMP/foundation-cdc"
+          python3 native/setup.py --output "$stage/site.env" --landing "$stage/landing"
+          python3 tests/integration/native/prepare_cdc.py "$stage"
+          suite=(docker compose --env-file "$stage/site.env" -p native-cdc-ci
+            -f compose.yaml -f compose.cdc.yaml -f tests/integration/native/compose.broker.yaml)
+          "${suite[@]}" config --quiet
+          "${suite[@]}" up -d --wait --wait-timeout 120 test-broker
+          while IFS= read -r topic; do
+            "${suite[@]}" exec -T test-broker rpk topic create "$topic" --partitions 1 --replicas 1
+          done < "$stage/topics.txt"
+          "${suite[@]}" up -d --build --wait --wait-timeout 180 lakehouse native-cdc
+          for phase in first delete; do
+            "${suite[@]}" exec -T lakehouse python - "$phase" < tests/integration/native/cdc_acceptance.py
+          done
+          python3 tests/integration/native/cdc_checkpoint.py "$stage/state/state.sqlite3" 7
+          "${suite[@]}" restart native-cdc
+          "${suite[@]}" exec -T lakehouse python - resume < tests/integration/native/cdc_acceptance.py
+          python3 tests/integration/native/cdc_checkpoint.py "$stage/state/state.sqlite3" 8
+      - name: 試験用のDocker資源を破棄
+        if: always()
+        shell: bash
+        run: |
+          site="$RUNNER_TEMP/foundation-cdc/site.env"
+          if test -f "$site" && test -f "$RUNNER_TEMP/foundation-cdc/map.json"; then
+            docker compose --env-file "$site" -p native-cdc-ci \
+              -f compose.yaml -f compose.cdc.yaml -f tests/integration/native/compose.broker.yaml \
+              down --volumes --remove-orphans
+          fi
