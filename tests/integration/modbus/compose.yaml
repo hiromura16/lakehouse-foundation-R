@@ -17,12 +17,14 @@ services:
   telegraf:
     image: telegraf:1.40.3@sha256:695045186c69152ff71827ec0c4f40216fb10491597af71c00195d98be8c39f2
     command: ["telegraf", "--config", "/etc/telegraf/telegraf.conf"]
+    environment:
+      GOMAXPROCS: "1"
     configs:
       - source: collector
         target: /etc/telegraf/telegraf.conf
     depends_on: [simulator]
     security_opt: [no-new-privileges:true]
-    mem_limit: 128m
+    mem_limit: 192m
     logging:
       driver: json-file
       options: {max-size: 1m, max-file: '2'}

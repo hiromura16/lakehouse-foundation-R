@@ -188,10 +188,15 @@ def fresh(
 
 def main() -> None:
     """通常、拒否、停止、欠測、正常復帰を順番に確認する。"""
-    version = compose(
-        "exec", "-T", "telegraf", "telegraf", "--version"
-    ).strip()
-    assert "1.40.3" in version
+
+    def running_version():
+        """稼働中の収集器自身が起動時に示す版を確認する。"""
+        logs = compose("logs", "--no-log-prefix", "telegraf")
+        match = re.search(r"Starting Telegraf (1\.40\.3)\b", logs)
+        assert match, "固定版Telegrafの起動が確認できません。"
+        return match.group(1)
+
+    version = wait_for(running_version, "収集器の起動")
     baseline, byte_order, initial_errors = wait_for(
         lambda: fresh(-12.3), "正常時の計測"
     )

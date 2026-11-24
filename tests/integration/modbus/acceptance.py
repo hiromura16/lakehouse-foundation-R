@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from contextlib import suppress
 from pathlib import Path
 
 FIXTURES = (
@@ -43,6 +44,17 @@ def verify(directory, use_sudo):
         run(*compose, "config", "--quiet")
         run(*compose, "up", "-d", "--build")
         run(sys.executable, "fixture.py", timeout=240)
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        # 合成ログを保全し、ログ取得の失敗で先に起きた異常を隠さない。
+        with suppress(OSError, subprocess.TimeoutExpired):
+            subprocess.run(
+                (*compose, "logs", "--tail", "40"),
+                cwd=directory,
+                env=env,
+                check=False,
+                timeout=15,
+            )
+        raise
     finally:
         run(
             *compose, "down", "--volumes", "--remove-orphans", "--rmi", "local"
