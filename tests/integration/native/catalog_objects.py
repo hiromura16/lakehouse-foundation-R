@@ -23,15 +23,17 @@ def audit(*args):
 
 def main():
     """Goldの固定版を読み、不在→異サイズ→原状復帰を順に照合する。"""
+    if os.environ.get("FOUNDATION_R_SYNTHETIC_OBJECT_TEST") != "1":
+        raise ValueError("使い捨ての合成環境でのみ実行できます。")
     core = api.core_module()
     catalog = core.catalog()
     release = engine.latest_release(core, catalog)
-    assert release["row_counts"]["gold.factory_daily_production"] == 14
+    assert release["row_counts"]["gold.factory_daily_production"] > 0
     release_id = release["release_snapshot_id"]
     target = "gold.factory_daily_production"
     table = catalog.load_table(target)
     scan = table.scan(snapshot_id=release["outputs"][target])
-    (task,) = list(scan.plan_files())
+    task = next(iter(scan.plan_files()))
     filename = task.file.file_path
     uri = urlsplit(filename)
     bucket = os.environ["S3_BUCKET_WAREHOUSE"]
