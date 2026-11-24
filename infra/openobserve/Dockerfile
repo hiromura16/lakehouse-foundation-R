@@ -1,6 +1,7 @@
 # 検査用BusyBoxと公式バイナリを固定し、ビルド中のパッケージ取得を避ける。
+ARG OPENOBSERVE_IMAGE_PATH=docker.io/openobserve/openobserve
 FROM docker.io/library/busybox:1.37.0-uclibc@sha256:7aa3d3c53cc1ed823c6a5967ebaac87700a5b0766af45ff599dbca3506c8b072 AS probe
-FROM public.ecr.aws/zinclabs/openobserve:v1.1.2@sha256:4a154849432f75c4fb024de32fe34163c02406c905dab22bf8d213d2e3386392
+FROM ${OPENOBSERVE_IMAGE_PATH}:v1.1.2@sha256:4a154849432f75c4fb024de32fe34163c02406c905dab22bf8d213d2e3386392
 ARG WORKER_UID=10001
 ARG WORKER_GID=10001
 # BusyBoxはamd64・arm64の静的リンク版。OpenObserveと共有ライブラリは公式イメージに含まれる。

@@ -68,6 +68,8 @@ services:
     build:
       context: .
       dockerfile: infra/openobserve/Dockerfile
+      args:
+        OPENOBSERVE_IMAGE_PATH: ${OPENOBSERVE_IMAGE_PATH:-docker.io/openobserve/openobserve}
     environment:
       ZO_ROOT_USER_EMAIL: ${TOOLS_OBSERVE_USER:?追加ツールの専用設定を生成してください}
       ZO_ROOT_USER_PASSWORD: ${TOOLS_OBSERVE_PASSWORD:?追加ツールの専用設定を生成してください}
