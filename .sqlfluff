@@ -1,7 +1,7 @@
 [sqlfluff]
-dialect = trino
+dialect = duckdb
 max_line_length = 88
-# Parse every generated query and guarded SQL Server migration in full.
+# 生成したSQLも事前検査のSQLも、サイズで省略せず構文を読み取る。
 large_file_skip_byte_limit = 0
 
 [sqlfluff:indentation]

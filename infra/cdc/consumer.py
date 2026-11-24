@@ -79,7 +79,7 @@ def process(admin, state, records, mapping, topics, *, values=None):
 
     完了済みoffsetは再適用せず、state内のLSN判定で改訂・削除の順序を守る。
     派生表が成功した後だけcheckpointを進める。Kafka commitはrunが後で行う。
-    Trinoの取消未確定はstateにもblockedを保存し、再起動で見失わない。
+    書込結果を確定できない状態はstateにblockedを保存し、再起動後も確認できるようにする。
     """
     # 工程1: 原本を先に確定する。後段の検証失敗でも調査用rawは残り得る。
     fixed = values is not None and values.get("CDC_SOURCE_MODE") == (

@@ -1,4 +1,3 @@
 # 読取クライアントの任意依存です。取込ワーカーとは別の仮想環境に入れます。
 langchain-core==1.7.6
 langchain-ollama==1.1.0
-trino==0.340.0

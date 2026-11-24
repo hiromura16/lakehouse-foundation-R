@@ -507,7 +507,7 @@ def main(argv=None):
         description=__doc__,
         epilog=(
             "6種類のMES/ERP素材とmanifestを生成します。"
-            "取り込み・メダリオン・n8n・Airflowは起動しません。"
+            "生成したファイルは、受取側の取込試験で使います。"
             "SQL投入は別の専用DEMO DBを用意し、明示同意が必要です。"
         ),
     )
