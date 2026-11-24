@@ -39,10 +39,14 @@ from raw_writer import (  # noqa: E402
     raw_rows,
 )
 from state import State  # noqa: E402
+from state import version as state_version  # noqa: E402
 
 RAW = "cdc_events.events"
 LEGACY_FORMAT = "foundation-r-generic-cdc-shadow-v1"
 FORMAT = "foundation-r-generic-cdc-shadow-v2"
+PARTITION_FORMAT = "foundation-r-generic-cdc-shadow-v3"
+MAX_PARTITIONS_PER_TOPIC = 16
+MAX_PARTITIONS = 64
 MAX_EVENTS = 1000
 MAX_SCAN = 10000
 MAX_BUNDLE = 64 * 1024 * 1024
@@ -156,7 +160,7 @@ def source_from_files(source_config, mapping_path):
 
 
 def check_approval(source, approval):
-    """全購読トピックの承認位置を検査する。-1は承認時点で空を示す。"""
+    """旧承認と複数区画承認を検査し、内部の配送位置の表現を統一する。"""
     if not isinstance(approval, dict) or approval.keys() != APPROVAL_KEYS:
         raise ShadowError("CDC_SHADOW_APPROVAL_INVALID")
     completed = approval["completed"]
@@ -166,10 +170,6 @@ def check_approval(source, approval):
         or not 0 < approval["raw_snapshot_id"] < 2**63
         or not isinstance(completed, dict)
         or completed.keys() != source.topics.keys()
-        or any(
-            type(offset) is not int or not -1 <= offset < MAX_EVENTS
-            for offset in completed.values()
-        )
     ):
         raise ShadowError("CDC_SHADOW_APPROVAL_INVALID")
     try:
@@ -177,9 +177,33 @@ def check_approval(source, approval):
             raise ValueError("noncanonical UUID")
     except (TypeError, ValueError, AttributeError):
         raise ShadowError("CDC_SHADOW_APPROVAL_INVALID") from None
-    if not 0 < sum(offset + 1 for offset in completed.values()) <= MAX_EVENTS:
+    # v1/v2の単一整数は区画0の位置。v3は空区画を含めて全区画を列挙する。
+    bundle_format = FORMAT
+    if all(type(offset) is int for offset in completed.values()):
+        positions = {(topic, 0): offset for topic, offset in completed.items()}
+    else:
+        bundle_format = PARTITION_FORMAT
+        positions = {}
+        for topic, partitions in completed.items():
+            if (
+                not isinstance(partitions, dict)
+                or not 1 <= len(partitions) <= MAX_PARTITIONS_PER_TOPIC
+                or partitions.keys()
+                != {str(index) for index in range(len(partitions))}
+            ):
+                raise ShadowError("CDC_SHADOW_APPROVAL_INVALID")
+            positions.update(
+                ((topic, int(partition)), offset)
+                for partition, offset in partitions.items()
+            )
+    if len(positions) > MAX_PARTITIONS or any(
+        type(offset) is not int or not -1 <= offset < MAX_EVENTS
+        for offset in positions.values()
+    ):
+        raise ShadowError("CDC_SHADOW_APPROVAL_INVALID")
+    if not 0 < sum(offset + 1 for offset in positions.values()) <= MAX_EVENTS:
         raise ShadowError("CDC_SHADOW_EVENT_LIMIT")
-    return completed
+    return bundle_format, positions
 
 
 def check_record(record):
@@ -188,7 +212,7 @@ def check_record(record):
         not isinstance(record, dict)
         or record.keys() != RECORD_FIELDS
         or type(record["partition"]) is not int
-        or record["partition"] != 0
+        or not 0 <= record["partition"] < MAX_PARTITIONS_PER_TOPIC
         or type(record["offset"]) is not int
         or not 0 <= record["offset"] < MAX_EVENTS
         or any(
@@ -213,28 +237,90 @@ def check_record(record):
         raise ShadowError("CDC_SHADOW_OBSERVED_TIME_INVALID")
     # 標準CDCはKafkaのNULL本文を業務行に反映せず、配送位置だけ確定する。
     if value is None:
-        return
+        return None, None
     if not key or not value:
         raise ShadowError("CDC_SHADOW_INVALID_EVENT_BODY")
-    if not isinstance(parse(key), dict) or not isinstance(parse(value), dict):
+    key_doc = parse(key)
+    if not isinstance(key_doc, dict):
         raise ShadowError("CDC_SHADOW_RECORD_INVALID")
+    envelope = parse(value)
+    if not isinstance(envelope, dict):
+        raise ShadowError("CDC_SHADOW_RECORD_INVALID")
+    return key_doc, envelope
 
 
-def checked_sequence(records, completed):
+def check_partition_record(source, record, key, envelope, owners):
+    """業務キーの所属と、同じSQL Serverの変更版であることを検証する。"""
+    if record["value"] is None:
+        # キーを持たないトゥームストーンは配送位置だけを確定する。
+        if not record["key"]:
+            return
+        try:
+            key = parse(record["key"])
+        except (TypeError, ValueError):
+            raise ShadowError("CDC_SHADOW_PARTITION_KEY_INVALID") from None
+    topic = record["topic"]
+    target = source.topics[topic]
+    mapping = source.mapping[target]
+    contract = next(
+        item for item in catalog_schema.CONTRACT if item["table"] == target
+    )
+    primary = contract["columns"][0]
+    source_key = next(
+        name
+        for name, column in mapping["columns"].items()
+        if column == primary
+    )
+    if (
+        not isinstance(key, dict)
+        or key.keys() != {source_key}
+        or key[source_key] is None
+        or str(key[source_key]) == ""
+    ):
+        raise ShadowError("CDC_SHADOW_PARTITION_KEY_INVALID")
+    # SQLiteの現在値が使うキーと同じ文字列表現で比較する。
+    identity = (target, str(key[source_key]))
+    owner = (topic, record["partition"])
+    if owners.setdefault(identity, owner) != owner:
+        raise ShadowError("CDC_SHADOW_KEY_CHANGED_PARTITION")
+
+    if envelope is not None:
+        origin = envelope.get("source")
+        if (
+            not isinstance(origin, dict)
+            or origin.get("db") != source.identity["database"]
+            or origin.get("schema") != mapping["source_schema"]
+            or origin.get("table") != mapping["source_table"]
+        ):
+            raise ShadowError("CDC_SHADOW_EVENT_SOURCE_MISMATCH")
+        if envelope.get("op") not in ("r", "c", "u", "d"):
+            raise ShadowError("CDC_SHADOW_EVENT_ORDER_INVALID")
+        try:
+            # 最大の版を選ぶ旧State規則を使い、区画をまたぐ到着順は推定しない。
+            state_version(envelope, record["offset"])
+        except (ValueError, TypeError):
+            raise ShadowError("CDC_SHADOW_EVENT_ORDER_INVALID") from None
+
+
+def checked_sequence(records, completed, *, source=None):
     """隔離した新規状態を作る前に、全承認位置の網羅性と順序を確認する。"""
     if not isinstance(records, list) or len(records) > MAX_EVENTS:
         raise ShadowError("CDC_SHADOW_EVENT_LIMIT")
     expected = (
-        (topic, offset)
-        for topic, last in sorted(completed.items())
+        (topic, partition, offset)
+        for (topic, partition), last in sorted(completed.items())
         for offset in range(last + 1)
     )
+    owners = {}
     for record, position in zip_longest(records, expected):
         if record is None or position is None:
             raise ShadowError("CDC_SHADOW_HISTORY_GAP")
-        check_record(record)
-        if (record["topic"], record["offset"]) != position:
+        key, envelope = check_record(record)
+        delivery = (record["topic"], record["partition"], record["offset"])
+        if delivery != position:
             raise ShadowError("CDC_SHADOW_HISTORY_GAP")
+        if source is not None:
+            check_partition_record(source, record, key, envelope, owners)
 
 
 def decode_payload(row):
@@ -247,7 +333,7 @@ def decode_payload(row):
         raise ShadowError("CDC_SHADOW_RAW_MISMATCH") from None
 
 
-def records_from_table(table, snapshot_id, completed):
+def records_from_table(table, snapshot_id, completed, *, source=None):
     """元Rawから承認位置までを取り、未確定の末尾は読み捨てる。"""
     records = []
     scanned = size = 0
@@ -266,20 +352,23 @@ def records_from_table(table, snapshot_id, completed):
             for row in batch.to_pylist():
                 topic = row["topic"]
                 if (
-                    topic not in completed
-                    or row["partition"] != "0"
+                    not isinstance(row["partition"], str)
+                    or not OFFSET.fullmatch(row["partition"])
                     or not isinstance(row["offset"], str)
                     or not OFFSET.fullmatch(row["offset"])
                 ):
                     raise ShadowError("CDC_SHADOW_PARTITION_UNSUPPORTED")
+                partition = int(row["partition"])
+                if (topic, partition) not in completed:
+                    raise ShadowError("CDC_SHADOW_PARTITION_UNSUPPORTED")
                 offset = int(row["offset"])
                 if offset >= 2**63:
                     raise ShadowError("CDC_SHADOW_RECORD_INVALID")
-                if offset > completed[topic]:
+                if offset > completed[(topic, partition)]:
                     continue
                 record = {
                     "topic": topic,
-                    "partition": 0,
+                    "partition": partition,
                     "offset": offset,
                     "ingested_at": row["ingested_at"],
                     **decode_payload(row),
@@ -289,8 +378,10 @@ def records_from_table(table, snapshot_id, completed):
                 }:
                     raise ShadowError("CDC_SHADOW_RECORD_INVALID")
                 records.append(record)
-    records.sort(key=lambda row: (row["topic"], row["offset"]))
-    checked_sequence(records, completed)
+    records.sort(
+        key=lambda row: (row["topic"], row["partition"], row["offset"])
+    )
+    checked_sequence(records, completed, source=source)
     return records
 
 
@@ -329,7 +420,7 @@ def export_bundle(load_table, source, approval, output):
     credential vending、remote signing、server-side planningを無効にする。
     approvalは稼働を停止または調停して採取し、バンドルのSHAは別経路で承認する。
     """
-    completed = check_approval(source, approval)
+    bundle_format, completed = check_approval(source, approval)
     table = load_table(RAW)
     snapshot = approval["raw_snapshot_id"]
     if (
@@ -343,10 +434,15 @@ def export_bundle(load_table, source, approval, output):
         raise ShadowError("CDC_SHADOW_RAW_MISMATCH")
     body = encoded(
         {
-            "format": FORMAT,
+            "format": bundle_format,
             "approval": approval,
             "recipe": replay_recipe(),
-            "records": records_from_table(table, snapshot, completed),
+            "records": records_from_table(
+                table,
+                snapshot,
+                completed,
+                source=source if bundle_format == PARTITION_FORMAT else None,
+            ),
         }
     )
     if len(body) > MAX_BUNDLE:
@@ -404,14 +500,19 @@ def replay_bundle(bundle, manifest_sha256, source, output):
     if (
         not isinstance(document, dict)
         or document.keys() != {"format", "approval", "recipe", "records"}
-        or document["format"] not in {FORMAT, LEGACY_FORMAT}
+        or document["format"] not in {FORMAT, LEGACY_FORMAT, PARTITION_FORMAT}
         or document["recipe"] != replay_recipe()
     ):
         raise ShadowError("CDC_SHADOW_BUNDLE_INVALID")
     approval = document["approval"]
-    completed = check_approval(source, approval)
+    bundle_format, completed = check_approval(source, approval)
+    partitioned = bundle_format == PARTITION_FORMAT
+    if partitioned != (document["format"] == PARTITION_FORMAT):
+        raise ShadowError("CDC_SHADOW_BUNDLE_INVALID")
     records = document["records"]
-    checked_sequence(records, completed)
+    checked_sequence(
+        records, completed, source=source if partitioned else None
+    )
     if document["format"] == LEGACY_FORMAT and any(
         record["key"] is None or record["value"] is None for record in records
     ):
@@ -434,6 +535,12 @@ def replay_bundle(bundle, manifest_sha256, source, output):
                 source.topics,
                 values=source.values,
             )
+            if partitioned and state.completed_offsets() != {
+                position: offset
+                for position, offset in completed.items()
+                if offset >= 0
+            }:
+                raise ShadowError("CDC_SHADOW_CHECKPOINT_MISMATCH")
             state.set("initialized", "true")
             flush_sqlite(state)
         os.replace(candidate, output / "state.sqlite3")

@@ -30,15 +30,30 @@
 
 - 標準CDCが受理したJSONオブジェクトのキー・イベント本文、および判定列で確認できるトゥームストーンを再生する。キーのNULLと空バイト列を区別したトゥームストーンも維持する。SQLiteの配送位置は、稼働処理と同じ規則で反映する。
 - 値のNULLはKafkaの無値トゥームストーン。空バイトの本文はUTF-8の空文字として記録し、業務JSONとは解釈しない。完了範囲に含まれた場合は拒否する。旧Rawの判定不能な空値にも復元時の推測は行わない。 [Debezium SQL Serverの削除とトゥームストーン](https://debezium.io/documentation/reference/stable/connectors/sqlserver.html)
-- 全購読トピックが各1パーティションの基準から始まり、完了した範囲が位置0から連続していること。空のトピックも、数を確認した上で承認に `-1` を記載する。
+- 形式v1/v2の承認は、各購読トピックの区画0の最終処理済みoffsetを整数で指定する。複数区画の形式v3では、全購読トピックごとに、区画IDを表す文字列から最終処理済みoffsetへの辞書を指定する。実際の区画IDを0から連続してすべて列挙し、承認時点で未処理の区画は `-1` を指定する。
+- どの形式でも、処理済みの各区画について位置0から承認位置までの履歴が連続していること。欠落や重複、承認外の区画は拒否する。形式v3の上限は1トピック16区画、全体64区画。
 - 承認範囲の上限は1,000イベント。元Rawの走査は10,000行または64 MiB、搬送ファイルは64 MiBまで。圧縮データの展開、Arrow・Python処理のメモリ量は、実行環境の上限で管理する。
 - 元の配信位置を再受信した際は既知のキー、本文、NULL判定が一致するか検査し、異なる内容は拒否する。古い行の判定値を再配送で補完することはない。搬送形式v2はNULLをJSONの `null`、空バイトを空文字として保存し、従来v1のJSON履歴も同じ承認・版照合条件で読める。
 
-複数パーティション、コンパクション、トランザクション中断による履歴の穴、同名トピックや倉庫の使い回し、UTF-8として読めないバイト列は対象外。汎用Rawの表プロパティにはソース所有者が保持されない。運用で承認した表UUIDと履歴の出所、SQLiteの識別値、設定・対応表を確認する。
+形式v3は、同じ対象表・業務キーが承認範囲内で複数区画へ現れたら拒否します。
+キーが確定できるトゥームストーンもこの検査に含めます。キーがNULLまたは空の
+ときは配送位置だけを保持します。空でないキーが表対応どおりのJSONでなければ
+拒否します。区画ごとのoffset順を
+保ち、SQLiteの既存規則で同じキーのSQL Server変更版をLSNとイベント通番から
+選びます。区画間の到着順と、SQL Serverのトランザクション単位で一貫した切断点
+をRawから復元する機能は含みません。
+
+コンパクション、トランザクション中断などで承認範囲に穴がある履歴、同名
+トピックや倉庫の使い回し、UTF-8として読めないバイト列は対象外です。空の区画を
+Rawの行やSQLiteの完了位置だけから検出することはできません。運用で元の
+Kafkaクラスタ・トピックの識別と区画一覧を別途確認します。汎用Rawの表
+プロパティにはソース所有者が保持されないため、承認した表UUIDと履歴の出所、
+SQLiteの識別値、設定・対応表を照合します。
+[Kafkaの区画内の順序](https://kafka.apache.org/documentation/) · [SQL Server CDCのコミットLSN](https://learn.microsoft.com/sql/relational-databases/track-changes/about-change-data-capture-sql-server/)
 
 ## 書き出し
 
-1. 消費と公開を一時停止し、承認済みの公開世代、Iceberg Rawの表UUIDとスナップショット、SQLiteの `metadata.identity` と各トピックの処理済みoffsetを、独立した承認記録に採取する。Kafkaにコミットされたoffsetは次に読む位置で、SQLiteの処理済みoffsetより1大きい。
+1. 消費と公開を一時停止し、承認済みの公開世代、Iceberg Rawの表UUIDとスナップショット、SQLiteの `metadata.identity`、Kafkaのクラスタ・各トピックの識別と全区画一覧、各区画の処理済みoffsetを、独立した承認記録に採取する。Kafkaにコミットされたoffsetは次に読む位置で、SQLiteの処理済みoffsetより1大きい。
 2. Kafkaの接続を含まないsourceファイルを準備する。既存のサイト設定から `topic_has_database` と `source` 内の `CDC_SQLSERVER_HOST`、`CDC_SQLSERVER_DATABASE`、`CDC_SQLSERVER_PORT`、`CDC_TOPIC_PREFIX` を抽出し、標準CDCの表対応JSONをそのまま使う。社内のホスト名や表名が含まれ得るので、限定されたファイル権限で保管する。
 3. RawのIceberg RESTカタログに対し、対象のメタデータへのGETだけを許す資格情報・経路を使う。オブジェクトストレージは対象のみへのGET/HEAD権限にする。REST側の資格情報委任、リモート署名、サーバー側の走査計画を使わず、URIやストレージ設定が許可範囲に収まることを確認する。アプリ側の読取メソッド制限とストレージ・ネットワーク側の権限を併用する。 [PyIcebergのREST設定](https://py.iceberg.apache.org/configuration/)
 4. 接続の作成は読み取り権限を管理するサイト用ランナーで行い、以下を呼び出す。入出力の親ディレクトリは信頼する利用者だけが書けるようにする。バンドルには業務データの原文が含まれるため暗号化保管する。
@@ -51,7 +66,9 @@ from native.cdc_shadow import export_bundle, source_from_files
 source = source_from_files(Path("source-only.json"), Path("table-map.json"))
 # catalogは手順3で作成し、approvalは手順1で承認した辞書を渡す。
 # approvalのキーは source_sha256、raw_table_uuid、raw_snapshot_id、completed。
-# completedは全購読トピック名と、各partition 0の最終処理済みoffsetの辞書。
+# v1/v2のcompletedは全トピック名 -> 区画0の最終処理済みoffset。
+# v3のcompletedは全トピック名 -> 区画ID -> 最終処理済みoffset。
+# v3の1トピック分の例は {"0": 2, "1": 4}。空は -1 を指定する。
 digest = export_bundle(
     catalog.load_table,
     source,
