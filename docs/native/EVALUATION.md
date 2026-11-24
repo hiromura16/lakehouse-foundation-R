@@ -202,6 +202,52 @@ RisingWaveを再起動して入力なしで同じスナップショットを維�
 · [RisingWaveのKafkaバイト列とメタデータ](https://docs.risingwave.com/ingestion/sources/kafka#extract-metadata-from-kafka-sources)
 · [Icebergシンク](https://docs.risingwave.com/iceberg/deliver-to-iceberg)
 
+## RisingWaveの更新・削除をIceberg V2で読む
+
+追記試験と同じ隔離構成に、合成Debezium JSONのINSERT・UPDATE・DELETEを
+送ります。RisingWave 3.1.2の `rest_rust` から同じwarehouseの2表へ
+書き、同梱の読取コンテナとRisingWaveの外部Iceberg読取で全行を照合します。
+Lakekeeper 0.14.3、SeaweedFS 4.53、Redpanda 26.3.1のイメージと、
+PyIceberg 0.12.0、DuckDB 2.0.1を固定しています。
+
+| Iceberg V2へ書く方式 | 削除ファイル | 固定版での論理行の読取 |
+| --- | --- | --- |
+| 通常のMoR。`primary_key='id'`、`partition_by='bucket(4,id)'` | 等価削除。`content=2`、等価削除キーは`id`のIcebergフィールドID | DuckDBとRisingWave外部読取で一致。PyIcebergは初回INSERTを読めるが、等価削除を読取計画に含めるとエラー |
+| PK-indexのMoR。`enable_pk_index='true'`、上流の主キーを使用、非パーティション表 | 位置削除。`content=1`。対象データファイルと行位置を指定 | PyIceberg、DuckDB、RisingWave外部読取で一致 |
+
+PK-indexには `primary_key` を指定せず、上流の一意なキーを維持します。
+両方に `SET sink_decouple=true` と `is_exactly_once='true'` を指定した
+合成試験では、`rw_sink_decouple` の実効値は通常MoRが `true`、
+PK-indexが `false` でした。公式文書が記載するsink decouplingを前提とした
+exactly-onceの条件は、設定文字列だけでは確認できません。
+[RisingWaveの配信設定](https://docs.risingwave.com/iceberg/deliver-to-iceberg) · [PK-indexのV2位置削除](https://github.com/risingwavelabs/risingwave/pull/26116) · [Iceberg仕様の削除適用](https://iceberg.apache.org/spec/#scan-planning) · [PyIcebergの読取計画](https://py.iceberg.apache.org/reference/pyiceberg/table/)
+
+前節と同じ方法で仮想環境を作り、Linux amd64で次を実行します。
+プロキシ経由の場合は事前に環境変数を設定します。実行ホストから
+`extensions.duckdb.org` のHTTPSを許可してください。読取コンテナで
+使う拡張は展開後のSHA-256とDuckDBの署名検証を使って固定します。
+
+**Bash / Zsh共通**
+
+```bash
+"$HOME/.cache/lakehouse-r-iceberg-evaluation/bin/python" \
+  tests/integration/iceberg/acceptance.py --upsert
+```
+
+Lakekeeper停止中に変更を送って接続失敗を観測し、RisingWaveを強制停止
+します。カタログだけ復帰させると両表の現行世代と履歴は停止前のままです。
+次に同じ永続ボリュームでRisingWaveを再開し、新しい世代で削除済みIDが
+消え、残ったIDの数量と改訂番号が一致することを照合します。
+試験の範囲は単一writer、Kafka 1区画、完全な更新前後の行、カタログに
+到達できない故障です。コミット応答だけの消失と並行writerは別受入です。
+
+固定イメージの隔離試験ではライセンスキーを渡さずにPK-indexが動作しました。
+上流 `main` にはPK-indexの利用条件を変更する実装が入っており、更新時は
+対象バージョンの配布・ライセンス条件を確認します。Copy-on-writeは
+評価時に専用compactorがない環境で `ingestion` が進んでも `main` が
+進まなかったため、標準設定に加えていません。
+[ライセンス条件の上流変更](https://github.com/risingwavelabs/risingwave/pull/27970) · [compactorと書込方式](https://docs.risingwave.com/iceberg/write-modes) · [再現用プログラム](../../tests/integration/iceberg/upsert.py)
+
 ## 1万・10万・100万行のParquetを測る
 
 DuckDB 2.0.1とDataFusion 55.0.0で、合成設備4列の同じParquetに対して
