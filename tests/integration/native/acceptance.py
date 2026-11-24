@@ -221,6 +221,36 @@ def check_independent_lanes(root, http, writer, reader):
     assert retained["sensor"]["status"] == "retained"
 
 
+def check_filters(http, reader, release):
+    """世代固定の条件をIcebergへ渡し、空の結果と不正条件を分ける。"""
+    base = http + f"/v1/gold/sensor_minute?release={release}&"
+    criteria = {
+        "factory_id": "F-SYNTHETIC",
+        "equipment_id": "E1",
+        "date_from": "2026-01-05",
+        "date_to": "2026-01-06",
+    }
+    selected = fetch(base + urlencode(criteria), authorization=reader)
+    assert selected["release_snapshot_id"] == release
+    assert selected["filters"] == criteria
+    assert selected["total_rows"] == 1
+    assert selected["rows"][0]["good_avg"] == 24.5
+    empty = fetch(base + "date_to=2026-01-05", authorization=reader)
+    assert empty["total_rows"] == 0 and empty["rows"] == []
+    for params in (
+        {"date_from": "2026-1-5"},
+        {"date_from": "2026-01-05", "date_to": "2026-01-05"},
+        {"sales_order_id": "F-SYNTHETIC"},
+    ):
+        try:
+            fetch(base + urlencode(params), authorization=reader)
+        except HTTPError as error:
+            assert error.code == 400
+            assert json.load(error)["error"] == "INVALID_FILTER"
+        else:
+            raise AssertionError("不正な絞り込み条件を受け入れました。")
+
+
 def check(args, env):
     """トークン分離、再実行、固定したGold、Grafanaの自動設定を確認する。"""
     reader = "Bearer " + env["READER_TOKEN"]
@@ -272,6 +302,7 @@ def check(args, env):
     assert latest["total_rows"] == 1 and latest["rows"][0]["value"] == 90
     assert latest["rows"][0]["quality_code"] == "BAD"
     release = latest["release_snapshot_id"]
+    check_filters(http, reader, release)
     minute = fetch(
         http + f"/v1/gold/sensor_minute?release={release}&limit=1",
         authorization=reader,

@@ -8,13 +8,20 @@
 import json
 import logging
 import re
-from datetime import date, datetime, timezone
+from datetime import date, datetime, time, timezone
 from decimal import Decimal
 from hashlib import sha256
 from pathlib import Path
 
 import duckdb
 import pyarrow as pa
+from pyiceberg.expressions import (
+    AlwaysTrue,
+    And,
+    EqualTo,
+    GreaterThanOrEqual,
+    LessThan,
+)
 
 from native import sensor
 from scripts.sql_batch_worker import with_sql_provenance
@@ -46,6 +53,13 @@ GOLD = {
         "minute",
     ),
 }
+GOLD_DATE = {
+    "factory_daily_production": "production_date",
+    "sales_fulfillment": "order_date",
+    "sensor_latest": "timestamp",
+    "sensor_minute": "minute",
+}
+GOLD_IDENTIFIERS = {"factory_id", "equipment_id", "sales_order_id"}
 RELEASE_SCHEMA = pa.schema(
     [("released_at", pa.string()), ("manifest_json", pa.string())]
 )
@@ -111,14 +125,16 @@ def sql_for_duckdb(sql):
     return sql.replace("json_extract_scalar(", "json_extract_string(").strip()
 
 
-def bounded_scan(table, snapshot_id):
+def bounded_scan(table, snapshot_id, *, row_filter=None):
     """固定したスナップショットを読み、途中でもサイズ上限の超過を検出する。"""
     if snapshot_id is None:
         return table.schema().as_arrow().empty_table()
     batches = []
     row_count = byte_count = 0
     reader = table.scan(
-        snapshot_id=snapshot_id, limit=MAX_ROWS + 1
+        snapshot_id=snapshot_id,
+        limit=MAX_ROWS + 1,
+        row_filter=row_filter if row_filter is not None else AlwaysTrue(),
     ).to_arrow_batch_reader()
     for batch in reader:
         row_count += batch.num_rows
@@ -433,7 +449,60 @@ def verify_query(core, sql, prefix):
     return [[oracle_value(value) for value in row] for row in rows]
 
 
-def gold_rows(core, name, limit, prefix="", release_id=None):
+def gold_filter(name, filters):
+    """定義済みの識別子・日付でIcebergの行フィルターを組み立てる。"""
+    dimensions = GOLD_IDENTIFIERS.intersection(GOLD[name])
+    if set(filters) - dimensions - {"date_from", "date_to"}:
+        raise ValueError("INVALID_GOLD_FILTER")
+    predicates = []
+    for key in sorted(dimensions.intersection(filters)):
+        value = filters[key]
+        if (
+            not 1 <= len(value) <= 128
+            or value.strip() != value
+            or not value.isprintable()
+        ):
+            raise ValueError("INVALID_GOLD_IDENTIFIER")
+        predicates.append(EqualTo(key, value))
+    boundaries = {}
+    for key, operator in (
+        ("date_from", GreaterThanOrEqual),
+        ("date_to", LessThan),
+    ):
+        if key not in filters:
+            continue
+        value = filters[key]
+        day = date.fromisoformat(value)
+        if day.isoformat() != value:
+            raise ValueError("INVALID_GOLD_DATE")
+        boundaries[key] = day
+        stamp = (
+            datetime.combine(day, time.min, tzinfo=timezone.utc)
+            if name.startswith("sensor_")
+            else day
+        )
+        predicates.append(operator(GOLD_DATE[name], stamp))
+    if (
+        len(boundaries) == 2
+        and boundaries["date_from"] >= boundaries["date_to"]
+    ):
+        raise ValueError("INVALID_GOLD_DATE_RANGE")
+    return (
+        And(*predicates)
+        if len(predicates) > 1
+        else (predicates[0] if predicates else AlwaysTrue())
+    )
+
+
+def gold_rows(
+    core,
+    name,
+    limit,
+    prefix="",
+    release_id=None,
+    *,
+    row_filter=None,
+):
     """由来情報付きのGoldを、一定の順序で指定行数の上限まで返す。"""
     if name not in GOLD or not 1 <= limit <= 200:
         raise ValueError("INVALID_GOLD_REQUEST")
@@ -445,7 +514,7 @@ def gold_rows(core, name, limit, prefix="", release_id=None):
     snapshot_id = release["outputs"][local]
     identifier = f"{core.schema(prefix, 'gold')}.{name}"
     table = catalog.load_table(identifier)
-    arrow = bounded_scan(table, snapshot_id)
+    arrow = bounded_scan(table, snapshot_id, row_filter=row_filter)
     with connect() as db:
         db.register("gold_data", arrow)
         sort = ", ".join(GOLD[name])

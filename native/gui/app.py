@@ -85,9 +85,9 @@ class NoRedirect(HTTPRedirectHandler):
         return None
 
 
-def get_dataset(name, limit, release):
+def get_dataset(name, limit, release, filters):
     """内部APIから、指定世代と上限の範囲で集計結果と出所を取得する。"""
-    parameters = {"limit": limit}
+    parameters = {"limit": limit, **filters}
     if release is not None:
         parameters["release"] = release
     path = f"/v1/gold/{name}?{urlencode(parameters)}"
@@ -138,6 +138,34 @@ def show():
     )
     limit = count.selectbox("表示上限", [25, 50, 100, 200], index=1)
     st.caption(DATASETS[name][1])
+    filters = {}
+    with st.expander("工場・設備・日付で絞り込む"):
+        items = (
+            [("sales_order_id", "受注ID")]
+            if name == "sales_fulfillment"
+            else [("factory_id", "工場ID")]
+        )
+        if name.startswith("sensor_"):
+            items.append(("equipment_id", "設備ID"))
+        for key, label in items:
+            if value := st.text_input(
+                label, max_chars=128, key=f"{name}-{key}"
+            ).strip():
+                filters[key] = value
+        start, end = st.columns(2)
+        from_date = start.date_input(
+            "開始日（UTC・当日を含む）", value=None, format="YYYY-MM-DD"
+        )
+        until_date = end.date_input(
+            "終了の境界日（UTC・当日より前）", value=None, format="YYYY-MM-DD"
+        )
+        if from_date:
+            filters["date_from"] = from_date.isoformat()
+        if until_date:
+            filters["date_to"] = until_date.isoformat()
+        if from_date and until_date and from_date >= until_date:
+            st.warning("終了の境界日は開始日より後に指定してください。")
+            return
     if st.button(
         "最新版を読み込む",
         help="集計を切り替えても、読み込んだ公開世代で比較します。",
@@ -145,9 +173,11 @@ def show():
         st.session_state.pop("release", None)
     release = st.session_state.get("release")
     try:
-        data, published_at = get_dataset(name, limit, release)
+        data, published_at = get_dataset(name, limit, release, filters)
     except HTTPError as error:
-        if error.code == 404:
+        if error.code == 400:
+            st.warning("工場・設備・日付の条件を確認してください。")
+        elif error.code == 404:
             st.info(
                 "この集計はまだ表示できません。対応する入力が揃っているか確認し、"
                 "データの変換が終わったら「最新版を読み込む」を押してください。"
@@ -179,14 +209,16 @@ def show():
             st.caption(f"設備データの確定（UTC） {stamp:%Y-%m-%d %H:%M:%S}")
     st.caption(
         f"公開時刻（UTC） {published_at:%Y-%m-%d %H:%M:%S} ／ "
-        f"{len(rows)}行を表示（全{data['total_rows']}行）"
+        f"{len(rows)}行を表示（該当{data['total_rows']}行）"
     )
     if rows:
         st.dataframe(
             rows, width="stretch", hide_index=True, column_config=COLUMN_LABELS
         )
     else:
-        st.info("この公開世代の集計は0行です。入力データを確認してください。")
+        st.info(
+            "条件に一致した行がありません。絞り込み条件と公開世代を確認してください。"
+        )
     with st.expander("データの出所・公開世代"):
         table, release_id, snapshot = st.columns([2, 1, 1])
         table.markdown("**Iceberg表**")

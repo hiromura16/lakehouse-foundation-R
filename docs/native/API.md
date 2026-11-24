@@ -30,6 +30,19 @@ Goldのデータセット名は `factory_daily_production`、`sales_fulfillment`
 公開一覧の `inputs` と `outputs` に含まれる表スナップショットIDも文字列です。
 スナップショットがまだない表は `null` です。金額などのDECIMALは文字列、日付時刻はISO形式です。 `total_rows` と `truncated` で参照件数の限界を確認できます。未公開は404、認証エラーは401、処理中の別操作は409です。
 
+### 固定した世代から必要な行を読む
+
+Goldの各読取操作は、指定された制限の前にIcebergへ絞り込みを渡します。
+`factory_id` は日次生産と設備、`equipment_id` は設備、
+`sales_order_id` は受注・出荷の完全一致です。IDは大文字・小文字を区別し、
+1〜128文字の表示可能な文字列です。
+
+日付は `YYYY-MM-DD` 形式です。`date_from` を含み、`date_to` より前が
+対象です。日次生産では生産日、受注・出荷では受注日、設備では計測・集計の
+UTC日付を使います。絞り込んだ場合は `filters` を返し、`total_rows` は
+その条件の行数、`truncated` は表示上限で切ったかどうかです。
+複数の集計を同じ世代で読むときは `release` と必要な条件を併用します。
+
 ### 取込状態と公開中のデータ
 
 取込状態の `last_attempt` は、APIプロセス上で最後に受理された

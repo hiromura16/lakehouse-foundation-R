@@ -2,7 +2,7 @@
   "openapi": "3.2.1",
   "info": {
     "title": "Lakehouse Foundation R",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "description": "取込、公開済みIcebergスナップショットの読取、監視の契約。"
   },
   "servers": [
@@ -276,7 +276,7 @@
             }
           },
           "400": {
-            "description": "行数または公開世代の指定が不正",
+            "description": "行数・公開世代・絞り込み条件が不正",
             "content": {
               "application/json": {
                 "schema": {
@@ -326,6 +326,21 @@
           },
           {
             "$ref": "#/components/parameters/release"
+          },
+          {
+            "$ref": "#/components/parameters/factory_id"
+          },
+          {
+            "$ref": "#/components/parameters/equipment_id"
+          },
+          {
+            "$ref": "#/components/parameters/sales_order_id"
+          },
+          {
+            "$ref": "#/components/parameters/date_from"
+          },
+          {
+            "$ref": "#/components/parameters/date_to"
           }
         ]
       }
@@ -361,7 +376,7 @@
             }
           },
           "400": {
-            "description": "行数または公開世代の指定が不正",
+            "description": "行数・公開世代・絞り込み条件が不正",
             "content": {
               "application/json": {
                 "schema": {
@@ -409,6 +424,18 @@
           },
           {
             "$ref": "#/components/parameters/release"
+          },
+          {
+            "$ref": "#/components/parameters/factory_id"
+          },
+          {
+            "$ref": "#/components/parameters/sales_order_id"
+          },
+          {
+            "$ref": "#/components/parameters/date_from"
+          },
+          {
+            "$ref": "#/components/parameters/date_to"
           }
         ]
       }
@@ -444,7 +471,7 @@
             }
           },
           "400": {
-            "description": "行数または公開世代の指定が不正",
+            "description": "行数・公開世代・絞り込み条件が不正",
             "content": {
               "application/json": {
                 "schema": {
@@ -492,6 +519,18 @@
           },
           {
             "$ref": "#/components/parameters/release"
+          },
+          {
+            "$ref": "#/components/parameters/factory_id"
+          },
+          {
+            "$ref": "#/components/parameters/sales_order_id"
+          },
+          {
+            "$ref": "#/components/parameters/date_from"
+          },
+          {
+            "$ref": "#/components/parameters/date_to"
           }
         ]
       }
@@ -529,6 +568,54 @@
           "type": "string",
           "pattern": "^[0-9]{1,19}$"
         }
+      },
+      "factory_id": {
+        "name": "factory_id",
+        "in": "query",
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "description": "工場IDの完全一致。日次生産と設備で使用できます。"
+      },
+      "equipment_id": {
+        "name": "equipment_id",
+        "in": "query",
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "description": "設備IDの完全一致。設備の表で使用できます。"
+      },
+      "sales_order_id": {
+        "name": "sales_order_id",
+        "in": "query",
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "description": "受注IDの完全一致。受注・出荷で使用できます。"
+      },
+      "date_from": {
+        "name": "date_from",
+        "in": "query",
+        "schema": {
+          "type": "string",
+          "format": "date"
+        },
+        "description": "基準日または計測日（UTC）の開始日。指定日を含みます。"
+      },
+      "date_to": {
+        "name": "date_to",
+        "in": "query",
+        "schema": {
+          "type": "string",
+          "format": "date"
+        },
+        "description": "基準日または計測日（UTC）の終わり。指定日より前を含みます。"
       }
     },
     "schemas": {
@@ -626,6 +713,36 @@
               }
             ],
             "description": "設備の表でのみ返す、指定した公開世代の設備結果の状態。"
+          },
+          "filters": {
+            "type": "object",
+            "properties": {
+              "factory_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "equipment_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "sales_order_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "date_from": {
+                "type": "string",
+                "format": "date"
+              },
+              "date_to": {
+                "type": "string",
+                "format": "date"
+              }
+            },
+            "additionalProperties": false,
+            "description": "絞り込みを指定した場合だけ返します。total_rowsは絞り込んだ行数です。"
           }
         },
         "additionalProperties": false

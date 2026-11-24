@@ -287,15 +287,14 @@ def handler(core):
                 params = parse_qs(
                     parsed.query,
                     strict_parsing=True,
-                    max_num_fields=2,
+                    max_num_fields=6,
                     keep_blank_values=True,
+                    errors="strict",
                 )
-                if not set(params) <= {"limit", "release"} or any(
-                    len(values) != 1 for values in params.values()
-                ):
+                if any(len(values) != 1 for values in params.values()):
                     raise ValueError
-                limit = int(params.get("limit", ["50"])[0])
-                release = params.get("release", [None])[0]
+                limit = int(params.pop("limit", ["50"])[0])
+                release = params.pop("release", [None])[0]
                 if release is not None and not re.fullmatch(
                     r"[0-9]{1,19}", release
                 ):
@@ -305,6 +304,11 @@ def handler(core):
                     raise ValueError
             except ValueError:
                 return self.respond(400, {"error": "INVALID_LIMIT"})
+            filters = {name: values[0] for name, values in params.items()}
+            try:
+                predicate = engine.gold_filter(match[2], filters)
+            except ValueError:
+                return self.respond(400, {"error": "INVALID_FILTER"})
             try:
                 value = engine.gold_rows(
                     core,
@@ -312,7 +316,10 @@ def handler(core):
                     limit,
                     prefix=f"{match[1]}_" if match[1] else "",
                     release_id=release_id,
+                    row_filter=predicate,
                 )
+                if value and filters:
+                    value["filters"] = filters
                 return self.respond(
                     200 if value else 404,
                     value
