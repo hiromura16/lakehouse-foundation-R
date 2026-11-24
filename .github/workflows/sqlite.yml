@@ -1,0 +1,53 @@
+name: 内製SQLiteソースからIcebergへの隔離受入
+
+on:  # yamllint disable-line rule:truthy
+  push:
+    paths: &sqlite_paths
+      - .github/workflows/sqlite.yml
+      - compose.yaml
+      - contracts/native/**
+      - infra/source/sqlite-tables.example.json
+      - medallion/**
+      - native/**
+      - scripts/extract-sqlite.py
+      - scripts/sql_batch_worker.py
+      - scripts/sql_snapshot.py
+      - scripts/sqlserver_batch.py
+      - tests/integration/sqlite/**
+  pull_request:
+    paths: *sqlite_paths
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
+        with:
+          python-version: '3.14'
+      - name: 単体DBを変更せずに抽出し、SQL Goldの三世代を照合
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          stage="$RUNNER_TEMP/sqlite"
+          landing="$stage/landing"
+          site="$stage/site.env"
+          python3 native/setup.py --output "$site" --landing "$landing"
+          python3 tests/integration/sqlite/check_source.py "$stage" "$landing"
+          docker compose -p native-sqlite-ci --env-file "$site"             up -d --build --wait --wait-timeout 180 lakehouse
+          docker compose -p native-sqlite-ci --env-file "$site"             exec -T lakehouse python - < tests/integration/sqlite/check_apply.py
+      - name: 合成環境を破棄
+        if: always()
+        shell: bash
+        run: |
+          site="$RUNNER_TEMP/sqlite/site.env"
+          if test -f "$site"; then
+            docker compose -p native-sqlite-ci --env-file "$site"               down --volumes --remove-orphans
+          fi

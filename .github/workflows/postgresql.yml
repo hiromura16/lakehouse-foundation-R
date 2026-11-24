@@ -13,6 +13,7 @@ on:  # yamllint disable-line rule:truthy
       - native/**
       - scripts/extract-postgresql.py
       - scripts/sql_batch_worker.py
+      - scripts/sql_snapshot.py
       - scripts/sqlserver_batch.py
       - tests/integration/postgresql/**
   pull_request:

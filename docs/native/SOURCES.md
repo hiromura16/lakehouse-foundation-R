@@ -1,4 +1,4 @@
-# ファイル・SQL Server・Kafkaの入力契約
+# ファイル・SQL・Kafka・設備の入力契約
 
 <!-- doc-purpose:start -->
 > **役割:** ファイル・SQLバッチ・Kafka・設備の入力契約を確認します。
@@ -221,8 +221,8 @@ TRUNCATEや表の書換えで空に見えることを防ぎます。行の挿入
 `NULL` と空文字は別の値です。レコードの欠落が次の全件取得で確定すると、
 SQL Goldの現行データへ反映されます。
 
-SQL経路で使う設置先は1プロジェクトにつき1件です。SQL Serverと
-PostgreSQLの両方を使う場合、別プロジェクトと別カタログ・保存領域を
+SQLバッチの設置先は1プロジェクトにつき1件です。異なるソースを
+SQLバッチで使う場合は、別プロジェクトと別カタログ・保存領域を
 用意します。接続先、データベース、列マップを変える場合も新規の
 隔離先で受け入れます。パスワードやCAの更新で設置IDは変わりません。
 この抽出は全件スナップショット専用で、増分取得とCDCは別の経路です。
@@ -239,6 +239,50 @@ PostgreSQLの両方を使う場合、別プロジェクトと別カタログ・�
 ```bash
 bash tests/integration/postgresql/run.sh "$config/venv/bin/python"
 ```
+
+## 内製アプリのSQLiteバックアップを取り込む
+
+工場PCや設備の内製アプリがSQLiteを使う場合は、アプリのバックアップ機能、
+またはSQLiteの `.backup` で作ったDBを基盤へ渡します。書込中のSQLiteファイルを
+OSのコピーで持ち出すと、WALにある確定済みのデータがコピーに含まれないことが
+あります。アプリから承認済みのバックアップを取得してください。
+[SQLite Backup API](https://sqlite.org/backup.html) · [WALファイルの扱い](https://sqlite.org/wal.html#the_wal_file)
+
+Python 3.12以上とSQLite 3.37以上を用意します。SQLiteの通常表を6個用意し、
+[列対応の例](../../infra/source/sqlite-tables.example.json) をcheckout外へコピーして
+実際の表名・列名を指定します。 `source_schema` は全表で `main` を使います。
+`source-name` は保存する設置先の論理名、`source-id` は設備導入時に一度発行したUUIDです。
+同じ設置先を継続するときは、ファイル名が変わってもこの2項目と列対応を維持します。
+
+バックアップは補助ジャーナルファイルのない単体のDBを使います。WAL形式の
+バックアップを受け取った場合は、元の稼働DBから分離したコピーに対して
+`PRAGMA journal_mode=DELETE` を実行し、閉じた状態で送ります。
+DBの内容は読取専用トランザクションで取得し、抽出は受領したDBを更新しません。
+業務値はTEXT、INTEGERまたはNULLを使い、十進数の精度を保持する列はTEXTで
+保存します。 `updated_at` は `2026-01-05T03:00:00.1234567Z` の形でUTCを指定します。
+全6表合計10万行とJSON 16 MiBが上限です。
+[SQLite URIのmode=ro](https://sqlite.org/uri.html) · [SQLiteのデータ型](https://sqlite.org/datatype3.html)
+
+**Bash / Zsh共通**
+
+```bash
+sqlite_config="$HOME/.config/lakehouse-sqlite"
+landing="$HOME/.config/lakehouse-foundation-r/landing"
+umask 077
+mkdir -p "$sqlite_config"
+python3 scripts/extract-sqlite.py --db "$sqlite_config/source.sqlite3" \
+  --mapping "$sqlite_config/tables.json" --source-name factory_console \
+  --source-id "$(cat "$sqlite_config/installation-id")" \
+  --landing "$landing" > "$sqlite_config/job.json"
+```
+
+抽出が成功すると、内容に対応したSQLバッチと完了印を作り、`job.json` に
+内容IDとUTCの抽出時刻を出します。 `job.json` の2項目を使い、下の手順で反映します。
+抽出先のホストと基盤ホストが別なら、バッチ本体を先にコピーしてSHA-256を確認し、
+最後に `.ready` を置きます。元のSQLite DBを基盤ホストへ同期する必要はありません。
+SQLiteの全件取込から消えた業務行はSQLの公開世代に反映されます。
+[SQLite専用のGitHub Actions](../../.github/workflows/sqlite.yml) は、同じ内容を再取得した時点、
+削除、3世代のGold読取、同じ観測の再送、RawのSHA-256を照合します。
 
 ## 固定SQLバッチをAPIで受け取る
 

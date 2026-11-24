@@ -21,6 +21,7 @@ MAX_BYTES = 16 * 1024 * 1024
 MAX_ROWS = 100000
 SQLSERVER_SOURCE = "sqlserver-fixed-demo"
 POSTGRESQL_SOURCE = "postgresql-direct"
+SQLITE_SOURCE = "sqlite-snapshot"
 MAX_HISTORY = 100000
 MAX_CURRENT_BYTES = 64 * 1024 * 1024
 ROOT = Path(__file__).resolve().parents[1]
@@ -157,6 +158,8 @@ def read_document(batch_id, landing):
 
 def valid_database(kind, name):
     """ソースごとの識別子の境界とシステムDBを保護する。"""
+    if kind == SQLITE_SOURCE:
+        return POSTGRESQL_IDENTIFIER.fullmatch(name) is not None
     if kind == POSTGRESQL_SOURCE:
         return POSTGRESQL_IDENTIFIER.fullmatch(
             name
@@ -170,11 +173,18 @@ def valid_database(kind, name):
 
 
 def valid_origin(kind, name, table):
-    """SQL Serverの固定名と、PostgreSQLの明示マップをそれぞれ検証する。"""
+    """SQLソースごとに固定名、通常の名前空間、参照範囲を確認する。"""
     schema, relation = table["schema"], table["table"]
     if kind == SQLSERVER_SOURCE:
         domain, business_table = name.split("_", 1)
         return schema == "lh_demo_" + domain and relation == business_table
+    if kind == SQLITE_SOURCE:
+        return (
+            schema == "main"
+            and isinstance(relation, str)
+            and POSTGRESQL_IDENTIFIER.fullmatch(relation) is not None
+            and not relation.casefold().startswith("sqlite_")
+        )
     return (
         all(
             isinstance(value, str) and POSTGRESQL_IDENTIFIER.fullmatch(value)
@@ -210,8 +220,8 @@ def validate_document(document, contracts):
         or set(document) != expected
         or type(document["format_version"]) is not int
         or document["format_version"] != 1
-        or kind not in (SQLSERVER_SOURCE, POSTGRESQL_SOURCE)
-        or (kind == POSTGRESQL_SOURCE and document["mode"] != "snapshot")
+        or kind not in (SQLSERVER_SOURCE, POSTGRESQL_SOURCE, SQLITE_SOURCE)
+        or (kind != SQLSERVER_SOURCE and document["mode"] != "snapshot")
         or document["mode"] not in ("snapshot", "incremental")
         or not isinstance(document["source_identity"], str)
         or not re.fullmatch(r"[0-9a-f]{64}", document["source_identity"])
@@ -273,10 +283,8 @@ def validate_document(document, contracts):
             timestamp(row["source_updated_at"])
             seen.add(row["source_pk"])
         counts[name] = len(seen)
-    if kind == POSTGRESQL_SOURCE and sum(counts.values()) > MAX_ROWS:
-        raise SqlBatchError(
-            "The PostgreSQL snapshot exceeds the total row limit."
-        )
+    if kind != SQLSERVER_SOURCE and sum(counts.values()) > MAX_ROWS:
+        raise SqlBatchError("The SQL snapshot exceeds the total row limit.")
     return counts
 
 

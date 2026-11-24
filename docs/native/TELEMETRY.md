@@ -9,7 +9,7 @@
 >
 > **前提となる資料:** [Foundation Rの初回導入と操作](<START.md>)
 >
-> **次に読む資料:** [ファイル・SQL Server・Kafkaの入力契約](<SOURCES.md>) / [会社VMの受入手順と合格条件](<ACCEPTANCE.md>)
+> **次に読む資料:** [ファイル・SQL・Kafka・設備の入力契約](<SOURCES.md>) / [会社VMの受入手順と合格条件](<ACCEPTANCE.md>)
 >
 > **文書一覧:** [目的・読者から探す文書マニフェスト](<../DOCUMENTATION-MANIFEST.md>)
 <!-- doc-purpose:end -->

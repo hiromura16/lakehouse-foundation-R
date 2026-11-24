@@ -83,6 +83,15 @@ SQLバッチを反映するときのJSONは次の形です。[PostgreSQLのス�
 {"action":"sql-load","batch_id":"<抽出結果のSHA-256>","observed_at":"2026-01-05T12:00:00.0000000Z"}
 ```
 
+Dokployでは `lakehouse` のTerminalから、`job.json` に記録された内容IDと
+観測時刻を指定します。CLIはコンテナ内にある操作トークンを使います。
+
+**Bash / Zsh共通**
+
+```bash
+python -m native.api sql-load --batch-id "$batch_id" --observed-at "$observed_at"
+```
+
 大容量原本の保全は操作用トークンを使い、事前に専用受け渡し領域で確定した
 ファイル名を指定します。内容はHTTPで送信しません。[原本の配置方法](SOURCES.md#大容量の原本を保全する)
 

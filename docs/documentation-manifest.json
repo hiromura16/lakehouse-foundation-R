@@ -183,7 +183,7 @@
     },
     {
       "path": "docs/native/SOURCES.md",
-      "title": "ファイル・SQL Server・Kafkaの入力契約",
+      "title": "ファイル・SQL・Kafka・設備の入力契約",
       "purpose": "ファイル・SQLバッチ・Kafka・設備の入力契約を確認します。",
       "audience": [
         "初めて使う人",

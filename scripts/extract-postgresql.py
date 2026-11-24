@@ -17,13 +17,13 @@ from time import monotonic
 from uuid import UUID
 
 import sql_batch_worker as worker
+import sql_snapshot
+from sql_snapshot import encode, read_json
 from sqlserver_batch import (
     MAX_FIELD_CHARS,
     BatchError,
     canonical_timestamp,
-    publish_exact,
     safe_landing,
-    unique_json,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -56,30 +56,9 @@ COUNT_COLUMNS = {
     "reject_qty",
 }
 INTEGER_TYPES = {"int2", "int4", "int8"}
-MAX_SETTINGS_BYTES = 64 * 1024
 MAX_CELL_BYTES = 4 * MAX_FIELD_CHARS
 FETCH_ROWS = 16
 SNAPSHOT_SECONDS = 120
-
-
-def encode(value):
-    """空白を固定したUTF-8を、サイズ検査と内容IDの共通入力にする。"""
-    return json.dumps(
-        value,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-        allow_nan=False,
-    ).encode()
-
-
-def read_json(path):
-    """設定のサイズを読み取り前に制限し、同名キーを拒否する。"""
-    with path.open("rb") as handle:
-        raw = handle.read(MAX_SETTINGS_BYTES + 1)
-    if len(raw) > MAX_SETTINGS_BYTES:
-        raise BatchError("設定JSONが上限を超えました。")
-    return json.loads(raw, object_pairs_hook=unique_json)
 
 
 def private_input(path, *, credentials=False):
@@ -145,53 +124,16 @@ def read_settings(path):
 
 
 def read_mapping(path, contracts):
-    """全6表と各列の明示対応を検査する。SQL式と重複対応は拒否する。"""
-    body = read_json(Path(path))
-    expected = {item["table"]: item["columns"] for item in contracts}
-    if (
-        not isinstance(body, dict)
-        or set(body) != {"tables"}
-        or not isinstance(body["tables"], list)
-        or len(body["tables"]) != len(expected)
-    ):
-        raise BatchError("6個のテーブル対応を設定してください。")
-    result = {}
-    relations = set()
-    for entry in body["tables"]:
-        if not isinstance(entry, dict) or set(entry) != {
-            "target_table",
-            "source_schema",
-            "source_table",
-            "columns",
-        }:
-            raise BatchError("テーブル対応の項目を確認してください。")
-        name, schema, table, columns = map(
-            entry.get,
-            ("target_table", "source_schema", "source_table", "columns"),
-        )
-        if (
-            not isinstance(name, str)
-            or name not in expected
-            or name in result
-            or any(
-                not isinstance(part, str) or not IDENTIFIER.fullmatch(part)
-                for part in (schema, table)
-            )
-            or schema.casefold().startswith("pg_")
-            or schema.casefold() == "information_schema"
-            or (schema, table) in relations
-            or not isinstance(columns, dict)
-            or set(columns) != set(expected[name])
-            or any(
-                not isinstance(column, str) or not IDENTIFIER.fullmatch(column)
-                for column in columns.values()
-            )
-            or len(set(columns.values())) != len(columns)
-        ):
-            raise BatchError("テーブル・列の識別子と重複を確認してください。")
-        relations.add((schema, table))
-        result[name] = (schema, table, columns)
-    return result
+    """システム名前空間を除いた通常表と、業務列の対応を確認する。"""
+    return sql_snapshot.read_mapping(
+        path,
+        contracts,
+        identifier=IDENTIFIER,
+        schema_allowed=lambda name: (
+            not name.casefold().startswith("pg_")
+            and name.casefold() != "information_schema"
+        ),
+    )
 
 
 def source_identity(settings, mapping):
@@ -468,21 +410,9 @@ def prepare(
     document, observed_at = snapshot(
         settings, mapping, contracts, max_rows=max_rows
     )
-    worker.validate_document(document, contracts)
-    payload = encode(document)
-    if len(payload) > worker.MAX_BYTES:
-        raise BatchError("SQLバッチの16 MiB上限を超えました。")
-    batch_id = sha256(payload).hexdigest()
-    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
-    publish_exact(directory / f"{batch_id}.json", payload)
-    publish_exact(
-        directory / f"{batch_id}.json.ready", (batch_id + "\n").encode()
+    return sql_snapshot.stage_document(
+        document, observed_at, contracts, directory
     )
-    return {
-        "action": "sql-load",
-        "batch_id": batch_id,
-        "observed_at": observed_at,
-    }
 
 
 def main():

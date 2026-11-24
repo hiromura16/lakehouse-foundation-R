@@ -9,7 +9,7 @@
 >
 > **前提となる資料:** なし。必要な用語は本文で確認します。
 >
-> **次に読む資料:** [レイクハウスの設計思想](<DESIGN.md>) / [ファイル・SQL Server・Kafkaの入力契約](<SOURCES.md>)
+> **次に読む資料:** [レイクハウスの設計思想](<DESIGN.md>) / [ファイル・SQL・Kafka・設備の入力契約](<SOURCES.md>)
 >
 > **文書一覧:** [目的・読者から探す文書マニフェスト](<../DOCUMENTATION-MANIFEST.md>)
 <!-- doc-purpose:end -->

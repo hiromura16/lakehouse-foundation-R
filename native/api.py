@@ -412,7 +412,9 @@ def serve():
         http.serve_forever()
 
 
-def operation(action, dataset=None, limit=50):
+def operation(
+    action, dataset=None, limit=50, *, batch_id=None, observed_at=None
+):
     """トークンをCLIの引数に載せず、同じコンテナのAPIを呼ぶ。"""
     origin = "http://127.0.0.1:8080"
     if action == "health":
@@ -429,6 +431,8 @@ def operation(action, dataset=None, limit=50):
         if action == "archive":
             archive.verify_name(dataset)
             body["file"] = dataset
+        if action == "sql-load":
+            body.update(batch_id=batch_id, observed_at=observed_at)
         request = Request(
             origin + "/run",
             data=json.dumps(body).encode(),
@@ -456,25 +460,38 @@ def main():
             "verify",
             "gold",
             "archive",
+            "sql-load",
         ],
     )
     parser.add_argument(
         "dataset", nargs="?", help="Goldの集計名、または保全するファイル名"
     )
     parser.add_argument("--limit", type=int, default=50)
+    parser.add_argument("--batch-id", help="抽出が返したSQLバッチの内容ID")
+    parser.add_argument("--observed-at", help="抽出が返したUTCの観測時刻")
     parser.add_argument(
         "--strict",
         action="store_true",
         help="medallionで設備経路に失敗したときも非ゼロで終了する",
     )
     args = parser.parse_args()
+    if args.action == "sql-load" and not (args.batch_id and args.observed_at):
+        parser.error("sql-loadには --batch-id と --observed-at が必要です。")
+    if args.action != "sql-load" and (args.batch_id or args.observed_at):
+        parser.error("--batch-id と --observed-at は sql-load で使います。")
     if args.strict and args.action != "medallion":
         parser.error("--strict は medallion で使います。")
     try:
         if args.action == "serve":
             serve()
         else:
-            value = operation(args.action, args.dataset, args.limit)
+            value = operation(
+                args.action,
+                args.dataset,
+                args.limit,
+                batch_id=args.batch_id,
+                observed_at=args.observed_at,
+            )
             if args.action != "health":
                 print(json.dumps(value, ensure_ascii=False))
             # 業務世代とエラー情報はAPIで確定済み。自動実行へ部分成功を伝える。
