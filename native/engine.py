@@ -335,6 +335,7 @@ def medallion(core, prefix="", *, receive_sensor=None):
     業務の失敗では公開世代を変更しない。設備の失敗では直前の設備表を
     保持し、正常に確定した業務を公開する。書込元は接頭辞ごとに1つとする。
     """
+    started_at = datetime.now(timezone.utc).isoformat()
     core.ensure_tables(prefix)
     catalog = core.catalog()
     tables = input_tables(core, catalog, prefix)
@@ -378,6 +379,7 @@ def medallion(core, prefix="", *, receive_sensor=None):
     if all(previous.get(key) == value for key, value in manifest.items()):
         return result
 
+    manifest["publication_started_at"] = started_at
     release = pa.Table.from_pylist(
         [
             {

@@ -854,6 +854,10 @@
           },
           "sensor": {
             "$ref": "#/components/schemas/SensorPublication"
+          },
+          "publication_started_at": {
+            "type": "string",
+            "format": "date-time"
           }
         },
         "additionalProperties": true

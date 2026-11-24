@@ -159,7 +159,7 @@ def run_job(core, action, body):
         core.LOCK.release()
 
 
-def report_error(error):
+def report_error(error, *, file=sys.stdout):
     """入力値や資格情報を含めず、例外の型と発生箇所を記録する。"""
     frames = traceback.extract_tb(error.__traceback__)
     print(
@@ -173,6 +173,7 @@ def report_error(error):
             }
         ),
         flush=True,
+        file=file,
     )
 
 

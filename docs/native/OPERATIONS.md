@@ -89,6 +89,28 @@ partitionの割り当てが変わるため、切り替え時に元を停止し�
 Python標準入力で流し、出力したJSONを比較します。外部Kafkaブローカーの
 障害復旧、バックアップ間隔、復旧所要時間は導入先で測定してください。
 
+## 公開世代の来歴と保持状態を確認する
+
+対象の `lakehouse` コンテナ端末で、次のコマンドを実行します。
+設置先IDは英小文字で始まる63文字以内の英小文字・数字・ハイフンにし、
+同じ来歴システムへ出力する設置先同士で重複を避けます。
+
+**Bash / Zsh共通**
+
+```bash
+python -m native.lineage --site factory-test
+python -m native.catalog_audit
+```
+
+省略時はファイル経路の最新公開を確認します。両方とも
+`--channel cdc` または `--channel sql`、および
+`--release <APIで確認した公開世代ID>` を受け付けます。
+64ビットのスナップショットIDは、JSON数値の丸めを避けて文字列で維持します。
+
+- 来歴のJSONLには、その公開世代が採用した派生表の版と、生成した公開マニフェストの版が記録されます。部分公開で設備の旧版を保持した場合も、実際に採用した版を出力します。同じ世代の再出力は同じRun IDと時刻になります。開始時刻の記録がない公開世代は表の版を示す `DatasetEvent` になります。出力先を指定するまで標準出力だけを使います。 [OpenLineageのイベント](https://openlineage.io/docs/spec/object-model/) · [DatasetVersionの仕様](https://openlineage.io/spec/facets/1-0-0/DatasetVersionDatasetFacet.json)
+- 保持状態のJSONには、指定世代から参照するBronzeと派生表のメタデータが残っているかを出力します。失われた参照があると終了コード1です。データファイルまで照合する際は、復元環境でのハッシュ比較とGold読取も実施します。
+- 複数世代を保持する場合は、業務・設備の公開記録に残る世代ごとに確認します。このコマンドは表やデータファイルを変更しません。外部システムに来歴を保存する場合は、送信先の権限と設置先ID・表名の持ち出し可否を運用者が確認します。
+
 ## 受入の手順
 
 - `python3 native/check_contracts.py` で業務SQLと契約のhashを照合します。
