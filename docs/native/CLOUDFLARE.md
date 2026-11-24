@@ -69,3 +69,47 @@ CF_TUNNEL_PROTOCOL=http2
 | 切り戻し | 先にトンネル経路を無効にし、外から読めないことを確認する。対象サービスからだけ設定を外して再配備し、専用資格情報を無効化する |
 
 リポジトリでは合成RSA署名でゲートウェイの拒否・許可と列制御を検査します。実テナントのルーティング・IdP・企業CAとWAN断を含む試験は設置先で行います。
+
+## 承認した成果物を非公開R2へ持ち出す
+
+閲覧トンネルと成果物の送信は別の経路です。転送したい場合は、R2で公開アクセスを無効にした専用バケットを作り、そのバケットのObject Read & Writeに権限を絞った資格情報を発行します。転送CLIはR2を使わない場合のオンプレ配備に含める必要がありません。
+
+承認済みのCSV、JSON、Parquetと、その分類・公開世代・SHA-256を記したmanifestを同じ非公開フォルダに置きます。1ファイル16 MiB、全体64 MiB以下です。行数が途中で切られた応答や未承認の原本・隔離データを、成果物として承認しないでください。
+
+```json
+{
+  "format_version": 1,
+  "classification": "approved_external",
+  "dataset": "factory_daily_production",
+  "release": "123",
+  "files": [
+    {
+      "name": "production.csv",
+      "size_bytes": 26,
+      "sha256": "承認時に計算した64桁のSHA-256"
+    }
+  ]
+}
+```
+
+Python 3.14とuvを使い、まずネットワーク転送なしでファイルを照合します。
+
+**Bash / Zsh共通**
+
+```bash
+uv venv --python 3.14 .venv-r2
+uv pip sync --python .venv-r2/bin/python \
+  --require-hashes native/edge/requirements-r2.lock
+.venv-r2/bin/python -m native.edge.r2 /path/to/private/approved.json
+```
+
+承認した担当者がGit外の環境で `R2_ACCESS_KEY_ID` と `R2_SECRET_ACCESS_KEY` を設定します。短期資格情報の場合は `R2_SESSION_TOKEN` も設定します。承認先のアカウントIDとバケット名を明示して実行します。
+
+**Bash / Zsh共通**
+
+```bash
+.venv-r2/bin/python -m native.edge.r2 /path/to/private/approved.json \
+  --publish --account "$r2_account_id" --bucket "$r2_bucket"
+```
+
+成果物はハッシュで分けたキーに作成し、最後にmanifestを確定します。通信が切れた場合はローカルの承認済みファイルを維持し、同じmanifestで再試行します。既存オブジェクトを読み、内容が異なる場合は停止します。CIでは条件付き書き込みを模擬して順序と再送を検査します。配備先では対象バケットへの権限、ネットワーク断からの回復、他アカウントからのアクセス拒否を合成ファイルで確認してください。[R2認証](https://developers.cloudflare.com/r2/api/tokens/) · [条件付き書き込み](https://developers.cloudflare.com/r2/api/s3/conditional-operations/) · [データ所在地](https://developers.cloudflare.com/r2/reference/data-location/)

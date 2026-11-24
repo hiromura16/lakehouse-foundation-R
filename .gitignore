@@ -31,3 +31,5 @@ __pycache__/
 !infra/proxy/empty-ca.pem
 
 .venv-evaluation/
+
+.venv-r2/

@@ -42,3 +42,13 @@ jobs:
             CF_EDGE_READER_FILE="$RUNNER_TEMP/synthetic-reader" \
             docker compose --env-file "$RUNNER_TEMP/edge-site.env" \
               -f compose.yaml -f compose.cloudflare.yaml config --quiet
+
+      - name: R2成果物の承認、再送、確定順序を検査
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          uv venv --python 3.14 "$RUNNER_TEMP/r2-check"
+          uv pip sync --python "$RUNNER_TEMP/r2-check/bin/python" \
+            --require-hashes native/edge/requirements-r2.lock
+          "$RUNNER_TEMP/r2-check/bin/python" -m unittest discover \
+            -s tests/integration/edge -p r2_acceptance.py
