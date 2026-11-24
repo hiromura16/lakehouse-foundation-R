@@ -16,6 +16,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+        with:
+          version: '0.13.7'
+          checksum: c5221ff41b7892bfc223543883600125f6a47fe845093e0f5bdff4f359196d83
+          enable-cache: false
       - name: 固定した業務契約のハッシュを照合
         run: python3 native/check_contracts.py
       - name: 隔離したCompose構成を検査して起動
@@ -52,6 +57,16 @@ jobs:
           docker compose --env-file "$RUNNER_TEMP/native-site.env" -p native-ci \
             exec -T blackbox /bin/blackbox_exporter \
             --config.file=/etc/blackbox/blackbox.yml --config.check
+      - name: MCPで公開世代の参照と読取制限を確認
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mcp="$RUNNER_TEMP/native-mcp"
+          uv venv --python 3.12 "$mcp"
+          uv pip sync --python "$mcp/bin/python" --require-hashes \
+            --only-binary :all: examples/ai/requirements-mcp.lock
+          "$mcp/bin/python" tests/integration/native/mcp_acceptance.py \
+            --env-file "$RUNNER_TEMP/native-site.env" --api-port 18502
       - name: 自動化・時系列・監視転送を検証
         shell: bash
         run: |

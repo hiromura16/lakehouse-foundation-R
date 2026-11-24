@@ -80,3 +80,37 @@ unset LAKEHOUSE_READER_TOKEN
 [Pythonサンプル](../../examples/ai/native_tools.py) の `lakehouse_gold` をLangChainのtoolsへ登録できます。最初の応答の `release_snapshot_id` を次の呼出しの `release` へ渡すと、異なる表を同じ公開世代で比較できます。結果の記述には表名、表スナップショット、公開世代を残し、切り詰められた結果から全体を推定しないようにします。 `LAKEHOUSE_API_URL` はloopback HTTPまたはHTTPS originです。モデル・トレーシング・社外送信の実行先は利用者が明示して構成します。
 
 [LangChain公式 Tools](https://docs.langchain.com/oss/python/langchain/tools)
+
+
+## ローカルMCPホストから参照する
+
+MCPを経由すると、対応クライアントから「どの世代が公開中か」
+「指定世代の登録済みGoldにどんな行があるか」を問い合わせられます。
+`lakehouse_latest_release` で取得した世代文字列を、後続の
+`lakehouse_read_gold` の `release` に指定します。返された
+`truncated` が真なら、取得した行の範囲で解釈してください。
+
+Python 3.12とuvで、LangChainの環境と独立したMCP環境を作ります。
+
+**Bash / Zsh共通**
+
+```bash
+uv venv --python 3.12 "$HOME/.cache/lakehouse-r-mcp"
+uv pip sync --python "$HOME/.cache/lakehouse-r-mcp/bin/python" \
+  --require-hashes --only-binary :all: examples/ai/requirements-mcp.lock
+```
+
+利用するMCPホストでローカル標準入出力のサーバーを追加します。
+実行ファイルには上で作成した `bin/python` の絶対パス、引数には
+[サーバースクリプト](../../examples/ai/mcp_server.py) の絶対パスを指定します。
+MCPプロセスの環境に `LAKEHOUSE_READER_TOKEN` を秘密として渡します。
+`LAKEHOUSE_API_URL` の初期値は `http://127.0.0.1:18502` です。
+同じVM上から接続するか、別PCのホストで許可されたSSHトンネルを使い、
+ローカルの接続ポートに合わせます。
+
+MCPホスト自身が会話やツール結果をクラウドに送信する構成なら、
+ホスト側の送信先と業務データの持出し許可を利用前に確認してください。
+このアダプターは、ループバックHTTPを通じて登録済みの4表を各回最大200行
+返します。書込操作・任意SQL・Raw・モデル呼出しは提供対象外です。
+
+[Python MCP SDKのツール定義](https://py.sdk.modelcontextprotocol.io/servers/tools/) · [MCPのツール仕様](https://modelcontextprotocol.io/specification/2026-07-28/server/tools)
