@@ -48,16 +48,27 @@
 | ワーカーの停止 | 受付済みの要求を保持したままSIGTERM | 新規接続を閉じ、受付済みの応答を最後まで返して終了0 |
 | 大容量原本 | 既定の256 MiBと、上限を変更した257 MiBを隔離保全 | 条件付き作成、SHA-256とサイズ、再起動後の台帳が一致。[2 GiBの実測](EVALUATION.md#2-gibの検査原本を両s3保存先で照合する) |
 | 外部Kafka CDC | 隔離brokerに新旧更新、遅延snapshot、DELETE、tombstoneを発行し、consumerを再起動 | Raw 9件、offset 0〜8で欠落・重複0。旧版が勝たず、削除後の古い追加は復活せず、再開後の新しい追加を公開 |
+| Kafkaの確定履歴の隔離復元 | 6トピック・6区画に合成変更14件を配送し、Gold公開後に確定済みRawを別のカタログへ再生 | 確定位置が全6区画で一致。Gold 2表と隔離6表は型・行数・全行のハッシュが一致。[再生検査の入力と結果](CDC-SHADOW.md#実kafkaから確定した履歴の照合) |
 
 [標準Composeの受入コード](../../tests/integration/native/acceptance.py) · [CDCの受入コード](../../tests/integration/native/cdc_acceptance.py) · [業務集計の期待値](../../medallion/expected-demo.json)
 
-2026年11月24日の公開コミット `d832ece` では、以下の合成受入が成功しています。実行結果を開くと、対象コミット・検査項目・各ジョブのログを確認できます。
+2026年11月25日 JST、公開コミット `621e17a` のGitHub Actionsで
+14ワークフローが成功しました。各実行結果には対象コミットとログがあります。
 
-- [標準・閲覧・運用ツールのCompose受入](https://github.com/hiromura16/lakehouse-foundation-R/actions/runs/45465553603)
-- [CDCの外部broker・配送位置・再起動](https://github.com/hiromura16/lakehouse-foundation-R/actions/runs/45465553526)
-- [物理バックアップと新しいボリュームへの復元](https://github.com/hiromura16/lakehouse-foundation-R/actions/runs/45465553795)
+- [標準・閲覧・運用ツール・監視の停止復旧](https://github.com/hiromura16/lakehouse-foundation-R/actions/runs/45483039036)
+- [外部Kafkaの配送・再起動・確定履歴の隔離復元](https://github.com/hiromura16/lakehouse-foundation-R/actions/runs/45483039133)
+- [物理バックアップと新しいボリュームへの復元](https://github.com/hiromura16/lakehouse-foundation-R/actions/runs/45483232911)
+- [工場MQTT・OPC UA・Modbusの隔離受入](https://github.com/hiromura16/lakehouse-foundation-R/actions/runs/45483255187)
+- [ソース・Git履歴・日本語手順と業務SQLの検査](https://github.com/hiromura16/lakehouse-foundation-R/actions/runs/45483039251)
 
-現地では利用したコミットと設定に対応する実測を別途記録します。[CIの実行結果一覧](https://github.com/hiromura16/lakehouse-foundation-R/actions)
+別の導入試験では、認証設定を使わずに `3378eec` を公開Gitから取得し、
+新しい合成の企業CAで6イメージをキャッシュなしでビルドしました。
+配備前診断7項目、常駐9サービス、監視9対象と受入11項目が通りました。
+合成6ファイルからSQL14文で日次生産14行を公開し、同じ入力の再実行は
+追加0ファイルでした。公開世代が参照するS3オブジェクト85件も照合しました。
+会社のDokploy画面で実際のプロキシとCAを使うときは、同じ各段階で実測を
+記録してください。
+[GitHub Actionsの実行結果一覧](https://github.com/hiromura16/lakehouse-foundation-R/actions)
 
 ## 別の投入アプリと受け渡しを照合する
 

@@ -390,20 +390,25 @@ trivy image --image-src docker --scanners vuln --severity HIGH,CRITICAL \
   --format json --output image-vulnerabilities.json "$image"
 ```
 
-2026-11-25 JST、x86-64で16の実行イメージをTrivy 0.76.2で検査しました。
-同じデータベース（2026-11-24 13:06 UTC更新）で更新候補も比較しました。
-HIGH／CRITICALはパッケージ検出件数です。
+2026-11-25 JSTに、BakuのLinux amd64の常駐18サービスで使う
+17種類の実行イメージをTrivy 0.76.2で照合しました。脆弱性DBは
+2026-11-24 19:04 UTC版です。イメージごとのパッケージ検出はCRITICAL 2件、
+HIGH 275件で、そのうち修正版が掲載されていたものはCRITICAL 1件、
+HIGH 63件です。同じイメージを使う2つのPostgreSQLサービスは1件分として
+集計しています。パッケージに修正版があっても、上流のイメージに含まれるかは
+別に確認します。
 
-| 対象 | 検出件数の比較と判断 |
+| 対象 | 検出結果と照合した事実 |
 | --- | --- |
-| ワーカー・閲覧画面 | 各59→53 HIGH。実行イメージから依存のインストールに使わないpipを取り除き、公式Pythonベースを更新したところ、修正版ありの6件が各イメージで解消。残る53件にスキャン時点の修正版の記載なし |
-| Grafana OSS | 13.3.0→13.3.2で54→15 HIGH、CRITICALは両方0 |
-| PostgreSQLイメージの `gosu` | TrivyがGo標準ライブラリのCRITICALを検出。Goのバイナリ解析から該当TLS関数の到達性は確定できず、継続確認 |
-| InfluxDB Explorer | Debian BookwormのzlibでCRITICALを1件検出。Debianは該当MiniZipをBookwormのzlibバイナリに含めていないと記載。同梱のOSパッケージ一覧も確認。組織で利用条件・更新時期を確認 |
+| ワーカー・閲覧画面 | 各53 HIGH。直前の同一DBによる比較は各59→53。実行イメージから依存導入用のpipを除き、公式Pythonベースを更新して修正版があった6件を解消しました |
+| Grafana OSS | 13.3.2は15 HIGH。直前の同一DBによる13.3.0→13.3.2の比較は54→15 HIGH |
+| PostgreSQLイメージの `gosu` | GoのTLSに関するCRITICALを1件検出しました。実イメージの実行ファイルにGoの該当TLSハンドシェイク関数の名前が見つからず、起動時の権限切替に使われます。パッケージ検出は台帳に残します |
+| InfluxDB Explorer | Debian BookwormのzlibでCRITICALを1件検出しました。Debianの判定では該当MiniZipはBookwormのzlibバイナリに含まれず、実イメージからもMiniZipのコマンドと対応する共有ライブラリは見つかりませんでした |
 
-別に、リポジトリのPythonロック19ファイルに含まれる148種類の版を
-PyPIの版別JSONで確認し、掲載された脆弱性情報は0件でした。この照合結果には
-OSや個別イメージの組み込み依存は含まれないため、配備時は両方を確認します。
+別に、リポジトリのPythonロック18ファイルに含まれる144の異なる
+パッケージ名・版の組合せをPyPIの版別JSONで確認し、掲載された脆弱性情報は
+0件でした。これはロックされたPyPIパッケージの照合です。実行イメージに
+同梱されるOSや第三者の依存も、配備する構成について確認します。
 [Trivyの検出範囲](https://trivy.dev/docs/latest/guide/scanner/vulnerability/)
 · [PyPIのJSON API](https://docs.pypi.org/api/json/)
 · [Goの脆弱性情報](https://pkg.go.dev/vuln/GO-2026-4337)

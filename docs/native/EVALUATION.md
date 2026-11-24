@@ -516,6 +516,52 @@ NULLを含め、公開を更新せずに物理表へ追記した1行が応答へ
 [PyIcebergの並列数](https://py.iceberg.apache.org/configuration/#concurrency)
 · [DuckDBのArrowデータ取込](https://duckdb.org/docs/2.0/clients/python/data_ingestion)
 
+## S3とカタログの更新を隔離で試す
+
+Linux amd64の隔離環境で、SeaweedFS 4.53・Lakekeeper 0.14.3に
+合成データと原本を保存しました。ワーカーを止めて同じS3ボリュームで
+SeaweedFS 4.55を起動し、その後、同じPostgreSQLボリュームに対して
+Lakekeeper 0.15.1の移行を実行しました。
+
+| 照合 | 更新前、S3更新後、カタログ更新後の結果 |
+| --- | --- |
+| 日次生産Gold | 固定した公開世代、スナップショットIDと全14行が一致 |
+| 257 MiBの原本 | 269,484,032バイトを全量読み、SHA-256、ETag、台帳のスナップショットが一致。元ファイルの再送は追加0 |
+| 組み込み受入 | 各構成で11項目に成功 |
+| 同じTrivyの脆弱性DBでのパッケージ照合 | SeaweedFSのHIGH 1件は4.55で0、LakekeeperのHIGH 1件は0.15.1で0 |
+
+会社での更新では、採取前と同じ版を隔離先へ復元できることを先に確認します。
+PostgreSQLにカタログの移行が適用された後は、古いアプリと移行後のDBを組み合わせず、
+切替前のカタログとS3の停止点を対で復元します。試験に用いたデータは合成です。
+[SeaweedFS 4.55](https://github.com/seaweedfs/seaweedfs/releases/tag/4.55)
+· [Lakekeeper 0.15.1](https://github.com/lakekeeper/lakekeeper/releases/tag/v0.15.1)
+· [保全と隔離復元](OPERATIONS.md#停止済みのdockerボリュームを採取する)
+
+## 運用時に管理するサービスと保存先
+
+表には、掲載した構成の常駐コンテナ数と、実際にサービスへマウントする
+名前付きボリューム数を記載します。起動時だけの移行、検査クライアント、
+会社側のlandingや秘密ファイルは数に含めません。短時間の検査でも、書き込む
+結果の扱いと終了後に戻す対象を決めてから起動します。
+
+| 構成 | 常駐 | 永続ボリューム | 戻す対象・採用時に検証すること |
+| --- | ---: | ---: | --- |
+| 標準のCompose | 9 | 4 | PostgreSQL、S3、Prometheus、Grafana。業務の復元ではカタログとS3を同じ停止時点から戻し、公開世代を照合 |
+| 標準に閲覧と運用ツールを追加 | 17 | 9 | 標準の4個に、n8n用DBと設定、OpenObserve、InfluxDB、Explorerを追加。転送を有効にする場合は常駐1を追加し、転送WALはtmpfsへ配置 |
+| RustFSで標準の保存先を試す | 9 | 4 | 保存先1個を交換。試験は既存のS3ボリュームを共有せず、原本と表形式の互換を新規の倉庫で照合 |
+| DuckDB・DataFusionの単体計測 | 0 | 0 | プロセス終了後に計測用ディレクトリを整理。入力と結果のハッシュ、計測設定を再現用に保存 |
+| SailのSpark Connect試験 | 1 | 0 | Connectの版とSQLの対応範囲を固定し、同じ合成入力で再実行 |
+| RisingWave＋隔離Kafkaの現在値試験 | 2 | 2 | ブローカーと現在値の位置を一致させる。Icebergへ書き出す場合は別構成のカタログとS3も管理 |
+| InfluxDB 3 Core・GreptimeDBの単体比較 | 各1 | 各1 | 版、保持期間、書込と再起動、別ボリュームへの復元を個別に照合 |
+| BallistaのScheduler・Executor | 2 | 0 | クエリの途中停止、複数ホスト、結果の再作成は採用条件 |
+| Spark＋Cometのローカルジョブ | 0 | 0 | 一時ジョブのSpark本体、JVM、Cometの版を合わせ、対象SQLの実行プランを照合 |
+
+各構成の対象はサービス定義から確認できます。運用で同じ名前付き
+ボリュームに新しい版を適用する場合は、保全時の版と設定を復元先にも
+用意し、対象の公開世代、取込位置と出力から必要なものを照合します。
+[標準Compose](../../compose.yaml) · [評価用のCompose](../../compose.evaluation.yaml)
+· [運用ツールのCompose](../../compose.tools.yaml) · [復元手順](OPERATIONS.md)
+
 ## 試験の記録と停止
 
 入力バイト数、行数、製品の版、実行ホスト、CPUとメモリ上限、初回・再実行の別、処理時間、出力の一致を同じ記録に残します。分散時は障害で失った作業の範囲と復旧までの操作も加えます。会社データの投入は [受入条件](ACCEPTANCE.md) に沿って設置先で行います。
