@@ -305,6 +305,12 @@ Composeファイルとプロファイルの順序を控えます。関連するA
 DBAと保全します。
 `tools-n8n` と暗号鍵も同じ時点で保全し、秘密・原本は暗号化します。
 
+合成n8n 2.49.5を使った隔離試験では、18.6の停止後にDBと `.n8n` の採取6秒、
+別の空ボリュームへの展開3秒、18.7でn8nのreadinessまで17秒でした。
+元のユーザーでのログインと、保存した合成資格情報による内部の手動フローを
+確認しました。誤った鍵ではフローの認証処理を拒否しました。会社のWebhook、
+待機中の実行や外部ファイル領域は配備先で確認します。
+
 [標準構成の復元](OPERATIONS.md#標準のdbと保存先を新しいボリュームへ復元する)
 · [PostgreSQLのpg_dump](https://www.postgresql.org/docs/18/app-pgdump.html)
 · [PostgreSQLのpg_restore](https://www.postgresql.org/docs/18/app-pgrestore.html)
