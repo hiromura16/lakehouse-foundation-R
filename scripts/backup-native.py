@@ -17,10 +17,15 @@ from pathlib import Path, PurePosixPath
 from native_restore_tar import RestoreTarError, audit_archive
 
 REPO = Path(__file__).resolve().parents[1]
-POSTGRES = (
+LEGACY_POSTGRES = (
     "postgres:18.6-alpine@sha256:"
     "300ebd02c6d4de9ee27ad7f6855d5d21b4d3a4a5117767c1197d284c635d9736"
 )
+POSTGRES = (
+    "postgres:18.7-alpine3.24@sha256:"
+    "0115267ab5a509022df9319c77be365cef335adb71556c75f60f5360ee247e71"
+)
+POSTGRES_IMAGES = frozenset((LEGACY_POSTGRES, POSTGRES))
 # 物理形式が同じだと確認できる、標準構成の固定イメージだけを対象にする。
 CORE_IMAGES = {
     "catalog-db": POSTGRES,
@@ -142,7 +147,7 @@ def idle_volume(docker, name):
         raise BackupError("稼働中のコンテナと共有するボリュームがあります。")
 
 
-def volume_command(name, binary, *arguments):
+def volume_command(name, binary, *arguments, image=POSTGRES):
     """固定イメージからネットワーク外で読取専用のボリュームを参照する。"""
     return (
         "run",
@@ -164,9 +169,15 @@ def volume_command(name, binary, *arguments):
         f"type=volume,source={name},target=/archive,readonly,volume-nocopy",
         "--entrypoint",
         binary,
-        POSTGRES,
+        image,
         *arguments,
     )
+
+
+def postgres_image(service):
+    """採取元の固定版が既知なら、ネットワークなしで同じ補助イメージを使う。"""
+    image = service["Config"]["Image"] if service else POSTGRES
+    return image if image in POSTGRES_IMAGES else POSTGRES
 
 
 def checked_postgres(docker, services):
@@ -201,12 +212,17 @@ def checked_postgres(docker, services):
             raise BackupError("PostgreSQL 18の正常な停止点を確認できません。")
         local = str(PurePosixPath("/archive") / target.relative_to(root))
         idle_volume(docker, matches[0])
-        postgres_state(docker, matches[0], local)
+        postgres_state(
+            docker, matches[0], local, image=postgres_image(service)
+        )
 
 
-def postgres_state(docker, volume, directory):
+def postgres_state(docker, volume, directory, *, image=POSTGRES):
     """物理クラスタの制御ファイルで正常停止を確認する。"""
-    report = call(docker, *volume_command(volume, "pg_controldata", directory))
+    report = call(
+        docker,
+        *volume_command(volume, "pg_controldata", directory, image=image),
+    )
     if not any(
         line.startswith(b"Database cluster state:")
         and line.partition(b":")[2].strip() == b"shut down"
@@ -223,26 +239,40 @@ def image_platforms(docker, images):
     return {(item["Os"], item["Architecture"]) for item in items}
 
 
+def supported_core_images(images):
+    """台帳の任意のイメージを実行せず、固定版の組み合わせだけを受け付ける。"""
+    if not isinstance(images, dict):
+        return False
+    database = images.get("catalog-db")
+    return (
+        isinstance(database, str)
+        and database in POSTGRES_IMAGES
+        and images == {**CORE_IMAGES, "catalog-db": database}
+    )
+
+
 def capture_core(docker, services):
-    """標準構成に限り、復元先で照合する物理由来を台帳に残す。"""
+    """復元時に使う固定版を、停止したコンテナからそのまま記録する。"""
+    images = {
+        name: services[name]["Config"]["Image"]
+        for name in CORE_IMAGES
+        if name in services
+    }
     if (
-        any(
-            name not in services or services[name]["Config"]["Image"] != image
-            for name, image in CORE_IMAGES.items()
-        )
+        not supported_core_images(images)
         or f"PGDATA={CORE_PGDATA}"
         not in services["catalog-db"]["Config"]["Env"]
     ):
         return None
     platforms = image_platforms(
-        docker, [services[name]["Image"] for name in CORE_IMAGES]
+        docker, [services[name]["Image"] for name in images]
     )
     if len(platforms) != 1:
         return None
     os_name, architecture = next(iter(platforms))
     if os_name != "linux" or architecture not in ("amd64", "arm64"):
         return None
-    return {"architecture": architecture, "images": CORE_IMAGES}
+    return {"architecture": architecture, "images": images}
 
 
 def digest(path):
@@ -292,6 +322,8 @@ def capture(docker, project, directory):
         idle_volume(docker, name)
     checked_postgres(docker, services)
     core = capture_core(docker, services)
+    database = services.get("catalog-db") or services.get("tools-db")
+    archive_image = postgres_image(database)
     directory.mkdir(mode=0o700)
     entries = []
     for number, (name, mounts) in enumerate(sorted(volumes.items()), 1):
@@ -302,7 +334,14 @@ def capture(docker, project, directory):
             call(
                 docker,
                 *volume_command(
-                    name, "/bin/tar", "-C", "/archive", "-cf", "-", "."
+                    name,
+                    "/bin/tar",
+                    "-C",
+                    "/archive",
+                    "-cf",
+                    "-",
+                    ".",
+                    image=archive_image,
                 ),
                 stdout=output,
                 timeout=1800,
@@ -395,7 +434,7 @@ def core_archives(document, project):
     if (
         document["format_version"] != 2
         or not isinstance(core, dict)
-        or core.get("images") != CORE_IMAGES
+        or not supported_core_images(core.get("images"))
         or core.get("architecture") not in ("amd64", "arm64")
     ):
         raise BackupError(
@@ -424,7 +463,7 @@ def core_archives(document, project):
         archives[name] = matches[0]
     if len({entry["file"] for entry in archives.values()}) != len(CORE_MOUNTS):
         raise BackupError("DBと保存先に異なるアーカイブが必要です。")
-    return core["architecture"], archives
+    return core["architecture"], core["images"], archives
 
 
 def empty_project(docker, project, *, check_volumes):
@@ -565,7 +604,7 @@ def restore(docker, project, directory, output, expected):
             "復元の出力先の親は所有者だけが書き込める必要があります。"
         )
     document, checksum = read_manifest(directory, expected)
-    architecture, archives = core_archives(document, project)
+    architecture, images, archives = core_archives(document, project)
     verify_entries(directory, document)
     for entry in archives.values():
         with os.fdopen(
@@ -576,7 +615,7 @@ def restore(docker, project, directory, output, expected):
                     "復元の事前検査には通常のtarファイルが必要です。"
                 )
             audit_archive(archive)
-    if image_platforms(docker, [*CORE_IMAGES.values(), PYTHON]) != {
+    if image_platforms(docker, [*images.values(), PYTHON]) != {
         ("linux", architecture)
     }:
         raise BackupError(
@@ -614,6 +653,7 @@ def restore(docker, project, directory, output, expected):
             {
                 "restore_project": project,
                 "manifest_sha256": checksum,
+                "images": images,
                 "volumes": volumes,
             },
             filename="plan.json",
@@ -621,13 +661,25 @@ def restore(docker, project, directory, output, expected):
         for role, volume in volumes.items():
             create_staging_volume(docker, project, attempt, volume)
             restore_volume(docker, directory, archives[role], volume)
-        postgres_state(docker, volumes["catalog-db"], "/archive/18/docker")
+        postgres_state(
+            docker,
+            volumes["catalog-db"],
+            "/archive/18/docker",
+            image=images["catalog-db"],
+        )
         empty_project(docker, project, check_volumes=False)
     finally:
         call(docker, "rm", claim)
     publish(
         output,
         {
+            "services": {
+                role: {"image": image}
+                for role, image in {
+                    **images,
+                    "catalog-migrate": images["catalog"],
+                }.items()
+            },
             "volumes": {
                 role: {"external": True, "name": volume}
                 for role, volume in volumes.items()

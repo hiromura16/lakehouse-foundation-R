@@ -103,6 +103,54 @@ class TarTest(unittest.TestCase):
                 backup.audit_archive(io.BytesIO(archive(*entries)))
 
 
+class CaptureVersionTest(unittest.TestCase):
+    """稼働していたDBの版を推測せず台帳へ記録する。"""
+
+    def test_both_approved_versions_are_captured(self):
+        """18.6・18.7で保存元の固定参照とCPUを保持する。"""
+        for image in sorted(backup.POSTGRES_IMAGES):
+            images = {**backup.CORE_IMAGES, "catalog-db": image}
+            services = {
+                role: {
+                    "Config": {
+                        "Image": ref,
+                        "Env": [f"PGDATA={backup.CORE_PGDATA}"],
+                    },
+                    "Image": f"{role}-test-id",
+                }
+                for role, ref in images.items()
+            }
+            with (
+                self.subTest(image=image),
+                patch.object(
+                    backup,
+                    "image_platforms",
+                    return_value={("linux", "amd64")},
+                ),
+            ):
+                self.assertEqual(
+                    backup.capture_core(["docker"], services),
+                    {"architecture": "amd64", "images": images},
+                )
+                self.assertEqual(
+                    backup.postgres_image(services["catalog-db"]), image
+                )
+
+    def test_unknown_image_remains_verify_only(self):
+        """未承認のDigestをDockerで実行するための台帳を作らない。"""
+        image = "postgres:18.7-alpine3.24@sha256:" + "c" * 64
+        services = {
+            role: {"Config": {"Image": ref}}
+            for role, ref in {
+                **backup.CORE_IMAGES,
+                "catalog-db": image,
+            }.items()
+        }
+        with patch.object(backup, "image_platforms") as docker:
+            self.assertIsNone(backup.capture_core(["docker"], services))
+            docker.assert_not_called()
+
+
 class RestoreTest(unittest.TestCase):
     """確定済みの台帳と別ディレクトリで二段階の復元を検査する。"""
 
@@ -238,10 +286,65 @@ class RestoreTest(unittest.TestCase):
             },
         )
         state.assert_called_once_with(
-            self.docker, plan["volumes"]["catalog-db"], "/archive/18/docker"
+            self.docker,
+            plan["volumes"]["catalog-db"],
+            "/archive/18/docker",
+            image=backup.POSTGRES,
+        )
+        self.assertEqual(
+            overlay["services"],
+            {
+                role: {"image": image}
+                for role, image in {
+                    **backup.CORE_IMAGES,
+                    "catalog-migrate": backup.CORE_IMAGES["catalog"],
+                }.items()
+            },
         )
         for volume in plan["volumes"].values():
             self.assertTrue(volume.startswith("foundation-r-restore-"))
             self.assertNotIn(
                 volume, [entry["volume"] for entry in self.entries]
             )
+
+    def test_legacy_v2_restore_uses_only_original_images(self):
+        """18.7をキャッシュしていない復元先でも、採取版の18.6を選ぶ。"""
+        images = {**backup.CORE_IMAGES, "catalog-db": backup.LEGACY_POSTGRES}
+        self.manifest["native_core"]["images"] = images
+        checksum = backup.publish(self.archive, self.manifest)
+        with (
+            patch.object(
+                backup, "image_platforms", return_value={("linux", "amd64")}
+            ) as platforms,
+            patch.object(backup, "empty_project"),
+            patch.object(backup, "call", return_value=b"claim\n"),
+            patch.object(backup, "create_staging_volume"),
+            patch.object(backup, "restore_volume"),
+            patch.object(backup, "postgres_state") as state,
+        ):
+            self.run_restore(checksum=checksum)
+        platforms.assert_called_once_with(
+            self.docker, [*images.values(), backup.PYTHON]
+        )
+        self.assertEqual(
+            state.call_args.kwargs["image"], backup.LEGACY_POSTGRES
+        )
+        overlay = json.loads(
+            (self.output / "compose.restore.yaml").read_text()
+        )
+        self.assertEqual(
+            overlay["services"]["catalog-db"]["image"], backup.LEGACY_POSTGRES
+        )
+
+    def test_unapproved_postgres_digest_fails_before_docker(self):
+        """台帳のSHAが正しくても任意のイメージ置換を許さない。"""
+        self.manifest["native_core"]["images"] = {
+            **backup.CORE_IMAGES,
+            "catalog-db": "postgres:18.7-alpine3.24",
+        }
+        checksum = backup.publish(self.archive, self.manifest)
+        with patch.object(backup, "call") as docker:
+            with self.assertRaises(backup.BackupError):
+                self.run_restore(checksum=checksum)
+            docker.assert_not_called()
+        self.assertFalse(self.output.exists())
