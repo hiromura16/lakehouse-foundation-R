@@ -152,6 +152,52 @@ Dokployの **Environment → Create Environment File** は指定したComposeと
 
 ブラウザーはVM上のポート18501のGrafanaへ接続します。別端末からは社内で許可されたSSH転送またはHTTPS経路を利用します。DokployのDomainsでGrafanaをHTTPS化する場合は、service port 3000を指定し、`GRAFANA_ROOT_URL` を実際のHTTPS URL、`GRAFANA_COOKIE_SECURE=true` にします。
 
+### 初回Deployの前に配備先VMを診断する
+
+配備先VMへSSHで入り、同じコミットを展開したリポジトリのルートで実行
+します。`site` に非公開環境ファイルのパス、`project` にDokployの
+画面に表示される **App Name** を設定します。配置に使う追加Compose
+ファイルやプロファイルがある場合は、Deployと同じ順番で指定します。
+
+**Bash / Zsh共通**
+
+```bash
+site="$HOME/.config/lakehouse-foundation-r/site.env"
+project="APP_NAME_FROM_HEADER"
+python3 scripts/preflight.py --env-file "$site" -p "$project" -f compose.yaml
+```
+
+Dockerを通常 `sudo` で利用しているVMでは `--sudo` を付けます。
+このオプションは `sudo -n docker` を使うため、事前に管理者の承認と
+sudoの利用権限が必要です。`--env-file`、`-f`、`--profile` は複数
+指定できます。複数の環境ファイルは、配備時と同じ優先順で後の値が
+上書きします。環境変数の優先順位もDeploy時と揃えます。
+[Composeの変数展開](https://docs.docker.com/compose/how-tos/environment-variables/variable-interpolation/)
+
+| 診断 | 結果の見方 |
+| --- | --- |
+| `COMPOSE` | `FAIL` はファイルの順序、必須変数、プロファイルなどの設定を確認します。展開済みの秘密値をログへ出す必要はありません。 |
+| `ENGINE` | `FAIL` はDockerへの接続先と読取権限を確認します。 |
+| `HOST_FILES` | `missing` は既存ファイル・ディレクトリが必須の参照元、`invalid` は通常ファイルが必要なsecret・configの種別違いです。`review` では権限やDockerの自動作成設定を確認します。 |
+| `HOST_ROUTES` / `IPAM` | `docker_overlap` は割当済み・宣言済みの標準IPAMとの重複です。`route_overlap`、外部ネットワーク、独自ドライバー、再作成の警告は、会社の経路・命名規則を管理者と確認します。 |
+| `IPV4_POOL` | 自動割当が必要な標準bridgeの数と、既存割当・直接接続経路から見た空きの概算を返します。足りない場合は既存アプリのネットワークを削除せず、管理者と割当計画を確認します。 |
+
+`FAIL` は終了1、使い方のエラーは終了2です。`WARN` や `SKIP` だけの
+場合は終了0ですが、該当項目はDeploy前に個別に確認します。`--json` は
+同じ診断コードと件数を返します。ファイルの中身、展開済みCompose設定、
+パス、CIDR、コマンドのエラー詳細は出力しません。ネットワーク・
+ボリュームの作成や削除、イメージ取得、サービスの起動は行いません。
+
+SSHやTCPのDocker context、Docker Desktop、他コンテナ内では、Dockerの
+接続と既存ネットワークを確認できます。実際にbindを扱う配備VMの
+ファイル・経路は別環境になるため `SKIP` です。その場合は配備先
+VM自身で再実行します。IPv4プールの概算には、検出できた直接接続経路と
+割当済みDockerネットワークを使います。VPNなどの追加経路は明示した
+IPAMの範囲と照合します。名前解決、同時に起きる割当、IPv6の自動枯渇、
+実行ユーザーやBuildKitの読取可否は別途確認します。
+[Compose config](https://docs.docker.com/reference/cli/docker/compose/config/)
+· [Dockerの自動サブネット割当](https://docs.docker.com/engine/network/#automatic-subnet-allocation)
+
 ## 追加のCompose構成を有効にする
 
 Dokployの標準Deployには `--build` が含まれます。待機や追加構成を指定する場合は、UIに表示される対象サービスのApp Nameを使い、**Advanced → Run Command** の **Command** 欄に入力します。Dokployが先頭の `docker` を付けるので、`compose` で始めます。監視設定と閲覧入口の公開ファイルは、読み取り権限を固定してイメージへ組み込みます。Gitで設定を変更したら `--build` 付きで再配備します。DockerとBuildKitのレジストリ到達性を確認します。カスタムのCommandでは、DokployのPull Imagesに対応する `--pull always` と、DokployのMountsを使う場合の `--project-directory` が自動で追加されないため、必要な場合は既定コマンドを参考に併せて指定します。 [Dokploy v0.31のコマンド組立](https://github.com/Dokploy/dokploy/blob/v0.31.0/packages/server/src/utils/builders/compose.ts#L125-L188)
