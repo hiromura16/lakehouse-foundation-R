@@ -54,6 +54,7 @@
 
 | 文書 | 何のために読むか | 読むタイミング | 区分 |
 | --- | --- | --- | --- |
+| [ネイティブ処理系の比較試験](<native/EVALUATION.md>) | Sail、RisingWave、GreptimeDB、DataFusion、Ballista、Cometを合成データで起動・検証します。 | ネイティブ製品を分けて実行し、結果を確認するとき。 | active |
 | [運用ポータルと追加ツール](<native/TOOLS.md>) | n8n、OpenObserve、InfluxDBの設置と初回操作を確認します。 | 運用自動化、監視調査、設備時系列を追加するとき。 | active |
 
 ### 06 開発・レビュー
@@ -114,6 +115,7 @@
 | 文書 | 目的 |
 | --- | --- |
 | [目的・読者から探す文書マニフェスト](<DOCUMENTATION-MANIFEST.md>) | 公開Markdown全件の固有の目的・読者・読む時点を、目的別と読者別に引く。 |
+| [ネイティブ処理系の比較試験](<native/EVALUATION.md>) | Sail、RisingWave、GreptimeDB、DataFusion、Ballista、Cometを合成データで起動・検証します。 |
 | [説明スライド](<native/PRESENTATION.md>) | 概要、データの流れ、構成と配備を説明する資料です。 |
 | [構想と実装の対応](<native/ROADMAP.md>) | 設計上の目的と稼働する機能、評価候補を確認します。 |
 
@@ -130,6 +132,7 @@
 | --- | --- |
 | [変更する人のための読みやすさと検証規約](<../CONTRIBUTING.md>) | 読みやすいコード・コメント・CLI説明と、専用uv環境での品質検査規約を揃える。 |
 | [目的・読者から探す文書マニフェスト](<DOCUMENTATION-MANIFEST.md>) | 公開Markdown全件の固有の目的・読者・読む時点を、目的別と読者別に引く。 |
+| [ネイティブ処理系の比較試験](<native/EVALUATION.md>) | Sail、RisingWave、GreptimeDB、DataFusion、Ballista、Cometを合成データで起動・検証します。 |
 | [構想と実装の対応](<native/ROADMAP.md>) | 設計上の目的と稼働する機能、評価候補を確認します。 |
 
 ## 文書を追加・変更するとき

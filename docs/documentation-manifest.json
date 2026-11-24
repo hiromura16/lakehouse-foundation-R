@@ -293,6 +293,22 @@
         "docs/native/REFERENCES.md"
       ],
       "status": "active"
+    },
+    {
+      "path": "docs/native/EVALUATION.md",
+      "title": "ネイティブ処理系の比較試験",
+      "purpose": "Sail、RisingWave、GreptimeDB、DataFusion、Ballista、Cometを合成データで起動・検証します。",
+      "audience": [
+        "開発・設計担当",
+        "評価・報告担当"
+      ],
+      "when_to_use": "ネイティブ製品を分けて実行し、結果を確認するとき。",
+      "category": "05 運用・検証",
+      "prerequisites": [],
+      "next": [
+        "docs/native/ROADMAP.md"
+      ],
+      "status": "active"
     }
   ]
 }

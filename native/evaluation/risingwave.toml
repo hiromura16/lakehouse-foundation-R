@@ -1,0 +1,6 @@
+# 単一VMの合成試験では、既定の大きなファイル単位を小さくする。
+[server]
+telemetry_enabled = false
+
+[system]
+sstable_size_mb = 32

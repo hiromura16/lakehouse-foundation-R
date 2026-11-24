@@ -38,7 +38,7 @@ Dokployの **Projects → Create Service → Compose** から、公開GitHubの 
 | 導入と運用を説明する | [説明スライドとPowerPoint](docs/native/PRESENTATION.md) |
 | GoldをアプリやLangChainから参照する | [APIとLangChain](docs/native/API.md) |
 | 障害を切り分ける、会社VMで受入試験を行う | [運用とバックアップ](docs/native/OPERATIONS.md) · [受入手順と合格条件](docs/native/ACCEPTANCE.md) |
-| 設計判断と評価状況を確認する | [構成と採用理由](docs/native/ARCHITECTURE.md) · [レイクハウスの設計思想](docs/native/DESIGN.md) · [構想と実装の対応](docs/native/ROADMAP.md) |
+| 設計判断と評価状況を確認する | [構成と採用理由](docs/native/ARCHITECTURE.md) · [レイクハウスの設計思想](docs/native/DESIGN.md) · [構想と実装の対応](docs/native/ROADMAP.md) · [比較試験](docs/native/EVALUATION.md) |
 
 ## リポジトリの構成
 

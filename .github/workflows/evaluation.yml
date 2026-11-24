@@ -1,0 +1,91 @@
+name: ネイティブ処理系の合成データ比較
+
+on:  # yamllint disable-line rule:truthy
+  push:
+    paths: ['compose.evaluation.yaml', 'native/evaluation/**', '.github/workflows/evaluation.yml']
+  pull_request:
+    paths: ['compose.evaluation.yaml', 'native/evaluation/**', '.github/workflows/evaluation.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  engines:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+        with:
+          version: '0.13.7'
+          checksum: c5221ff41b7892bfc223543883600125f6a47fe845093e0f5bdff4f359196d83
+          enable-cache: false
+      - name: 合成環境と共通クライアントを準備
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          docker compose -f compose.evaluation.yaml --profile '*' config --quiet
+          uv venv --python 3.12 "$RUNNER_TEMP/engine-check"
+          uv pip sync --python "$RUNNER_TEMP/engine-check/bin/python" \
+            --require-hashes native/evaluation/compute.lock
+          docker compose -f compose.evaluation.yaml --profile sail --profile timeseries \
+            --profile stream --profile distributed up -d --build --wait --wait-timeout 180
+      - name: SailとDataFusionの現行値、GreptimeDBの時系列、Ballistaの分散SQL
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          "$RUNNER_TEMP/engine-check/bin/python" -m native.evaluation.compute sail
+          "$RUNNER_TEMP/engine-check/bin/python" -m native.evaluation.compute datafusion
+          for attempt in {1..15}; do
+            if python3 -m native.evaluation.greptime; then break; fi
+            test "$attempt" -lt 15
+            sleep 2
+          done
+          docker compose -f compose.evaluation.yaml --profile distributed-check \
+            run --rm --build ballista-check
+      - name: RisingWaveで作成・更新・削除と再開後の現在値を確認
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          pgimage='postgres:18.6-alpine@sha256:300ebd02c6d4de9ee27ad7f6855d5d21b4d3a4a5117767c1197d284c635d9736'
+          run_sql() {
+            docker run --rm -i --network foundation-r-evaluation_default "$pgimage" \
+              psql -X -v ON_ERROR_STOP=1 -h risingwave -p 4566 -U root -d dev "$@"
+          }
+          for attempt in {1..20}; do
+            if run_sql -qAtc 'SELECT 1'; then break; fi
+            test "$attempt" -lt 20
+            sleep 3
+          done
+          docker compose -f compose.evaluation.yaml exec -T broker \
+            rpk topic create foundation-r-evaluation-products --partitions 1
+          run_sql < native/evaluation/stream.sql
+          docker compose -f compose.evaluation.yaml exec -T broker \
+            rpk topic produce foundation-r-evaluation-products < native/evaluation/stream-events.jsonl
+          query='SELECT product_id, revision, cycle FROM evaluation_current ORDER BY product_id'
+          assert_state() {
+            for attempt in {1..20}; do
+              if result=$(run_sql -qAtc "$query") && test "$result" = 'P1|20|14.25'; then
+                printf '%s\n' "$result"
+                return
+              fi
+              sleep 2
+            done
+            return 1
+          }
+          assert_state
+          docker compose -f compose.evaluation.yaml restart risingwave
+          assert_state
+      - name: Spark上のComet物理プランを照合
+        run: |
+          docker compose -f compose.evaluation.yaml --profile accelerator \
+            run --rm --build comet
+      - name: 合成環境の専用volumeを破棄
+        if: always()
+        run: docker compose -f compose.evaluation.yaml --profile '*' down --volumes

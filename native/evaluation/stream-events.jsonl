@@ -1,0 +1,4 @@
+{"before":null,"after":{"product_id":"P1","revision":10,"cycle":12.5},"op":"c"}
+{"before":{"product_id":"P1","revision":10,"cycle":12.5},"after":{"product_id":"P1","revision":20,"cycle":14.25},"op":"u"}
+{"before":null,"after":{"product_id":"P2","revision":10,"cycle":20},"op":"c"}
+{"before":{"product_id":"P2","revision":10,"cycle":20},"after":null,"op":"d"}

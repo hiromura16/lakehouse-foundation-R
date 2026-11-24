@@ -14,14 +14,16 @@
 > **文書一覧:** [目的・読者から探す文書マニフェスト](<../DOCUMENTATION-MANIFEST.md>)
 <!-- doc-purpose:end -->
 
-実際に起動した機能と、今後比較する候補が分かるよう、構想の目的ごとに整理しています。
+標準の業務処理、任意で追加する運用機能、合成データで起動・検証できる比較対象を対応づけます。配備の合格条件と負荷試験は別々に記録します。[比較試験の実行手順](EVALUATION.md)
 
-| 構想上の目的 | 現在使える機能 | 試験する条件 |
+| 構想の項目 | 検証済みの範囲 | 追加の受入条件 |
 | --- | --- | --- |
-| JVMを使わない小規模変換 | DuckDBのSQLとPyIcebergで1台のVMに配置。Apache DataFusionを使う製品としてInfluxDB 3 Coreを追加 | 単独のDataFusionやSailを比較する場合は、固定入力、同じ業務SQLの期待値、CPU・メモリ上限を揃える |
-| Kafkaから現在値を構築 | PythonのCDCでRaw、更新順、DELETE、再開位置を確認 | RisingWaveのIceberg書込、取消、再開を同じイベントで比較する |
-| 設備時系列の調査 | Icebergに業務向けの最新値・1分窓。InfluxDB 3 CoreとExplorerで測定点のSQL検索 | GreptimeDBやTelegrafの転送を比較する場合は、保持・遅延、再送、バックアップを測定する |
-| 分散SQLと高度な互換 | 単一VMの処理上限を明示 | Ballistaは単一VMの制約に達した場合に評価。SailはSpark Connect互換、CometはSpark実行環境を前提に評価する |
-| GUI監視と運用自動化 | Grafana、OpenObserve、n8n、運用ポータル | 接続先ごとのTLSと権限、アラート通知、復元を実環境で検証する |
+| Silverの再構築 | 標準DuckDBの業務処理。Sail・DataFusionで8件の共通SQL fixtureを照合 | 同じ実契約を全エンジンへ渡し、Icebergの再構築、型・順序、ファイル数とRSSを比較 |
+| Kafkaから現在値を構築 | 基盤のCDCと、RisingWaveによるKafkaの合成作成・訂正・削除を個別に検証 | RisingWaveのIceberg書込、tombstone、再送、オフセット、障害復旧 |
+| 設備時系列の調査 | Icebergの最新値・1分窓、InfluxDBとGreptimeDBへの独立した3点の書き込みとSQL | 同じストリームからの転送、Telegraf・Vector、保持・再送、1万〜100万点の比較 |
+| ローカル変換 | DataFusionのCSV・JSONLの読取とParquet変換 | 企業入力のファイルサイズ、型、ピークメモリを計測 |
+| 分散SQL | Ballista SchedulerとExecutorの個別起動、分散SQLの合計 | 複数ホスト、停止時の再試行、単一ノードを超える負荷 |
+| Sparkの比較 | Cometを有効にしたSparkのParquet集計と物理プラン | 業務SQLの互換範囲、非対応演算、JVMを含む運用コストの計測 |
+| 自動化と観測 | Grafana、OpenObserve、n8n、運用ポータル、設定ファイルで変更可能なダッシュボード | 運用の権限、通知先、履歴の復旧を設置先で受入 |
 
-データ量や起動時間を比較するときは、同一ホスト・同一入力・同じ制限で測ります。合成データの短時間テストと会社の実データ・負荷試験は、結果を別々に記録します。[受入手順](ACCEPTANCE.md) · [追加ツール](TOOLS.md)
+[標準構成の受入](ACCEPTANCE.md) · [運用ツール](TOOLS.md)

@@ -1,0 +1,133 @@
+# 合成データの比較試験は独立したComposeプロジェクトと保存先で行う。
+name: foundation-r-evaluation
+
+x-evaluation: &evaluation
+  security_opt: [no-new-privileges:true]
+  labels:
+    traefik.enable: 'false'
+  logging:
+    driver: json-file
+    options: {max-size: 10m, max-file: '2'}
+
+services:
+  sail:
+    <<: *evaluation
+    profiles: [sail]
+    build:
+      context: .
+      dockerfile: native/evaluation/sail.Dockerfile
+      secrets: [corporate-ca]
+    ports: ["127.0.0.1:${EVAL_SAIL_PORT:-18601}:50051"]
+    mem_limit: 1g
+    cpus: 2
+    cap_drop: [ALL]
+    healthcheck:
+      test: [CMD, python3, -c, "import socket; socket.create_connection(('127.0.0.1', 50051), 2).close()"]
+      interval: 5s
+      timeout: 4s
+      retries: 12
+
+  broker:
+    <<: *evaluation
+    profiles: [stream]
+    image: docker.redpanda.com/redpandadata/redpanda:v26.3.1@sha256:260532f70fd840bf2159106bd4ef900f199c1f5ca2a23cb362642320513b90f5
+    command: [redpanda, start, "--mode=dev-container", "--smp=1", "--memory=512M", "--kafka-addr=0.0.0.0:9092", "--advertise-kafka-addr=broker:9092"]
+    volumes: [broker:/var/lib/redpanda/data]
+    mem_limit: 768m
+
+  risingwave:
+    <<: *evaluation
+    profiles: [stream]
+    image: risingwavelabs/risingwave:v3.1.2@sha256:7efe24b9006baf4b40cd9623557ebc1c344d3740b81f0b16dac7605aed082d38
+    command: [single_node, "--listen-addr=0.0.0.0:4566", "--total-memory-bytes=3221225472", "--parallelism=2", "--store-directory=/state", "--config-path=/etc/foundation-evaluation/risingwave.toml"]
+    configs:
+      - source: risingwave-settings
+        target: /etc/foundation-evaluation/risingwave.toml
+    ports: ["127.0.0.1:${EVAL_RISINGWAVE_PORT:-18602}:4566"]
+    volumes: [risingwave:/state]
+    mem_limit: 4g
+    cpus: 2
+
+  greptime:
+    <<: *evaluation
+    profiles: [timeseries]
+    image: greptime/greptimedb:v1.3.0@sha256:d8a199398da2b105e6cb3a168f249ecbbc078893abff5ea668bd59e05f1027df
+    command: [standalone, start, "--http-addr=0.0.0.0:4000", "--data-home=/greptimedb_data"]
+    ports: ["127.0.0.1:${EVAL_GREPTIME_PORT:-18603}:4000"]
+    volumes: [greptime:/greptimedb_data]
+    mem_limit: 1g
+    cpus: 2
+
+  ballista-scheduler:
+    <<: *evaluation
+    profiles: [distributed]
+    image: &ballista ghcr.io/apache/datafusion-ballista-standalone:55.0.0@sha256:b531543d6933d785a54bd46c174246681adfa12d046e42ae77c831e44d183b66
+    entrypoint: [/root/ballista-scheduler]
+    command: ["--external-host=ballista-scheduler"]
+    mem_limit: 512m
+    cpus: 1
+
+  ballista-executor:
+    <<: *evaluation
+    profiles: [distributed]
+    image: *ballista
+    entrypoint: [/root/ballista-executor]
+    command: ["--scheduler-host=ballista-scheduler", "--external-host=ballista-executor", "--concurrent-tasks=2"]
+    depends_on: [ballista-scheduler]
+    mem_limit: 1g
+    cpus: 2
+
+  ballista-check:
+    <<: *evaluation
+    profiles: [distributed-check]
+    build:
+      context: .
+      dockerfile: native/evaluation/ballista.Dockerfile
+      secrets: [corporate-ca]
+    mem_limit: 512m
+    cap_drop: [ALL]
+
+  comet:
+    <<: *evaluation
+    profiles: [accelerator]
+    build:
+      context: .
+      dockerfile: native/evaluation/comet.Dockerfile
+    network_mode: none
+    hostname: localhost
+    environment:
+      SPARK_LOCAL_IP: 127.0.0.1
+    mem_limit: 2g
+    cpus: 2
+    entrypoint: [/opt/spark/bin/spark-submit]
+    command:
+      - --master
+      - local[2]
+      - --conf
+      - spark.plugins=org.apache.spark.CometPlugin
+      - --conf
+      - spark.sql.extensions=org.apache.comet.CometSparkSessionExtensions
+      - --conf
+      - spark.comet.enabled=true
+      - --conf
+      - spark.comet.exec.enabled=true
+      - --conf
+      - spark.shuffle.manager=org.apache.spark.sql.comet.execution.shuffle.CometShuffleManager
+      - --conf
+      - spark.memory.offHeap.enabled=true
+      - --conf
+      - spark.memory.offHeap.size=512m
+      - /opt/spark/foundation-comet.py
+
+configs:
+  risingwave-settings:
+    file: ./native/evaluation/risingwave.toml
+
+secrets:
+  corporate-ca:
+    file: ${CORPORATE_CA_FILE:-./infra/proxy/empty-ca.pem}
+
+volumes:
+  broker:
+  risingwave:
+  greptime:
