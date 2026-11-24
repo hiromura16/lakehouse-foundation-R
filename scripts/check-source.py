@@ -41,6 +41,7 @@ REVIEWED_PNG_SHA256 = {
         "58507200eb6f419fd7147520287f951c980702ec423cad8e1588d1eca8cf91aa",
     },
     "docs/native/images/data-browser-demo.png": {
+        "b82c0fdfea442ce5ea62d45c3c9fbf334299a4fed3daeea560b2c74ad43434e0",
         "17311468366dcb3ddc4964e1fc1c8a00603a1b174ad05c31c36e11047bcfe338",
         "e5a2f3d37f2857efc41da18dc0510fe865992757d7bc74d0d39acb4349828e2c",
     },

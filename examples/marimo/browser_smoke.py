@@ -15,6 +15,11 @@ def main():
     parser.add_argument("origin")
     parser.add_argument("token_file", type=Path)
     parser.add_argument("screenshot", type=Path)
+    parser.add_argument(
+        "--chromium-executable",
+        type=Path,
+        help="既存のChromiumを使う場合のパス",
+    )
     args = parser.parse_args()
     password = args.token_file.read_text(encoding="utf-8").strip()
     requests_outside_origin = set()
@@ -26,7 +31,9 @@ def main():
         route.abort()
 
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch()
+        browser = playwright.chromium.launch(
+            executable_path=args.chromium_executable
+        )
         context = browser.new_context(viewport={"width": 1180, "height": 830})
         context.route(
             re.compile(rf"^https?://(?!{re.escape(origin.netloc)}(?:/|$))"),

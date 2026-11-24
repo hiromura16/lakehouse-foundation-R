@@ -15,6 +15,11 @@ def main():
     parser.add_argument("origin")
     parser.add_argument("password", type=Path)
     parser.add_argument("screenshot", type=Path)
+    parser.add_argument(
+        "--chromium-executable",
+        type=Path,
+        help="既存のChromiumを使う場合のパス",
+    )
     args = parser.parse_args()
     origin = urlsplit(args.origin)
     password = args.password.read_text(encoding="utf-8").strip()
@@ -25,7 +30,9 @@ def main():
         route.abort()
 
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch()
+        browser = playwright.chromium.launch(
+            executable_path=args.chromium_executable
+        )
         anonymous = browser.new_context()
         assert anonymous.request.get(args.origin).status == 401
         anonymous.close()

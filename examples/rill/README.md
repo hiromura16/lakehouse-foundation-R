@@ -70,6 +70,7 @@ docker compose --env-file site.env -p "$project" down
 期待値は14行、2工場です。検証端末にPlaywright 1.65.2とChromiumがある場合は
 `python browser_smoke.py http://127.0.0.1:<ポート> private/password screenshot.png`
 で画面と認証を再検査します。
+検証端末の既存Chromiumを使う場合は `--chromium-executable` にそのパスを指定できます。
 
 ## 取り込むデータを固定する理由
 

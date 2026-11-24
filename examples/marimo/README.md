@@ -61,6 +61,7 @@ docker compose --env-file site.env -p "$project" down
 ブラウザー操作の再検証は、検証端末のPlaywright 1.65.2とChromiumで
 `python browser_smoke.py http://127.0.0.1:<ポート> approved/token screenshot.png`
 を実行します。画面はローカルの認証フォームとWebSocketを使います。
+検証端末の既存Chromiumを使う場合は `--chromium-executable` にそのパスを指定できます。
 
 ## 承認されたGoldへ切り替える
 
