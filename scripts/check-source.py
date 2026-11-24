@@ -23,6 +23,9 @@ MAX_TEXT_BYTES = 8 * 1024 * 1024
 # 目視とメタデータを確認した画像だけ、SHA-256で検査対象を固定する。
 # 差し替え時は内容を確認してハッシュを追加し、履歴用に既存の値も残す。
 REVIEWED_PNG_SHA256 = {
+    "docs/native/images/foundation-r-structure.png": {
+        "5d67264315b9ed909b0d67389e02928ff998322f66122c844d8842426195961b",
+    },
     "docs/native/images/rill-production-demo.png": {
         "c15851ebada80f40521d63d88a0bdf936b2764542b4a36bb96f9c41f20a84e9d",
     },

@@ -14,17 +14,19 @@
 > **文書一覧:** [目的・読者から探す文書マニフェスト](<../DOCUMENTATION-MANIFEST.md>)
 <!-- doc-purpose:end -->
 
-概要から運用と今後の評価までを10枚にまとめています。ブラウザーの前後ボタンまたは左右キーで進め、印刷からPDF化できます。PowerPointに貼る構成図は2400×1350のPNGです。
+工場のシステム担当者、データ利用者、基盤運用者へ、導入時の分担と判断材料を説明する20枚の資料です。PowerPointでは見出し、表、構成図のパーツを編集できます。全体構成図は16:9でそのままスライドに貼れます。
 
-| 枚 | 説明する内容 |
+| 枚 | 主な内容 |
 | --- | --- |
-| 1〜2 | 用途、全体構成、データの所有と処理の境界 |
-| 3〜4 | 原本から提供までの段階、製造・出荷・設備の指標 |
-| 5〜7 | 運用ツールの使い分け、n8n、時系列ストア |
-| 8〜10 | 会社VMでの配備、合格条件、構想上の評価候補 |
+| 1〜5 | 対象業務、全体の構造、データの流れと契約 |
+| 6〜10 | 取込の経路、設備テレメトリ、Iceberg公開、調査と閲覧、監視 |
+| 11〜15 | 自動化とAIの境界、Dokploy、企業プロキシ、Cloudflare、障害復旧 |
+| 16〜20 | 計算エンジンの比較、検証結果、初日からの運用、コンポーネントの対応 |
 
-追加構成の運用ポータルから「説明スライド」を開けます。ローカルで編集・閲覧する場合は、checkout内の `docs/presentation/index.html` をブラウザーで開きます。
+- [編集用PowerPoint（20枚）](https://github.com/hiromura16/lakehouse-foundation-R/releases/download/briefing-2026-11-25/factory-lakehouse-briefing.pptx)
+- [閲覧・配布用PDF（20ページ）](https://github.com/hiromura16/lakehouse-foundation-R/releases/download/briefing-2026-11-25/factory-lakehouse-briefing.pdf)
+- [全体構造PNG（2400×1350）](images/foundation-r-structure.png)
+- [オンプレと外部連携の配置PNG（2400×1350）](https://github.com/hiromura16/lakehouse-foundation-R/releases/download/briefing-2026-11-25/factory-lakehouse-topology.png)
+- [説明会向けHTML（10枚）](../presentation/index.html) · [配備と運用の補助ツール](TOOLS.md)
 
-[スライドのHTML](../presentation/index.html) · [全体構成PNG](images/foundation-r-overview.png) · [運用ポータルの起動](TOOLS.md)
-
-[PowerPoint 11枚をGitHubからダウンロード](https://github.com/hiromura16/lakehouse-foundation-R/releases/download/presentation-2026-11-24/lakehouse-foundation-r.pptx)
+HTML版は前後ボタンまたは左右キーで進められます。任意の運用ポータルからも開けます。[PowerPoint 11枚の短縮版](https://github.com/hiromura16/lakehouse-foundation-R/releases/download/presentation-2026-11-24/lakehouse-foundation-r.pptx)

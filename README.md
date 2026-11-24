@@ -16,9 +16,9 @@
 
 MES・ERP・設備の入力原本を保管し、工場別の日次生産、出荷の充足状況、設備の最新値と1分集計を提供するデータレイクハウスです。標準構成は、JVMを使わずに1台のLinux VMで動きます。
 
-![Foundation Rの入力、処理・保存、閲覧・連携、運用監視と拡張ツールの構成](docs/native/images/foundation-r-overview.png)
+![Foundation Rの4層構造と標準・任意コンポーネントの配置](docs/native/images/foundation-r-structure.png)
 
-[プレゼン用PNG（2400×1350）](docs/native/images/foundation-r-overview.png) · [構成図の編集用HTML](docs/native/images/foundation-r-overview.html) · [技術の役割と採用理由](docs/native/ARCHITECTURE.md)
+[プレゼン用PNG（2400×1350）](docs/native/images/foundation-r-structure.png) · [編集できるPowerPoint](docs/native/PRESENTATION.md) · [データ経路の説明図](docs/native/images/foundation-r-overview.html) · [技術の役割と採用理由](docs/native/ARCHITECTURE.md)
 
 ## 会社VMでDokployから配備する
 
