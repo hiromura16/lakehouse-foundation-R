@@ -11,7 +11,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 SOURCE = Path(__file__).resolve().parent
 REPO = SOURCE.parents[2]
@@ -53,11 +53,13 @@ def prepare_extensions(work):
     for name, expected in DUCKDB_EXTENSIONS.items():
         filename = f"{name}.duckdb_extension"
         url = f"https://extensions.duckdb.org/v2.0.1/linux_amd64/{filename}.gz"
+        # 公式クライアントを示すUAで配布先へ接続する。
+        request = Request(url, headers={"User-Agent": "DuckDB/v2.0.1"})
         sha256 = hashlib.sha256()
         size = 0
         target = directory / filename
         with (
-            urlopen(url, timeout=30) as response,
+            urlopen(request, timeout=30) as response,
             gzip.GzipFile(fileobj=response) as archive,
             target.open("xb") as output,
         ):
