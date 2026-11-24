@@ -182,6 +182,24 @@
       "status": "active"
     },
     {
+      "path": "docs/native/SHIFT-REPORT.md",
+      "title": "工場のシフト暦で公開結果を照合する",
+      "purpose": "公開世代のSilverを工場の現地シフト暦と照合し、実績・停止報告の根拠を保存します。",
+      "audience": [
+        "データ利用担当",
+        "運用担当"
+      ],
+      "when_to_use": "夜勤・日勤の集計を、同じ公開世代のまま再照合するとき。",
+      "category": "03 データ・操作",
+      "prerequisites": [
+        "docs/native/SOURCES.md"
+      ],
+      "next": [
+        "docs/native/OPERATIONS.md"
+      ],
+      "status": "active"
+    },
+    {
       "path": "docs/native/SOURCES.md",
       "title": "ファイル・SQL・Kafka・設備の入力契約",
       "purpose": "ファイル・SQLバッチ・Kafka・設備の入力契約を確認します。",
