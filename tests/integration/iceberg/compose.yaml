@@ -1,0 +1,121 @@
+# この合成検証は一時プロジェクトのネットワークと名前付きボリュームを使う。
+# S3とカタログのみ、外部読取の検証用に任意のループバックポートを割り当てる。
+x-catalog-env: &catalog-env
+  LAKEKEEPER__PG_ENCRYPTION_KEY: ${CATALOG_ENCRYPTION_KEY:?}
+  LAKEKEEPER__PG_DATABASE_URL_READ: postgresql://lakekeeper:${CATALOG_DB_PASSWORD:?}@catalog-db:5432/lakekeeper
+  LAKEKEEPER__PG_DATABASE_URL_WRITE: postgresql://lakekeeper:${CATALOG_DB_PASSWORD:?}@catalog-db:5432/lakekeeper
+  LAKEKEEPER__BASE_URI: http://catalog:8181
+  LAKEKEEPER__AUTHZ_BACKEND: allowall
+
+services:
+  catalog-db:
+    image: postgres:18.6-alpine@sha256:300ebd02c6d4de9ee27ad7f6855d5d21b4d3a4a5117767c1197d284c635d9736
+    environment:
+      POSTGRES_DB: lakekeeper
+      POSTGRES_USER: lakekeeper
+      POSTGRES_PASSWORD: ${CATALOG_DB_PASSWORD:?}
+    volumes: [catalog-db:/var/lib/postgresql]
+    healthcheck:
+      test: [CMD, pg_isready, -U, lakekeeper, -d, lakekeeper]
+      interval: 2s
+      timeout: 2s
+      retries: 45
+    mem_limit: 320m
+
+  catalog-migrate:
+    image: quay.io/lakekeeper/catalog:v0.14.3@sha256:0009e7ccb26db811b8fc485974b624a999fd096f4da549a8704d3121dc20e98a
+    command: [migrate]
+    environment: *catalog-env
+    depends_on:
+      catalog-db:
+        condition: service_healthy
+
+  catalog:
+    image: quay.io/lakekeeper/catalog:v0.14.3@sha256:0009e7ccb26db811b8fc485974b624a999fd096f4da549a8704d3121dc20e98a
+    command: [serve]
+    environment: *catalog-env
+    depends_on:
+      catalog-migrate:
+        condition: service_completed_successfully
+    ports: ["127.0.0.1::8181"]
+    mem_limit: 384m
+
+  storage:
+    image: chrislusf/seaweedfs:4.53@sha256:972ba30c529dfc72a6a12ed427e94d99c7b6a6e59d97bfa52be0a849f43e2cc9
+    command: [server, -dir=/data, -ip=storage, -ip.bind=0.0.0.0, -volume.max=16, -master.volumeSizeLimitMB=128, -filer, -s3, -s3.config=/etc/seaweedfs/s3.json]
+    ports: ["127.0.0.1::8333"]
+    configs:
+      - source: storage-auth
+        target: /etc/seaweedfs/s3.json
+      - source: filer
+        target: /etc/seaweedfs/filer.toml
+    volumes: [storage:/data]
+    mem_limit: 384m
+
+  broker:
+    image: docker.redpanda.com/redpandadata/redpanda:v26.3.1@sha256:260532f70fd840bf2159106bd4ef900f199c1f5ca2a23cb362642320513b90f5
+    command: [redpanda, start, "--mode=dev-container", "--smp=1", "--memory=512M", "--kafka-addr=0.0.0.0:9092", "--advertise-kafka-addr=broker:9092", --set, redpanda.enable_metrics_reporter=false]
+    volumes: [broker:/var/lib/redpanda/data]
+    mem_limit: 650m
+
+  risingwave:
+    image: risingwavelabs/risingwave:v3.1.2@sha256:7efe24b9006baf4b40cd9623557ebc1c344d3740b81f0b16dac7605aed082d38
+    command: [single_node, "--listen-addr=0.0.0.0:4566", "--total-memory-bytes=2147483648", "--parallelism=2", "--store-directory=/state", "--config-path=/etc/risingwave/risingwave.toml"]
+    configs:
+      - source: risingwave
+        target: /etc/risingwave/risingwave.toml
+    # FileIOの資格情報はプロセス設定から読み込む。SQLには秘密を渡さない。
+    environment:
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY:?}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY:?}
+      AWS_REGION: us-east-1
+      AWS_EC2_METADATA_DISABLED: "true"
+      AWS_CONFIG_FILE: /dev/null
+      AWS_SHARED_CREDENTIALS_FILE: /dev/null
+    volumes: [risingwave:/state]
+    cpus: 2
+    mem_limit: 2560m
+
+  reader:
+    profiles: [reader]
+    build:
+      context: .
+      dockerfile: reader.Dockerfile
+    environment:
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:?}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:?}
+      HTTP_PROXY: ""
+      HTTPS_PROXY: ""
+      http_proxy: ""
+      https_proxy: ""
+      NO_PROXY: catalog,storage
+      no_proxy: catalog,storage
+    configs:
+      - source: reader
+        target: /opt/fixture/readback.py
+    mem_limit: 512m
+
+configs:
+  reader: {file: ./readback.py}
+  storage-auth:
+    content: |
+      {"identities":[{"name":"synthetic-iceberg","credentials":[
+        {"accessKey":"${S3_ACCESS_KEY:?}","secretKey":"${S3_SECRET_KEY:?}"}
+      ],"actions":["Admin","Read","Write","List","Tagging"]}]}
+  filer:
+    content: |
+      [leveldb2]
+      enabled = true
+      dir = "/data/filer"
+  risingwave:
+    content: |
+      [server]
+      telemetry_enabled = false
+      [system]
+      sstable_size_mb = 32
+
+volumes:
+  catalog-db:
+  storage:
+  broker:
+  risingwave:

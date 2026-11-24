@@ -99,6 +99,40 @@ docker compose -f compose.evaluation.yaml --profile accelerator \
 
 Parquetを読み、合計5,050と実行プランのComet演算子を確認します。ビルドでは固定したJARを取得するため、Maven Centralへの到達経路が必要です。[Cometのインストールと対応版](https://datafusion.apache.org/comet/user-guide/)
 
+## RisingWaveの追記をIceberg V2に確定する
+
+Kafkaの合成トピック、RisingWave、Lakekeeper、SeaweedFS、読取用
+PyIcebergを、標準とは別のComposeプロジェクトに起動します。
+RisingWave 3.1.2の `rest_rust` を使用し、カタログURIは
+`http://catalog:8181/catalog` と指定します。採用版のRustクライアントは
+この後ろにAPIパスを連結するため、末尾スラッシュは付けません。
+S3の合成認証はRisingWaveのプロセスへ渡し、DDL本文から分けます。
+
+**Bash / Zsh共通**
+
+```bash
+uv venv --python 3.14 "$HOME/.cache/lakehouse-r-iceberg-evaluation"
+uv pip sync --python "$HOME/.cache/lakehouse-r-iceberg-evaluation/bin/python" \
+  --require-hashes tests/integration/iceberg/requirements-runner.lock
+"$HOME/.cache/lakehouse-r-iceberg-evaluation/bin/python" \
+  tests/integration/iceberg/acceptance.py
+```
+
+Dockerをsudoで実行する環境では試験プログラムに `--sudo` を付けます。
+試験は新規環境の作成、各段階の照合、当該ボリュームの片付けを自動で行います。
+
+| 試験 | Bakuの合成環境で確認した結果 |
+| --- | --- |
+| 最初の3点とRisingWave再起動 | 一意ID 3件、再起動の前後で同じIceberg V2スナップショット |
+| 再開後の2点 | 新しいスナップショットで5件。別コンテナのPyIcebergで発生元UTC時刻のマイクロ秒、計測種別、値を照合 |
+| カタログ停止中に2点、RisingWave再起動とカタログ復帰 | RisingWaveの確定を待った後に再送。Icebergでは全7件、重複0。さらに再起動しても同じスナップショット |
+| S3認証 | 誤った認証でHTTP 403、検証した6サービスのログに生成した認証値の混入なし |
+
+この試験は単一ノードで追記する経路です。CDCの更新・削除や並行書込、
+OIDCと権限、コミット応答だけが失われるケースは別受入です。
+同じ業務IDを別のKafkaイベントとして送った場合は、業務の再送契約が必要です。
+[RisingWaveのIceberg確定と再送](https://docs.risingwave.com/iceberg/deliver-to-iceberg) · [採用版のRust REST選択](https://github.com/risingwavelabs/risingwave/blob/v3.1.2/src/connector/src/connector_common/iceberg/mod.rs) · [受入プログラム](../../tests/integration/iceberg/acceptance.py)
+
 ## 1万・10万・100万行のParquetを測る
 
 DuckDB 2.0.1とDataFusion 55.0.0で、合成設備4列の同じParquetに対して
