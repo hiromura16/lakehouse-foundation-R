@@ -68,7 +68,7 @@ UTC日付を使います。絞り込んだ場合は `filters` を返し、`total
 
 [API定義JSON](../../native/openapi.json) · [OpenAPI 3.2.1公式仕様](https://spec.openapis.org/oas/v3.2.1.html)
 
-SQLバッチを反映するときのJSONは次の形です。抽出結果のhousekeeping情報から実値を設定します。
+SQLバッチを反映するときのJSONは次の形です。[PostgreSQLのスナップショット](SOURCES.md#postgresqlの6表を同じ時点で取得する) と既定の固定SQLバッチで同じ操作を使います。抽出が返した `batch_id` と `observed_at` を指定してください。
 
 ```json
 {"action":"sql-load","batch_id":"<抽出結果のSHA-256>","observed_at":"2026-01-05T12:00:00.0000000Z"}

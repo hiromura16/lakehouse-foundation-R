@@ -19,6 +19,8 @@ from pathlib import Path
 
 MAX_BYTES = 16 * 1024 * 1024
 MAX_ROWS = 100000
+SQLSERVER_SOURCE = "sqlserver-fixed-demo"
+POSTGRESQL_SOURCE = "postgresql-direct"
 MAX_HISTORY = 100000
 MAX_CURRENT_BYTES = 64 * 1024 * 1024
 ROOT = Path(__file__).resolve().parents[1]
@@ -50,6 +52,7 @@ PROGRESS_COLUMNS = (
     "status",
 )
 IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,127}")
+POSTGRESQL_IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,62}")
 BUSINESS_KEY = re.compile(r"[!-~]{1,160}")
 UTC_TIMESTAMP = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7}Z")
 
@@ -59,7 +62,7 @@ class SqlBatchError(ValueError):
 
 
 def with_sql_provenance(statement):
-    """共通の列選択処理でSQL Serverの観測メタデータを引き継ぐ。"""
+    """共通の列選択処理でSQLソースの観測メタデータを引き継ぐ。"""
 
     # 型変換と最終出力のSELECTで、SQL由来の列を保持する。
     # 入力に別名がある場合は同じ修飾子を付ける。
@@ -152,8 +155,41 @@ def read_document(batch_id, landing):
     return payload, document
 
 
+def valid_database(kind, name):
+    """ソースごとの識別子の境界とシステムDBを保護する。"""
+    if kind == POSTGRESQL_SOURCE:
+        return POSTGRESQL_IDENTIFIER.fullmatch(
+            name
+        ) is not None and name.casefold() not in {"template0", "template1"}
+    return IDENTIFIER.fullmatch(name) is not None and name.casefold() not in {
+        "master",
+        "model",
+        "msdb",
+        "tempdb",
+    }
+
+
+def valid_origin(kind, name, table):
+    """SQL Serverの固定名と、PostgreSQLの明示マップをそれぞれ検証する。"""
+    schema, relation = table["schema"], table["table"]
+    if kind == SQLSERVER_SOURCE:
+        domain, business_table = name.split("_", 1)
+        return schema == "lh_demo_" + domain and relation == business_table
+    return (
+        all(
+            isinstance(value, str) and POSTGRESQL_IDENTIFIER.fullmatch(value)
+            for value in (schema, relation)
+        )
+        and not schema.casefold().startswith("pg_")
+        and schema.casefold() != "information_schema"
+    )
+
+
 def validate_document(document, contracts):
     """S3、カタログ、Icebergへ変更を加える前に、6表をすべて検証する。"""
+    kind = (
+        document.get("source_system") if isinstance(document, dict) else None
+    )
     expected = {
         "format_version",
         "source_system",
@@ -174,19 +210,13 @@ def validate_document(document, contracts):
         or set(document) != expected
         or type(document["format_version"]) is not int
         or document["format_version"] != 1
-        or document["source_system"] != "sqlserver-fixed-demo"
-        or document["mode"] not in {"snapshot", "incremental"}
+        or kind not in (SQLSERVER_SOURCE, POSTGRESQL_SOURCE)
+        or (kind == POSTGRESQL_SOURCE and document["mode"] != "snapshot")
+        or document["mode"] not in ("snapshot", "incremental")
         or not isinstance(document["source_identity"], str)
         or not re.fullmatch(r"[0-9a-f]{64}", document["source_identity"])
         or not isinstance(document["source_database"], str)
-        or not IDENTIFIER.fullmatch(document["source_database"])
-        or document["source_database"].casefold()
-        in {
-            "master",
-            "model",
-            "msdb",
-            "tempdb",
-        }
+        or not valid_database(kind, document["source_database"])
         or not isinstance(document["tables"], dict)
         or set(document["tables"]) != {item["table"] for item in contracts}
     ):
@@ -194,21 +224,26 @@ def validate_document(document, contracts):
     if document["mode"] == "incremental":
         validate_window(document, contracts)
     counts = {}
+    origins = set()
     for contract in contracts:
         name = contract["table"]
         table = document["tables"][name]
-        schema = "lh_demo_erp" if name.startswith("erp_") else "lh_demo_mes"
         primary_key = contract["columns"][0]
         if (
             not isinstance(table, dict)
             or set(table) != {"schema", "table", "primary_key", "rows"}
-            or table["schema"] != schema
-            or table["table"] != name.split("_", 1)[1]
+            or not valid_origin(kind, name, table)
             or table["primary_key"] != primary_key
             or not isinstance(table["rows"], list)
             or len(table["rows"]) > MAX_ROWS
         ):
             raise SqlBatchError("A SQL batch table is outside the allowlist.")
+        relation = table["schema"], table["table"]
+        if relation in origins:
+            raise SqlBatchError(
+                "A source relation cannot serve two SQL tables."
+            )
+        origins.add(relation)
         seen = set()
         for row in table["rows"]:
             if (
@@ -238,6 +273,10 @@ def validate_document(document, contracts):
             timestamp(row["source_updated_at"])
             seen.add(row["source_pk"])
         counts[name] = len(seen)
+    if kind == POSTGRESQL_SOURCE and sum(counts.values()) > MAX_ROWS:
+        raise SqlBatchError(
+            "The PostgreSQL snapshot exceeds the total row limit."
+        )
     return counts
 
 

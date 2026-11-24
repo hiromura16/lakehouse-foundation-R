@@ -126,6 +126,86 @@ docker compose --env-file "$site" exec -T lakehouse python -m native.api medalli
 
 抽出は固定列を読むSELECTだけを実行し、landing直下の `csv/`・`json/` と完了印を確定します。6表を同一時点で取得するトランザクションは使いません。会社の証明書検証を有効にし、出力済みの同じパスを置き換える場合は `--force` の対象を確認します。[抽出CLI](../../scripts/extract-sqlserver.py)
 
+## PostgreSQLの6表を同じ時点で取得する
+
+会社のPostgreSQLからMES/ERPの全件を取得する場合は、別の抽出プロセスに
+Psycopg 3を導入します。抽出プロセスだけがソースDBへ接続し、アプリには
+完了印を付けたJSONと操作用の3項目を渡します。実証対象はPostgreSQL 18.6、
+CPython 3.14、Psycopg 3.3.9です。
+
+1. DBAに専用のログインロールを用意してもらいます。対象DBの接続権、
+   対象スキーマのUSAGE、対象6表のSELECTだけを付けます。RLSのない通常表
+   を指定します。ビュー、外部表、パーティション親表、表所有者と書込権を
+   持つロールはこの構成の対象外です。DBのパスワード認証を使用するため、
+   TLSサーバー証明書のDNS名またはIPと信頼するCAを入手してください。
+2. [列マップの例](../../infra/source/postgresql-tables.example.json) を
+   checkout外へコピーし、6表すべてのスキーマ名、表名、列名を登録します。
+   名前はASCIIの英数字とアンダースコアで最大63文字、先頭は英字か
+   アンダースコアです。任意のSQL式は
+   入力できません。事業日は `date`、時刻は `timestamptz`、金額と標準秒数は
+   `numeric` または整数型、数量は整数型、その他は `text` または `varchar`
+   を使います。
+   主キーと更新時刻は必須です。
+3. checkout外の自分だけが読める設定ファイルに次の情報を記録します。
+   `source_id` はその設置先を表すUUIDを一度発行して保管します。
+   `ca_file` は信頼CAの絶対パスを使います。設定とCAのパスに
+   シンボリックリンクを含めないでください。
+
+```json
+{
+  "host": "postgres.example.invalid",
+  "port": 5432,
+  "database": "factory",
+  "user": "lakehouse_reader",
+  "password": "実際のパスワードに置換",
+  "ca_file": "/absolute/private/company-ca.pem",
+  "source_id": "00000000-0000-4000-8000-000000000001"
+}
+```
+
+checkoutのルートから次を実行します。登録済みの `landing` を指定します。
+設定ファイルは作成時から0600にし、接続用の `PG*` 環境設定がある場合は、
+抽出専用のシェルから実行します。
+
+```bash
+config="$HOME/.config/lakehouse-postgresql"
+umask 077
+mkdir -p "$config"
+python3 -m venv "$config/venv"
+"$config/venv/bin/python" -m pip install --require-hashes \
+  -r infra/source/requirements-postgresql.lock
+"$config/venv/bin/python" scripts/extract-postgresql.py \
+  --settings "$config/source.json" \
+  --mapping "$config/tables.json" \
+  --landing "$landing" > "$config/job.json"
+```
+
+`job.json` の `action`、`batch_id`、`observed_at` を
+[操作API](API.md) の `POST /run` へ送ります。`sql-batches/` のJSONと
+`.json.ready` が揃った後にこの3項目を出力します。`observed_at` は
+PostgreSQLで読取の可視性を確定したクエリの開始時刻です。同じ入力は同じ内容IDに
+なり、再取得時刻は別に記録されます。同じ観測を再送する場合は最初の
+`job.json` をそのまま送ります。
+
+TLSは `verify-full` でCAと接続名を検証します。6表を同じ
+`REPEATABLE READ READ ONLY` トランザクションで読みます。
+最初のSELECTの前に6表へ ACCESS SHARE を取得し、読取中に未読の表が
+TRUNCATEや表の書換えで空に見えることを防ぎます。行の挿入・更新・削除は
+並行して実行できます。全表合計
+100,000行、JSON 16 MiB、読取期限を設け、超過や障害では完了印を公開
+しません。`--max-rows` で小さい上限を設定できます。原本では数値の小数末尾桁を
+10進文字列として残し、時刻はUTCのマイクロ秒を保持します。Silver以降は
+業務契約に従う精度で集計します。
+`NULL` と空文字は別の値です。レコードの欠落が次の全件取得で確定すると、
+SQL Goldの現行データへ反映されます。
+
+SQL経路で使う設置先は1プロジェクトにつき1件です。SQL Serverと
+PostgreSQLの両方を使う場合、別プロジェクトと別カタログ・保存領域を
+用意します。接続先、データベース、列マップを変える場合も新規の
+隔離先で受け入れます。パスワードやCAの更新で設置IDは変わりません。
+この抽出は全件スナップショット専用で、増分取得とCDCは別の経路です。
+[PostgreSQLのトランザクション分離](https://www.postgresql.org/docs/18/transaction-iso.html) · [PostgreSQLのMVCCに関する注意](https://www.postgresql.org/docs/18/mvcc-caveats.html) · [libpqの証明書検証](https://www.postgresql.org/docs/18/libpq-ssl.html) · [Psycopgの型変換](https://www.psycopg.org/psycopg3/docs/basic/adapt.html)
+
 ## 固定SQLバッチをAPIで受け取る
 
 上流の固定SQL観測が生成した `<batch_id>.json` と完了印を `sql-batches/` に置く経路です。 `POST /run` に操作トークンと `batch_id`、`observed_at` を送ります。ファイル抽出CLIの出力は上記の通常取込に渡します。[操作APIとSQLバッチ例](API.md)

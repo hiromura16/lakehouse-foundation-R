@@ -34,7 +34,7 @@ Dokployの **Projects → Create Service → Compose** から、公開GitHubの 
 | ブラウザーで公開した集計を確認する | [集計結果の確認と接続先一覧](docs/native/GUI.md) |
 | 同じGoldをNotebookで調査する、工場ごとのKPIを探索する | [marimoの日次生産](examples/marimo/README.md) · [Rillの工場別KPI](examples/rill/README.md) |
 | アプリの状態を見る、ダッシュボードを変更する | [Grafana運用監視](docs/native/MONITORING.md) |
-| ファイル、SQL Server、外部Kafkaを接続する | [入出力契約と接続方法](docs/native/SOURCES.md) |
+| ファイル、PostgreSQL、SQL Server、外部Kafkaを接続する | [入出力契約と接続方法](docs/native/SOURCES.md) |
 | 工場のMQTT計測と停止中の再送を試す | [設備テレメトリの接続と受入](docs/native/TELEMETRY.md) |
 | 自動化・調査・時系列を追加する | [n8n、OpenObserve、InfluxDB、運用ポータル](docs/native/TOOLS.md) |
 | 導入と運用を説明する | [説明スライドとPowerPoint](docs/native/PRESENTATION.md) |
@@ -49,7 +49,7 @@ Dokployの **Projects → Create Service → Compose** から、公開GitHubの 
 | --- | --- |
 | `native/` | API、取込、S3とカタログの接続、DuckDBの変換、任意の閲覧UI、監視設定 |
 | `medallion/` と `contracts/` | 取り込めるファイル、業務SQL、期待値、契約の固定ハッシュ |
-| `infra/` | CDCの状態管理、SQL Serverの接続例、ビルドで使うCA処理 |
+| `infra/` | CDCの状態管理、PostgreSQLとSQL Serverの接続例、ビルドで使うCA処理 |
 | `scripts/` と `tests/` | 合成データ、ホスト側の抽出・検査、単体とComposeの受入試験 |
 
 [変更と検証の手順](CONTRIBUTING.md) · [公式リファレンスと採用バージョン](docs/native/REFERENCES.md)
