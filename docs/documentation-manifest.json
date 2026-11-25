@@ -419,6 +419,103 @@
         "docs/native/OPERATIONS.md"
       ],
       "status": "active"
+    },
+    {
+      "path": "docs/reviews/zero-trust-dokploy-gap-analysis.md",
+      "title": "Foundation Rのゼロトラスト・Dokploy・WAN断耐性の差分レビュー",
+      "purpose": "追跡済み構成を棚卸しし、オンプレの自律運転を守る設計と段階的な受入条件を決める。",
+      "audience": [
+        "基盤構築担当",
+        "開発・設計担当",
+        "運用担当"
+      ],
+      "when_to_use": "Dokployの配備モードや人アクセス、WAN断耐性の変更を設計・レビューするとき。",
+      "category": "06 開発・レビュー",
+      "prerequisites": [
+        "docs/native/ARCHITECTURE.md",
+        "docs/native/COMPANY.md"
+      ],
+      "next": [
+        "docs/native/CLOUDFLARE.md",
+        "docs/native/ACCEPTANCE.md"
+      ],
+      "status": "active"
+    },
+    {
+      "path": "docs/reviews/zero-trust-dokploy-adr.md",
+      "title": "ADR: ローカル優先と配備・アクセス境界の分離",
+      "purpose": "ローカル優先の設計選択、代案、および取り消せる条件を記録する。",
+      "audience": [
+        "基盤構築担当",
+        "開発・設計担当",
+        "運用担当"
+      ],
+      "when_to_use": "Foundation Rの配備とアクセス分離を設計・レビューするとき。",
+      "category": "06 開発・レビュー",
+      "prerequisites": [
+        "docs/reviews/zero-trust-dokploy-gap-analysis.md"
+      ],
+      "next": [
+        "docs/native/ACCEPTANCE.md"
+      ],
+      "status": "active"
+    },
+    {
+      "path": "docs/reviews/zero-trust-dokploy-access-matrix.md",
+      "title": "アクセス行列: 通常利用・ローカル業務継続・緊急管理",
+      "purpose": "アプリ別の認証、認可、ネットワーク、障害時の境界を定める。",
+      "audience": [
+        "基盤構築担当",
+        "開発・設計担当",
+        "運用担当"
+      ],
+      "when_to_use": "Foundation Rの配備とアクセス分離を設計・レビューするとき。",
+      "category": "06 開発・レビュー",
+      "prerequisites": [
+        "docs/reviews/zero-trust-dokploy-gap-analysis.md"
+      ],
+      "next": [
+        "docs/native/ACCEPTANCE.md"
+      ],
+      "status": "active"
+    },
+    {
+      "path": "docs/reviews/zero-trust-dokploy-threat-test.md",
+      "title": "脅威と受入試験の対応表",
+      "purpose": "障害・認証・データ保全上の脅威から合格証拠までを追跡する。",
+      "audience": [
+        "基盤構築担当",
+        "開発・設計担当",
+        "運用担当"
+      ],
+      "when_to_use": "Foundation Rの配備とアクセス分離を設計・レビューするとき。",
+      "category": "06 開発・レビュー",
+      "prerequisites": [
+        "docs/reviews/zero-trust-dokploy-gap-analysis.md"
+      ],
+      "next": [
+        "docs/native/ACCEPTANCE.md"
+      ],
+      "status": "active"
+    },
+    {
+      "path": "docs/reviews/zero-trust-dokploy-inventory.md",
+      "title": "宣言台帳: Compose資源・イメージ・供給元",
+      "purpose": "追跡済みComposeの資源、上限と外部供給の前提を確認する。",
+      "audience": [
+        "基盤構築担当",
+        "開発・設計担当",
+        "運用担当"
+      ],
+      "when_to_use": "Foundation Rの配備とアクセス分離を設計・レビューするとき。",
+      "category": "06 開発・レビュー",
+      "prerequisites": [
+        "docs/reviews/zero-trust-dokploy-gap-analysis.md"
+      ],
+      "next": [
+        "docs/native/ACCEPTANCE.md"
+      ],
+      "status": "active"
     }
   ]
 }

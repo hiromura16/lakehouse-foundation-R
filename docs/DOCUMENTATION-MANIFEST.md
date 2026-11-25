@@ -73,6 +73,11 @@
 | 文書 | 何のために読むか | 読むタイミング | 区分 |
 | --- | --- | --- | --- |
 | [変更する人のための読みやすさと検証規約](<../CONTRIBUTING.md>) | 読みやすいコード・コメント・CLI説明と、専用uv環境での品質検査規約を揃える。 | コードや文書を変更する前と、差分をレビューに出す前。 | active |
+| [アクセス行列: 通常利用・ローカル業務継続・緊急管理](<reviews/zero-trust-dokploy-access-matrix.md>) | アプリ別の認証、認可、ネットワーク、障害時の境界を定める。 | Foundation Rの配備とアクセス分離を設計・レビューするとき。 | active |
+| [ADR: ローカル優先と配備・アクセス境界の分離](<reviews/zero-trust-dokploy-adr.md>) | ローカル優先の設計選択、代案、および取り消せる条件を記録する。 | Foundation Rの配備とアクセス分離を設計・レビューするとき。 | active |
+| [Foundation Rのゼロトラスト・Dokploy・WAN断耐性の差分レビュー](<reviews/zero-trust-dokploy-gap-analysis.md>) | 追跡済み構成を棚卸しし、オンプレの自律運転を守る設計と段階的な受入条件を決める。 | Dokployの配備モードや人アクセス、WAN断耐性の変更を設計・レビューするとき。 | active |
+| [宣言台帳: Compose資源・イメージ・供給元](<reviews/zero-trust-dokploy-inventory.md>) | 追跡済みComposeの資源、上限と外部供給の前提を確認する。 | Foundation Rの配備とアクセス分離を設計・レビューするとき。 | active |
+| [脅威と受入試験の対応表](<reviews/zero-trust-dokploy-threat-test.md>) | 障害・認証・データ保全上の脅威から合格証拠までを追跡する。 | Foundation Rの配備とアクセス分離を設計・レビューするとき。 | active |
 
 ## 読者から探す
 
@@ -126,6 +131,11 @@
 | [Foundation Rの初回導入と操作](<native/START.md>) | 会社VMにDokployで配備し、合成データから業務集計までを確認します。 |
 | [工場テレメトリの接続と受入](<native/TELEMETRY.md>) | 設備のMQTTを集め、Kafka経由の再送とGreptimeDBの時系列検索を検証します。 |
 | [運用ポータルと追加ツール](<native/TOOLS.md>) | n8n、OpenObserve、InfluxDBの設置と初回操作を確認します。 |
+| [アクセス行列: 通常利用・ローカル業務継続・緊急管理](<reviews/zero-trust-dokploy-access-matrix.md>) | アプリ別の認証、認可、ネットワーク、障害時の境界を定める。 |
+| [ADR: ローカル優先と配備・アクセス境界の分離](<reviews/zero-trust-dokploy-adr.md>) | ローカル優先の設計選択、代案、および取り消せる条件を記録する。 |
+| [Foundation Rのゼロトラスト・Dokploy・WAN断耐性の差分レビュー](<reviews/zero-trust-dokploy-gap-analysis.md>) | 追跡済み構成を棚卸しし、オンプレの自律運転を守る設計と段階的な受入条件を決める。 |
+| [宣言台帳: Compose資源・イメージ・供給元](<reviews/zero-trust-dokploy-inventory.md>) | 追跡済みComposeの資源、上限と外部供給の前提を確認する。 |
+| [脅威と受入試験の対応表](<reviews/zero-trust-dokploy-threat-test.md>) | 障害・認証・データ保全上の脅威から合格証拠までを追跡する。 |
 | [日次生産Goldをmarimoで再現する](<../examples/marimo/README.md>) | 承認済みのGoldを別環境で確認し、工場別の日次生産と歩留まりを再集計します。 |
 | [Rillで工場別の日次生産を探索する](<../examples/rill/README.md>) | 承認した日次生産Goldから、工場と期間を切り替えてKPIを確認します。 |
 
@@ -148,6 +158,11 @@
 | [工場のシフト暦で公開結果を照合する](<native/SHIFT-REPORT.md>) | 公開世代のSilverを工場の現地シフト暦と照合し、実績・停止報告の根拠を保存します。 |
 | [工場テレメトリの接続と受入](<native/TELEMETRY.md>) | 設備のMQTTを集め、Kafka経由の再送とGreptimeDBの時系列検索を検証します。 |
 | [運用ポータルと追加ツール](<native/TOOLS.md>) | n8n、OpenObserve、InfluxDBの設置と初回操作を確認します。 |
+| [アクセス行列: 通常利用・ローカル業務継続・緊急管理](<reviews/zero-trust-dokploy-access-matrix.md>) | アプリ別の認証、認可、ネットワーク、障害時の境界を定める。 |
+| [ADR: ローカル優先と配備・アクセス境界の分離](<reviews/zero-trust-dokploy-adr.md>) | ローカル優先の設計選択、代案、および取り消せる条件を記録する。 |
+| [Foundation Rのゼロトラスト・Dokploy・WAN断耐性の差分レビュー](<reviews/zero-trust-dokploy-gap-analysis.md>) | 追跡済み構成を棚卸しし、オンプレの自律運転を守る設計と段階的な受入条件を決める。 |
+| [宣言台帳: Compose資源・イメージ・供給元](<reviews/zero-trust-dokploy-inventory.md>) | 追跡済みComposeの資源、上限と外部供給の前提を確認する。 |
+| [脅威と受入試験の対応表](<reviews/zero-trust-dokploy-threat-test.md>) | 障害・認証・データ保全上の脅威から合格証拠までを追跡する。 |
 
 ### 開発・設計担当
 
@@ -157,6 +172,11 @@
 | [目的・読者から探す文書マニフェスト](<DOCUMENTATION-MANIFEST.md>) | 公開Markdown全件の固有の目的・読者・読む時点を、目的別と読者別に引く。 |
 | [ネイティブ処理系の比較試験](<native/EVALUATION.md>) | Sail、RisingWave、GreptimeDB、DataFusion、Ballista、Cometを合成データで起動・検証します。 |
 | [構想と実装の対応](<native/ROADMAP.md>) | 設計上の目的と稼働する機能、評価候補を確認します。 |
+| [アクセス行列: 通常利用・ローカル業務継続・緊急管理](<reviews/zero-trust-dokploy-access-matrix.md>) | アプリ別の認証、認可、ネットワーク、障害時の境界を定める。 |
+| [ADR: ローカル優先と配備・アクセス境界の分離](<reviews/zero-trust-dokploy-adr.md>) | ローカル優先の設計選択、代案、および取り消せる条件を記録する。 |
+| [Foundation Rのゼロトラスト・Dokploy・WAN断耐性の差分レビュー](<reviews/zero-trust-dokploy-gap-analysis.md>) | 追跡済み構成を棚卸しし、オンプレの自律運転を守る設計と段階的な受入条件を決める。 |
+| [宣言台帳: Compose資源・イメージ・供給元](<reviews/zero-trust-dokploy-inventory.md>) | 追跡済みComposeの資源、上限と外部供給の前提を確認する。 |
+| [脅威と受入試験の対応表](<reviews/zero-trust-dokploy-threat-test.md>) | 障害・認証・データ保全上の脅威から合格証拠までを追跡する。 |
 
 ## 文書を追加・変更するとき
 
