@@ -13,6 +13,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SYSTEM_PATH = "/usr/local/bin:/usr/bin:/bin"
 BASE = "compose.yaml"
+LOCAL_INFLUX = "compose.influx.local.yaml"
+LOCAL_INFLUX_PROJECT = "foundation-r-influx-local-synthetic"
 CORE = frozenset(
     (
         "catalog-db",
@@ -78,6 +80,7 @@ PATH_KEYS = {
     "LAKEHOUSE_OPS_HTPASSWD": "ops.htpasswd",
     "TOOLS_HTPASSWD": "tools.htpasswd",
     "TOOLS_INFLUX_TOKEN_FILE": "influx.placeholder",
+    "LOCAL_INFLUX_TOKEN_FILE": "influx-local.placeholder",
     "TOOLS_OBSERVE_PASSCODE_FILE": "observe.placeholder",
     "CDC_STATE_DIR": "cdc",
     "CDC_SETTINGS_FILE": "cdc/settings.placeholder",
@@ -101,7 +104,13 @@ class Parser(argparse.ArgumentParser):
 
 
 def recipe(
-    mode, *, cdc=False, alerting=False, profile=None, tools_metrics=False
+    mode,
+    *,
+    cdc=False,
+    alerting=False,
+    profile=None,
+    tools_metrics=False,
+    local_influx=False,
 ):
     """既存の合成順だけを選び、未知・未実装の組合せを展開しない。"""
     files = [BASE]
@@ -131,6 +140,11 @@ def recipe(
             raise PlanError("INVALID_SELECTION")
         profiles.append("tools-metrics")
         expected |= {"observe-forwarder"}
+    if local_influx:
+        if mode != "core-local":
+            raise PlanError("INVALID_SELECTION")
+        files.append(LOCAL_INFLUX)
+        expected |= {"influxdb-local"}
     if mode == "legacy-gold-read":
         files.append("compose.cloudflare.yaml")
         expected |= EDGE
@@ -162,6 +176,9 @@ def synthetic_env(directory, files):
                 "TOOLS_OBSERVE_PASSCODE_FILE",
             )
         )
+    if LOCAL_INFLUX in files:
+        paths.append("LOCAL_INFLUX_TOKEN_FILE")
+        values["LOCAL_INFLUX_INSTANCE"] = "synthetic"
     if "compose.cdc.yaml" in files:
         paths.extend(
             ("CDC_STATE_DIR", "CDC_SETTINGS_FILE", "CDC_TABLE_MAP_FILE")
@@ -195,14 +212,9 @@ def normalize(files, profiles):
                 COMPOSE_DISABLE_ENV_FILE="1",
                 LC_ALL="C",
             )
-            command = [
-                "docker",
-                "compose",
-                "--project-name",
-                "foundation-r-plan",
-                "--env-file",
-                str(env_file),
-            ]
+            command = ["docker", "compose", "--env-file", str(env_file)]
+            if LOCAL_INFLUX not in files:
+                command.extend(("--project-name", "foundation-r-plan"))
             for name in files:
                 source = ROOT / name
                 if source.is_symlink() or not source.is_file():
@@ -223,7 +235,14 @@ def normalize(files, profiles):
                 timeout=30,
                 check=True,
             )
-            return json.loads(result.stdout)
+            model = json.loads(result.stdout)
+            if LOCAL_INFLUX in files:
+                if (
+                    not isinstance(model, dict)
+                    or model.get("name") != LOCAL_INFLUX_PROJECT
+                ):
+                    raise PlanError("UNEXPECTED_PROJECT")
+            return model
     except (OSError, UnicodeError, ValueError, subprocess.SubprocessError):
         raise PlanError("COMPOSE_CONFIG_FAILED") from None
 
@@ -305,6 +324,7 @@ def main(argv=None):
     parser.add_argument("--cdc", action="store_true")
     parser.add_argument("--alerting", action="store_true")
     parser.add_argument("--tools-metrics", action="store_true")
+    parser.add_argument("--local-influx", action="store_true")
     parser.add_argument("--profile", choices=tuple(EVALUATION))
     args = parser.parse_args(argv)
     options = dict(
@@ -312,6 +332,7 @@ def main(argv=None):
         alerting=args.alerting,
         profile=args.profile,
         tools_metrics=args.tools_metrics,
+        local_influx=args.local_influx,
     )
     try:
         if args.mode == "catalog":

@@ -1,0 +1,74 @@
+# コアにローカル時系列のみを追加。全Toolsや外部公開との合成は対象外。
+# InfluxDBの運転設定はcompose.tools.yamlの同じサービスと検査で照合する。
+name: foundation-r-influx-local-${LOCAL_INFLUX_INSTANCE:?新規隔離プロジェクト専用の識別子を指定してください}
+
+services:
+  influxdb-local:
+    networks:
+      influx_local:
+        aliases: [influxdb3]
+    build:
+      context: .
+      dockerfile: native/tools/influx.Dockerfile
+      args:
+        TOOLS_UID: ${LANDING_UID}
+        TOOLS_GID: ${LANDING_GID}
+    labels:
+      traefik.enable: 'false'
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    command:
+      - influxdb3
+      - serve
+      - --node-id=foundation
+      - --object-store=file
+      - --data-dir=/var/lib/influxdb3/data
+      - --admin-token-file=/run/secrets/influx-admin
+      - --disable-authz=health
+    environment:
+      # 設備データの保存とSQLに限定し、Pythonプラグインを初期化しない。
+      INFLUXDB3_UNSET_VARS: INFLUXDB3_PLUGIN_DIR
+    volumes:
+      - influx-local-data:/var/lib/influxdb3/data
+    secrets:
+      - source: influx-local-admin
+        target: influx-admin
+    healthcheck:
+      test: [CMD, curl, --noproxy, '*', --fail, --silent, http://127.0.0.1:8181/health]
+      interval: 10s
+      timeout: 4s
+      retries: 15
+    restart: unless-stopped
+    mem_limit: 1536m
+    logging:
+      driver: json-file
+      options: {max-size: 10m, max-file: '3'}
+
+  health-relay:
+    networks:
+      influx_local: {}
+
+  prometheus:
+    configs:
+      - source: influx-local-target
+        target: /etc/prometheus/tool-targets/influx-local.yml
+
+networks:
+  influx_local:
+    internal: true
+
+configs:
+  influx-local-target:
+    content: |
+      - targets: [http://health-relay:8120/influxdb]
+        labels:
+          app: InfluxDB 3
+          module: http_ready
+          instance: http://influxdb-local:8181/health
+
+secrets:
+  influx-local-admin:
+    file: ${LOCAL_INFLUX_TOKEN_FILE:?隔離環境用の非公開InfluxDB設定を指定してください}
+
+volumes:
+  influx-local-data:

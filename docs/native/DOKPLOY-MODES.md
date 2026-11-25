@@ -27,7 +27,7 @@
 | `evaluation` | ベース＋評価overlay、`--profile` で1候補のみ。 | 比較候補の同時起動・予算実測・物理障害試験はしない。 |
 | `catalog` | Dockerを使わず、実装したモード・未実装モード・評価プロファイルを列挙。 | `all-lab` は全候補の個別比較として扱い、一括合成しない。 |
 
-`zero-trust-access`、`data-egress` は設計上の名前で、実装がないため展開コマンドは失敗します。ローカル設備時系列は[本案件のWAN受入](../reviews/zero-trust-dokploy-wan-recovery.md)で必須です。既存の汎用 `core-local` はInfluxDBを起動せず、`standard` にそのサービスがあることだけでもWAN断中の書込み・クエリは証明しません。後続のローカル選択と隔離試験を要します。
+`zero-trust-access`、`data-egress` は設計上の名前で、実装がないため展開コマンドは失敗します。ローカル設備時系列は[本案件のWAN受入](../reviews/zero-trust-dokploy-wan-recovery.md)で必須です。汎用の `core-local` のデフォルトはInfluxDBなしです。下記の明示的ローカル候補は構成の比較までで、WAN断中の書込み・クエリは隔離試験を要します。
 
 ## 合成値だけで確認
 
@@ -47,9 +47,31 @@ python3 scripts/dokploy_plan.py evaluation --profile stream
 
 JSONの理論値は、順序付き `compose_files` と `profiles`、有効 `services`、論理 `networks`・`volumes`・`configs`・`secrets`、合成時の `ports`（プロトコル、公開・コンテナ側番号、bindの分類）です。IP文字列、実環境の値・パス・生Compose出力・エラー原文は出しません。未対応の組合せや構造は固定理由で失敗します。Docker/Dokployで実際に見えるネットワークやポート、ボリューム所有権との照合には実機ゲートが別途必要です。
 
+## WAN受入に向けたローカル時系列の候補
+
+`core-local --local-influx` は既存のcoreにInfluxDB 3と専用の固定監視先だけを追加します。通常の `core-local`、Tools、既存デプロイは変えません。InfluxDBは既存の[Tools版](../../compose.tools.yaml)と同じビルド、起動設定、権限、コンテナ内の保管先、管理token形式を使います。全Tools overlayを参照するとn8nやOpenObserve等で使う鍵まで要求されるため、[ローカル専用overlay](../../compose.influx.local.yaml)は必要な定義だけを持ち、合成結果がTools版と一致するかを回帰検査します。これはTools、legacy Gold、評価MQTTとの併用や置き換えを認めるものではありません。
+
+**Bash / Zsh共通**
+
+```bash
+python3 scripts/dokploy_plan.py core-local --local-influx
+python3 scripts/dokploy_plan.py core-local --local-influx --cdc --alerting
+python3 scripts/dokploy_capacity.py core-local --local-influx
+```
+
+- **隔離した名前と保管。** 専用サービス `influxdb-local`、volume `influx-local-data`、Compose secret `influx-local-admin` を使い、既存Toolsの名前を使いません。コンテナ内のマウント先は維持します。 `LOCAL_INFLUX_INSTANCE` は新規隔離環境の名前を明示します。Composeの `-p` や `COMPOSE_PROJECT_NAME`、Dokploy側の指定はoverlayの名前に優先し得ます。実機では有効project名が `foundation-r-influx-local-` から始まる承認済みの新規名で、旧PoC、旧volume、ネットワークやcontainerに重ならないことを確認できなければ使用しません。合成プランは追跡済みoverlayの名前を展開して照合するだけで、手動指定の誤りや実機衝突を防ぐガードではありません。
+- **専用資格。** `LOCAL_INFLUX_TOKEN_FILE` は隔離した新規プロジェクト専用の、Git外・所有者限定の管理tokenファイルを明示します。旧ToolsやPoCのtokenへの既定値・フォールバックはありません。既存tokenを自動読取・発行したり、保管先を移動したりしません。管理tokenを一般設備や監視へ配りません。実機では書込・照会の最小権限と保持・バックアップ・復元を別途受け入れます。
+- **到達境界。** この候補のInfluxDBは内部networkだけに接続し、ホストport・LAN公開・Traefik・Tunnelは設定しません。内部networkのみのコンテナでは、ホストloopbackへの公開指定がComposeで受理されても有効になるとは限りません（[Docker Engineの説明](https://github.com/moby/moby/discussions/53256)）。隔離runnerは対象コンテナの中から合成データの書込み・SQL照合だけを実行します。[Tools版のホスト経由](TOOLS.md#設備の合成測定点を確認する)は従来どおり別構成です。設備を接続する前に、承認済みの同一プロジェクト内の送信元、最小権限と実際の書込検証を用意します。
+- **監視。** 専用内部networkに入るのはInfluxDBと既存health-relayのみ。新サービスの既存DNS名は専用networkのaliasに限り、監視の記録名は新サービスを区別します。既存の固定 `GET /influxdb` が無認証healthだけを調べ、Prometheusにはこの候補専用のfile_sd設定を追加します。DBへの管理token・問い合わせ・データ書込を中継せず、Grafanaの既存設定は変えません。実機で初めてhealthと、書込・SQL照合を別々に検証します。
+- **CDCは別の入力。** `--cdc` は既存consumerを追加するだけで、SQL Server、connector、サイトKafka、topicを生成・発見・変更しません。隔離で確認したサイト内の接続、専用CA／資格、6表の対応、別のconsumer group・topic・checkpointと所有権が揃うまでは実行しません。評価用MQTT→Kafka→GreptimeDBを選び直さず、InfluxDBによる設備時系列とCDCをごちゃ混ぜにしません。 `--alerting` は既存の明示設定を継承し、WAN受入では外部通知の失敗をlocal healthの失敗にしません。
+
+**受入は未完了。** 必要イメージが保持された隔離環境で、WAN断中の合成書込・SQL照合、再起動後の保持、サイト内CDC・ローカル監視と相互影響、ログとバックアップの保全、既存PoC無影響を実測します。[WAN設計](../reviews/zero-trust-dokploy-wan-recovery.md)にある必須条件は、静的なサービス存在だけでは満たしません。切り戻しはこの候補の追加を外し、隔離データと記録を保持します。既存環境の変更やvolume削除は行いません。
+
+**隔離runnerの証拠。** 追加のGitHub-hosted PRジョブは、自分で作った固有プロジェクトと合成資格だけで、書込み・SQL応答、同じInfluxサービスの再起動前後の読取一致、固定リレーとPrometheus監視、ホストportがないことと後片付けを検査します。InfluxDB・監視サーバー類にはホストportを割り当てず、再起動の前に採った成功サンプルを再起動後の証拠に使いません。他の標準workflowは変えません。実行結果が出るまでは、この文書はその合格を主張しません。このジョブでも実際のWAN断、外部依存のないコールド起動、実環境のDokploy・CDC・機器・既存PoCは確認しません。
+
 ## サービス別の棚卸しと暫定容量
 
-既存の `dokploy_plan.py` は変更しません。追加の `dokploy_capacity.py` は、[開発用ロック](../../requirements-dev.lock)にあるPyYAMLを利用して追跡済みのCompose宣言を読み、同じ合成用Composeで有効になったサービスの上限だけを集計します。GitやVMから実際のEnvironment／実機容量を取りません。
+合成プランとは別に、 `dokploy_capacity.py` は、[開発用ロック](../../requirements-dev.lock)にあるPyYAMLを利用して追跡済みのCompose宣言を読み、同じ合成用Composeで有効になったサービスの上限だけを集計します。GitやVMから実際のEnvironment／実機容量を取りません。
 
 **Bash / Zsh共通**
 

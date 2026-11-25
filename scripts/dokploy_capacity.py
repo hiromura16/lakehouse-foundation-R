@@ -48,6 +48,7 @@ def lab_choices():
     """比較単位と前提だけを返す。一括起動の手順は提供しない。"""
     rows = [
         dict(family="core", mode="core-local"),
+        dict(family="local-influx", mode="core-local", local_influx=True),
         dict(family="local-gui", mode="local-operations"),
         dict(family="tools", mode="standard"),
         dict(family="tools-metrics", mode="standard", tools_metrics=True),
@@ -365,8 +366,9 @@ def budget(totals, capacity, reserve, prerequisites=()):
 def alternatives(mode, options):
     """別見積の候補を返す。予算適合や機能同等性は保証しない。"""
     result = []
-    if options["cdc"] or options["alerting"] or options["tools_metrics"]:
-        result.append({"mode": mode, "options": [], "fit": "not_assessed"})
+    if any(options[key] for key in ("cdc", "alerting", "tools_metrics")):
+        kept = ["--local-influx"] if options["local_influx"] else []
+        result.append({"mode": mode, "options": kept, "fit": "not_assessed"})
     if mode == "standard":
         result.append({"mode": "local-operations", "fit": "not_assessed"})
     if mode != "core-local":
@@ -381,6 +383,7 @@ def main(argv=None):
     parser.add_argument("--cdc", action="store_true")
     parser.add_argument("--alerting", action="store_true")
     parser.add_argument("--tools-metrics", action="store_true")
+    parser.add_argument("--local-influx", action="store_true")
     parser.add_argument("--profile", choices=tuple(plan.EVALUATION))
     parser.add_argument("--synthetic-capacity", metavar="CPU_MILLI:MEMORY_MIB")
     for name in RESERVES:
@@ -392,7 +395,13 @@ def main(argv=None):
     mode = args.mode
     options = {
         key: getattr(args, key)
-        for key in ("cdc", "alerting", "tools_metrics", "profile")
+        for key in (
+            "cdc",
+            "alerting",
+            "tools_metrics",
+            "profile",
+            "local_influx",
+        )
     }
     exit_status = 0
     report_status = "PASS"
