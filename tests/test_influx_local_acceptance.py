@@ -12,7 +12,6 @@ from urllib.parse import parse_qs, urlsplit
 from scripts import influx_local_acceptance as acceptance
 
 PROJECT = "foundation-r-influx-local-ci-0123456789abcdef"
-PORT = 30123
 SECRET = Path("/synthetic/new-fixture.json")
 
 
@@ -20,13 +19,6 @@ def model():
     """有効なランナー候補を最低限の正規化形式で表す。"""
     services = {
         acceptance.INFLUX: {
-            "ports": [
-                {
-                    "host_ip": "127.0.0.1",
-                    "target": 8181,
-                    "published": str(PORT),
-                }
-            ],
             "volumes": [
                 {
                     "type": "volume",
@@ -61,14 +53,14 @@ class BoundaryTest(unittest.TestCase):
 
     def test_normalization_refuses_old_or_shared_resources(self):
         base = model()
-        acceptance.config_boundary(base, PROJECT, PORT, SECRET)
+        acceptance.config_boundary(base, PROJECT, SECRET)
         for category, modify in (
             ("wrong-project", lambda m: m.update(name="wrong-project")),
             ("tools", lambda m: m["volumes"].update(**{"tools-influx": {}})),
             (
                 "port",
-                lambda m: m["services"][acceptance.INFLUX]["ports"][0].update(
-                    host_ip="0.0.0.0"
+                lambda m: m["services"][acceptance.INFLUX].update(
+                    ports=[{"host_ip": "127.0.0.1"}]
                 ),
             ),
             (
@@ -100,9 +92,7 @@ class BoundaryTest(unittest.TestCase):
                 candidate = copy.deepcopy(base)
                 modify(candidate)
                 with self.assertRaises(acceptance.AcceptanceError):
-                    acceptance.config_boundary(
-                        candidate, PROJECT, PORT, SECRET
-                    )
+                    acceptance.config_boundary(candidate, PROJECT, SECRET)
 
     def test_started_monitor_sidecars_must_have_no_host_port(self):
         for sidecar in acceptance.TARGETS[1:]:
@@ -116,9 +106,7 @@ class BoundaryTest(unittest.TestCase):
                     }
                 ]
                 with self.assertRaises(acceptance.AcceptanceError):
-                    acceptance.config_boundary(
-                        candidate, PROJECT, PORT, SECRET
-                    )
+                    acceptance.config_boundary(candidate, PROJECT, SECRET)
 
     def test_labeled_or_colliding_physical_resource_is_not_owned(self):
         for outputs in (
@@ -146,10 +134,6 @@ class BoundaryTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             # Dockerの動作はすべて偽の代入に限定する。
             with (
-                patch(
-                    "scripts.influx_local_acceptance.select_port",
-                    return_value=PORT,
-                ),
                 patch(
                     "scripts.influx_local_acceptance.secrets.token_hex",
                     return_value="0123456789abcdef",
@@ -216,6 +200,65 @@ class PrometheusFreshnessTest(unittest.TestCase):
             acceptance.started_epoch("1970-01-01T00:01:40.000000123Z"),
             Decimal("100.000000123"),
         )
+
+
+class ContainerHttpTest(unittest.TestCase):
+    """合成認証をargvから分離し、生エラーを出さない。"""
+
+    def test_single_write_uses_stdin_and_read_is_not_a_write(self):
+        token = "apiv3_" + ("A" * 64)
+        data = [
+            {"time": stamp, "device": "demo-press", "celsius": value}
+            for stamp, value in (("t3", 24.5), ("t2", 23.5), ("t1", 22.5))
+        ]
+        compose = Mock(side_effect=["\n204", json.dumps(data) + "\n200"])
+        acceptance.write_points(compose, token)
+        self.assertEqual(acceptance.read_points(compose, token), data)
+        initial, query = compose.call_args_list
+        for call in (initial, query):
+            self.assertNotIn(token, " ".join(call.args))
+            self.assertIn(token, call.kwargs["input_text"])
+            self.assertEqual(
+                call.args[:4], ("exec", "-T", acceptance.INFLUX, "curl")
+            )
+            self.assertIn("--disable", call.args)
+            self.assertTrue(call.args[-1].startswith("http://127.0.0.1:8181/"))
+        self.assertIn("/api/v3/write_lp?", initial.args[-1])
+        self.assertIn("data-binary =", initial.kwargs["input_text"])
+        self.assertIn("/api/v3/query_sql?", query.args[-1])
+        self.assertNotIn("data-binary", query.kwargs["input_text"])
+
+    def test_error_status_does_not_reveal_body(self):
+        compose = Mock(return_value="untrusted or confidential content\n403")
+        with self.assertRaises(acceptance.FixtureError) as caught:
+            acceptance.fixture_request(
+                compose, "apiv3_" + ("A" * 64), "/api/v3/query_sql", "200"
+            )
+        self.assertEqual(str(caught.exception), "HTTP_403")
+
+    def test_effective_host_binding_is_rejected_even_if_config_empty(self):
+        container = "a" * 64
+        compose = Mock(return_value=container)
+        for effective in (None, {"8181/tcp": None}, {"8181/tcp": []}):
+            docker = Mock(
+                side_effect=[
+                    "null",
+                    json.dumps(effective),
+                    "1970-01-01T00:01:40Z",
+                ]
+            )
+            self.assertEqual(
+                acceptance.verify_container_boundary(docker, compose),
+                (container, Decimal(100)),
+            )
+        docker = Mock(
+            side_effect=[
+                "null",
+                '{"8181/tcp":[{"HostIp":"127.0.0.1","HostPort":"30123"}]}',
+            ]
+        )
+        with self.assertRaises(acceptance.AcceptanceError):
+            acceptance.verify_container_boundary(docker, compose)
 
 
 if __name__ == "__main__":

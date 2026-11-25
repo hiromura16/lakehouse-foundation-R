@@ -142,12 +142,9 @@ class OfflineRenderTest(unittest.TestCase):
                 "/influx-local.placeholder"
             )
         )
-        self.assertEqual(local_spec["ports"][0]["host_ip"], "127.0.0.1")
-        self.assertEqual(local_spec["ports"][0]["target"], 8181)
-        self.assertNotEqual(
-            local_spec["ports"][0]["published"],
-            old_spec["ports"][0]["published"],
-        )
+        self.assertNotIn("ports", local_spec)
+        self.assertEqual(old_spec["ports"][0]["host_ip"], "127.0.0.1")
+        self.assertEqual(old_spec["ports"][0]["target"], 8181)
 
     def test_plan_refuses_unexpected_effective_project(self):
         files, profiles, _ = plan.recipe("core-local", local_influx=True)
@@ -156,11 +153,10 @@ class OfflineRenderTest(unittest.TestCase):
             with self.assertRaisesRegex(plan.PlanError, "UNEXPECTED_PROJECT"):
                 plan.normalize(files, profiles)
 
-    def test_missing_operator_port_or_token_fails_closed(self):
+    def test_missing_operator_project_or_token_fails_closed(self):
         original = plan.synthetic_env
         files, profiles, _ = plan.recipe("core-local", local_influx=True)
         for missing in (
-            "LOCAL_INFLUX_PORT",
             "LOCAL_INFLUX_TOKEN_FILE",
             "LOCAL_INFLUX_INSTANCE",
         ):
@@ -255,7 +251,7 @@ class OfflineRenderTest(unittest.TestCase):
                 for name in row["environment_names"]
                 if name.startswith("LOCAL_INFLUX_")
             },
-            {"LOCAL_INFLUX_TOKEN_FILE", "LOCAL_INFLUX_PORT"},
+            {"LOCAL_INFLUX_TOKEN_FILE"},
         )
 
 

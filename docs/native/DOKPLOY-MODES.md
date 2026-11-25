@@ -61,13 +61,13 @@ python3 scripts/dokploy_capacity.py core-local --local-influx
 
 - **隔離した名前と保管。** 専用サービス `influxdb-local`、volume `influx-local-data`、Compose secret `influx-local-admin` を使い、既存Toolsの名前を使いません。コンテナ内のマウント先は維持します。 `LOCAL_INFLUX_INSTANCE` は新規隔離環境の名前を明示します。Composeの `-p` や `COMPOSE_PROJECT_NAME`、Dokploy側の指定はoverlayの名前に優先し得ます。実機では有効project名が `foundation-r-influx-local-` から始まる承認済みの新規名で、旧PoC、旧volume、ネットワークやcontainerに重ならないことを確認できなければ使用しません。合成プランは追跡済みoverlayの名前を展開して照合するだけで、手動指定の誤りや実機衝突を防ぐガードではありません。
 - **専用資格。** `LOCAL_INFLUX_TOKEN_FILE` は隔離した新規プロジェクト専用の、Git外・所有者限定の管理tokenファイルを明示します。旧ToolsやPoCのtokenへの既定値・フォールバックはありません。既存tokenを自動読取・発行したり、保管先を移動したりしません。管理tokenを一般設備や監視へ配りません。実機では書込・照会の最小権限と保持・バックアップ・復元を別途受け入れます。
-- **到達境界。** `LOCAL_INFLUX_PORT` は実環境で他と重ならない専用ループバックポートを明示し、省略すると展開に失敗します。これは[既存の合成書込・SQL確認](TOOLS.md#設備の合成測定点を確認する)がホスト内のloopbackへ接続するためです。接続試験は隔離環境でのみ行い、LAN公開、Traefik、Tunnelは設定しません。[既存のホスト公開注意事項](START.md)と[実測・衝突判定](#実機の観測を使うオフライン判定)で既存PoCとの分離を確認します。合成結果は実際のloopback到達や非公開性の証明ではありません。
+- **到達境界。** この候補のInfluxDBは内部networkだけに接続し、ホストport・LAN公開・Traefik・Tunnelは設定しません。内部networkのみのコンテナでは、ホストloopbackへの公開指定がComposeで受理されても有効になるとは限りません（[Docker Engineの説明](https://github.com/moby/moby/discussions/53256)）。隔離runnerは対象コンテナの中から合成データの書込み・SQL照合だけを実行します。[Tools版のホスト経由](TOOLS.md#設備の合成測定点を確認する)は従来どおり別構成です。設備を接続する前に、承認済みの同一プロジェクト内の送信元、最小権限と実際の書込検証を用意します。
 - **監視。** 専用内部networkに入るのはInfluxDBと既存health-relayのみ。新サービスの既存DNS名は専用networkのaliasに限り、監視の記録名は新サービスを区別します。既存の固定 `GET /influxdb` が無認証healthだけを調べ、Prometheusにはこの候補専用のfile_sd設定を追加します。DBへの管理token・問い合わせ・データ書込を中継せず、Grafanaの既存設定は変えません。実機で初めてhealthと、書込・SQL照合を別々に検証します。
 - **CDCは別の入力。** `--cdc` は既存consumerを追加するだけで、SQL Server、connector、サイトKafka、topicを生成・発見・変更しません。隔離で確認したサイト内の接続、専用CA／資格、6表の対応、別のconsumer group・topic・checkpointと所有権が揃うまでは実行しません。評価用MQTT→Kafka→GreptimeDBを選び直さず、InfluxDBによる設備時系列とCDCをごちゃ混ぜにしません。 `--alerting` は既存の明示設定を継承し、WAN受入では外部通知の失敗をlocal healthの失敗にしません。
 
 **受入は未完了。** 必要イメージが保持された隔離環境で、WAN断中の合成書込・SQL照合、再起動後の保持、サイト内CDC・ローカル監視と相互影響、ログとバックアップの保全、既存PoC無影響を実測します。[WAN設計](../reviews/zero-trust-dokploy-wan-recovery.md)にある必須条件は、静的なサービス存在だけでは満たしません。切り戻しはこの候補の追加を外し、隔離データと記録を保持します。既存環境の変更やvolume削除は行いません。
 
-**隔離runnerの証拠。** 追加のGitHub-hosted PRジョブは、自分で作った固有プロジェクトと合成資格だけで、書込み・SQL応答、同じInfluxサービスの再起動前後の読取一致、固定リレーとPrometheus監視、ホストloopbackと後片付けを検査します。監視サーバー類にはホストportを割り当てず、再起動の前に採った成功サンプルを再起動後の証拠に使いません。他の標準workflowは変えません。実行結果が出るまでは、この文書はその合格を主張しません。このジョブでも実際のWAN断、外部依存のないコールド起動、実環境のDokploy・CDC・機器・既存PoCは確認しません。
+**隔離runnerの証拠。** 追加のGitHub-hosted PRジョブは、自分で作った固有プロジェクトと合成資格だけで、書込み・SQL応答、同じInfluxサービスの再起動前後の読取一致、固定リレーとPrometheus監視、ホストportがないことと後片付けを検査します。InfluxDB・監視サーバー類にはホストportを割り当てず、再起動の前に採った成功サンプルを再起動後の証拠に使いません。他の標準workflowは変えません。実行結果が出るまでは、この文書はその合格を主張しません。このジョブでも実際のWAN断、外部依存のないコールド起動、実環境のDokploy・CDC・機器・既存PoCは確認しません。
 
 ## サービス別の棚卸しと暫定容量
 

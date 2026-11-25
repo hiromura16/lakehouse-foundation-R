@@ -178,9 +178,7 @@ def synthetic_env(directory, files):
         )
     if LOCAL_INFLUX in files:
         paths.append("LOCAL_INFLUX_TOKEN_FILE")
-        values.update(
-            LOCAL_INFLUX_PORT="28510", LOCAL_INFLUX_INSTANCE="synthetic"
-        )
+        values["LOCAL_INFLUX_INSTANCE"] = "synthetic"
     if "compose.cdc.yaml" in files:
         paths.extend(
             ("CDC_STATE_DIR", "CDC_SETTINGS_FILE", "CDC_TABLE_MAP_FILE")

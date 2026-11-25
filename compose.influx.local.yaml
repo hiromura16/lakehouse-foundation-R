@@ -33,8 +33,6 @@ services:
     secrets:
       - source: influx-local-admin
         target: influx-admin
-    ports:
-      - 127.0.0.1:${LOCAL_INFLUX_PORT:?隔離構成専用の空きループバックポートを指定してください}:8181
     healthcheck:
       test: [CMD, curl, --noproxy, '*', --fail, --silent, http://127.0.0.1:8181/health]
       interval: 10s

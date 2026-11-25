@@ -5,7 +5,6 @@ import json
 import os
 import re
 import secrets
-import socket
 import subprocess
 import sys
 import tempfile
@@ -14,10 +13,8 @@ from datetime import datetime
 from decimal import Decimal, DecimalException
 from pathlib import Path
 from urllib.parse import urlencode
-from urllib.request import ProxyHandler, Request, build_opener
 
 from native.setup import initialize
-from native.tools.demo import NoRedirect, check
 from native.tools.setup import create_private
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -52,33 +49,32 @@ def check_runner(env):
     return root
 
 
-def run(command, env, *, timeout=45):
-    """合成秘密やDocker生出力をログへ持ち出さない。"""
+class FixtureError(AcceptanceError):
+    """合成HTTPの秘密を含まない固定分類。"""
+
+
+def run(command, env, *, timeout=45, input_text=None):
+    """コマンドの生出力と合成HTTP資格をログへ持ち出さない。"""
+    stdin = (
+        {"stdin": subprocess.DEVNULL}
+        if input_text is None
+        else {"input": input_text}
+    )
     result = subprocess.run(
         command,
         cwd=ROOT,
         env=env,
-        stdin=subprocess.DEVNULL,
+        **stdin,
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
         check=True,
         timeout=timeout,
         text=True,
     )
-    return result.stdout.strip()
+    return result.stdout.strip() if input_text is None else result.stdout
 
 
-def singular_loopback(ports, port):
-    """既定値／範囲／他NICを受け入れず一点の公開だけを認める。"""
-    return len(ports) == 1 and (
-        str(ports[0].get("target")),
-        str(ports[0].get("published")),
-        ports[0].get("host_ip"),
-        ports[0].get("protocol", "tcp"),
-    ) == ("8181", str(port), "127.0.0.1", "tcp")
-
-
-def config_boundary(model, project, port, token_path):
+def config_boundary(model, project, token_path):
     """起動前に、共有資源・ホスト名前空間・別ホストbindを拒否する。"""
     require(PROJECT.fullmatch(project) and model["name"] == project)
     services = model["services"]
@@ -109,9 +105,8 @@ def config_boundary(model, project, port, token_path):
                 )
             )
         )
-    require(all(not services[name].get("ports") for name in TARGETS[1:]))
+    require(all(not services[name].get("ports") for name in TARGETS))
     influx = services[INFLUX]
-    require(singular_loopback(influx["ports"], port))
     require(
         len(influx["volumes"]) == 1
         and influx["volumes"][0].get("type") == "volume"
@@ -148,14 +143,62 @@ def no_prior_resources(model, project, docker):
         require(occupied.isdisjoint(proposed))
 
 
-def select_port():
-    """ランナーのループバックから未割当候補を1つ選ぶ。"""
-    with socket.socket() as reserved:
-        reserved.bind(("127.0.0.1", 0))
-        return reserved.getsockname()[1]
+def fixture_request(compose, token, path, expected_status, payload=None):
+    """固定のコンテナ内URLにだけ合成資格と入力をstdinで渡す。"""
+    require(re.fullmatch(r"apiv3_[A-Za-z0-9_-]{64}", token))
+    config = 'header = "Authorization: Bearer ' + token + '"\n'
+    if payload is not None:
+        config += (
+            "data-binary = " + json.dumps(payload, ensure_ascii=True) + "\n"
+        )
+    try:
+        output = compose(
+            "exec",
+            "-T",
+            INFLUX,
+            "curl",
+            "--disable",
+            "--silent",
+            "--noproxy",
+            "*",
+            "--max-time",
+            "8",
+            "--config",
+            "-",
+            "--write-out",
+            "\n%{http_code}",
+            f"http://127.0.0.1:8181{path}",
+            timeout=15,
+            input_text=config,
+        )
+    except subprocess.SubprocessError:
+        raise FixtureError("CONTAINER_HTTP_TRANSPORT") from None
+    body, sep, status = output.rpartition("\n")
+    if not sep or not re.fullmatch(r"[1-5][0-9]{2}", status):
+        raise FixtureError("INVALID_HTTP_STATUS")
+    if status != expected_status:
+        raise FixtureError(f"HTTP_{status}")
+    return body
 
 
-def read_points(port, token):
+def write_points(compose, token):
+    """隔離用データベースへ合成の3点を一度だけ書き込む。"""
+    sample_time = int(time.time()) // 60 * 60
+    payload = "\n".join(
+        f"temperature,device=demo-press celsius={value} "
+        f"{sample_time - (2 - index) * 60}"
+        for index, value in enumerate((22.5, 23.5, 24.5))
+    )
+    fixture_request(
+        compose,
+        token,
+        "/api/v3/write_lp?db=foundation_demo&precision=second",
+        "204",
+        payload,
+    )
+
+
+def read_points(compose, token):
     """書き直さず、既存合成点の時刻と値を照合する。"""
     options = urlencode(
         {
@@ -167,13 +210,10 @@ def read_points(port, token):
             "format": "json",
         }
     )
-    request = Request(
-        f"http://127.0.0.1:{port}/api/v3/query_sql?{options}",
-        headers={"Authorization": f"Bearer {token}"},
+    body = fixture_request(
+        compose, token, f"/api/v3/query_sql?{options}", "200"
     )
-    http = build_opener(ProxyHandler({}), NoRedirect)
-    with http.open(request, timeout=8) as result:
-        points = json.load(result)
+    points = json.loads(body)
     require(
         [point["celsius"] for point in points] == [24.5, 23.5, 22.5]
         and all(point["device"] == "demo-press" for point in points)
@@ -194,11 +234,11 @@ def started_epoch(value):
     return Decimal(whole) + Decimal("0." + (match[2] or "0"))
 
 
-def observed_binding(docker, compose, port):
-    """実際に割り当てたホスト経路もループバック1つであると照合する。"""
+def verify_container_boundary(docker, compose):
+    """実コンテナにもホストportが割り当てられていないことを検査する。"""
     container = compose("ps", "-q", INFLUX)
     require(re.fullmatch(r"[0-9a-f]{12,64}", container))
-    bindings = json.loads(
+    configured = json.loads(
         docker(
             "inspect",
             "--format",
@@ -206,9 +246,16 @@ def observed_binding(docker, compose, port):
             container,
         )
     )
+    effective = json.loads(
+        docker(
+            "inspect", "--format", "{{json .NetworkSettings.Ports}}", container
+        )
+    )
+    require(configured in (None, {}))
     require(
-        bindings
-        == {"8181/tcp": [{"HostIp": "127.0.0.1", "HostPort": str(port)}]}
+        effective is None
+        or isinstance(effective, dict)
+        and all(binding in (None, []) for binding in effective.values())
     )
     started = docker("inspect", "--format", "{{.State.StartedAt}}", container)
     return container, started_epoch(started)
@@ -261,7 +308,6 @@ def exercise(tmp):
     """新規プロジェクト／専用資格の範囲に限定して実測する。"""
     instance = f"ci-{secrets.token_hex(8)}"
     project = f"foundation-r-influx-local-{instance}"
-    port = select_port()
     site = tmp / "site.env"
     initialize(site, tmp / "landing")
     token_path = tmp / "influx-auth.json"
@@ -275,14 +321,15 @@ def exercise(tmp):
         "COMPOSE_DISABLE_ENV_FILE": "1",
         "LC_ALL": "C",
         "LOCAL_INFLUX_INSTANCE": instance,
-        "LOCAL_INFLUX_PORT": str(port),
         "LOCAL_INFLUX_TOKEN_FILE": str(token_path),
     }
 
-    def docker(*args, timeout=45):
-        return run(["docker", *args], env, timeout=timeout)
+    def docker(*args, timeout=45, input_text=None):
+        return run(
+            ["docker", *args], env, timeout=timeout, input_text=input_text
+        )
 
-    def compose(*args, timeout=45):
+    def compose(*args, timeout=45, input_text=None):
         return docker(
             "compose",
             "--env-file",
@@ -293,6 +340,7 @@ def exercise(tmp):
             str(ROOT / "compose.influx.local.yaml"),
             *args,
             timeout=timeout,
+            input_text=input_text,
         )
 
     stage = "CONFIG_BOUNDARY"
@@ -302,7 +350,7 @@ def exercise(tmp):
         model = json.loads(
             compose("config", "--no-env-resolution", "--format", "json")
         )
-        config_boundary(model, project, port, token_path)
+        config_boundary(model, project, token_path)
         no_prior_resources(model, project, docker)
         stage = "BUILD_PINNED_TARGETS"
         compose("build", *TARGETS, timeout=480)
@@ -322,16 +370,14 @@ def exercise(tmp):
             *TARGETS,
             timeout=180,
         )
-        stage = "OBSERVED_LOOPBACK"
-        container_before, start_before = observed_binding(
-            docker, compose, port
+        stage = "NO_HOST_PUBLICATION"
+        container_before, start_before = verify_container_boundary(
+            docker, compose
         )
-        stage = "WRITE_AND_QUERY"
-        require(
-            check(port, token_path)
-            == {"database": "foundation_demo", "points": 3}
-        )
-        before = read_points(port, token)
+        stage = "SYNTHETIC_WRITE"
+        write_points(compose, token)
+        stage = "SQL_READ_BEFORE_RESTART"
+        before = read_points(compose, token)
         stage = "FIXED_RELAY_PROBE"
         check_probe(compose, start_before)
         stage = "RESTART_AND_READ_ONLY_QUERY"
@@ -350,12 +396,20 @@ def exercise(tmp):
             INFLUX,
             timeout=110,
         )
-        require(read_points(port, token) == before)
-        container_after, start_after = observed_binding(docker, compose, port)
+        stage = "SQL_READ_AFTER_RESTART"
+        require(read_points(compose, token) == before)
+        stage = "NO_HOST_PUBLICATION_AFTER_RESTART"
+        container_after, start_after = verify_container_boundary(
+            docker, compose
+        )
         require(
             container_before == container_after and start_before < start_after
         )
+        stage = "FIXED_RELAY_PROBE_AFTER_RESTART"
         check_probe(compose, start_after)
+    except FixtureError as error:
+        print(f"FAIL: {stage} {error}", file=sys.stderr)
+        failed = True
     except (
         AcceptanceError,
         OSError,
