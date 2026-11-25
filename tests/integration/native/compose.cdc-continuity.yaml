@@ -1,0 +1,20 @@
+# 合成CDCの閉域試験だけで使用する。標準・外部CDCの構成は変更しない。
+services:
+  lakehouse:
+    ports: !reset []
+  grafana:
+    ports: !reset []
+  test-broker:
+    volumes:
+      - continuity-broker:/var/lib/redpanda/data
+
+networks:
+  cdc_egress:
+    internal: true
+  api_origin:
+    internal: true
+  metrics_view:
+    internal: true
+
+volumes:
+  continuity-broker:

@@ -392,3 +392,9 @@ docker compose -p "$project" --env-file "$site" -f compose.yaml -f compose.cdc.y
 確定位置までのRawを隔離したIcebergに再生して照合する手順があります。
 復元する履歴の範囲と、旧世代に含まれるNULL判定の条件を確認してください。
 [CDCの確定履歴を隔離復元する](CDC-SHADOW.md)
+
+### 隔離試験で確認する閉域CDC再開
+
+[閉域CDCの受入ジョブ](../../.github/workflows/cdc-continuity.yml)は既存の合成6トピックの試験を別の使い捨てプロジェクトで再利用します。開始対象の実コンテナにはホストportがなく、所有を確認した内部bridgeにのみ接続し、外部送信先・実SQL Server・実Kafkaは使いません。イメージの取得・ビルドは試験前に済ませます。閉域でRawと派生状態を確認し、brokerとconsumerを停止後、同じコンテナ、固有volume、SQLite確定位置から、取得・ビルドなしで再開を試みます。既存のレプリカや運用中の位置は変更しません。
+
+これは合成環境でのキャッシュ済み再開の受入です。外部回線を実際に遮断した試験、外部配送の滞留復旧、サイトのSQL・Kafkaや初回導入／スタック全体のコールド再起動を証明しません。
