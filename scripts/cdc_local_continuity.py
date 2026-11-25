@@ -175,6 +175,39 @@ def runtime_boundary(docker, compose, project, *, inactive=frozenset()):
     return ids, network_ids
 
 
+def observe_workload(compose, checkpoint, body, phase, offset):
+    """合成Kafkaと両方の確定位置を照合し、Raw・Silverの世代を返す。"""
+    observation = json.loads(
+        compose(
+            "exec",
+            "-T",
+            "lakehouse",
+            "python",
+            "-",
+            phase,
+            timeout=130,
+            input_text=body,
+        )
+    )
+    require(
+        isinstance(observation, dict)
+        and set(observation)
+        == {
+            "raw_snapshot_id",
+            "release_snapshot_id",
+            "broker_next_offset",
+        }
+        and type(observation["raw_snapshot_id"]) is int
+        and observation["raw_snapshot_id"] > 0
+        and isinstance(observation["release_snapshot_id"], str)
+        and re.fullmatch(r"[1-9][0-9]*", observation["release_snapshot_id"])
+        and type(observation["broker_next_offset"]) is int
+        and observation["broker_next_offset"] == offset + 1
+    )
+    checkpoint(offset)
+    return observation["raw_snapshot_id"], observation["release_snapshot_id"]
+
+
 def verify_closed_workload(compose, checkpoint, body):
     """同じ閉域のまま確定を個別に待ち、最後は読取だけで照合する。"""
     previous = None
@@ -184,38 +217,9 @@ def verify_closed_workload(compose, checkpoint, body):
         ("continuity-delete", 11),
         ("continuity-confirm", 11),
     ):
-        observation = json.loads(
-            compose(
-                "exec",
-                "-T",
-                "lakehouse",
-                "python",
-                "-",
-                phase,
-                timeout=130,
-                input_text=body,
-            )
+        raw, release = observe_workload(
+            compose, checkpoint, body, phase, offset
         )
-        require(
-            isinstance(observation, dict)
-            and set(observation)
-            == {
-                "raw_snapshot_id",
-                "release_snapshot_id",
-                "broker_next_offset",
-            }
-            and type(observation["raw_snapshot_id"]) is int
-            and observation["raw_snapshot_id"] > 0
-            and isinstance(observation["release_snapshot_id"], str)
-            and re.fullmatch(
-                r"[1-9][0-9]*", observation["release_snapshot_id"]
-            )
-            and type(observation["broker_next_offset"]) is int
-            and observation["broker_next_offset"] == offset + 1
-        )
-        checkpoint(offset)
-        raw = observation["raw_snapshot_id"]
-        release = observation["release_snapshot_id"]
         if phase == "continuity-confirm":
             require(previous == (raw, release))
         elif previous is not None:
@@ -223,7 +227,7 @@ def verify_closed_workload(compose, checkpoint, body):
         previous = (raw, release)
 
 
-def exercise(stage, *, fixture=None, overlay=None):
+def exercise(stage, *, fixture=None, overlay=None, fixture_name="STORAGE"):
     """別枠の合成資源で、閉域起動とbroker/consumer再開だけを観測する。"""
     project = f"foundation-r-cdc-local-ci-{secrets.token_hex(8)}"
     site = stage / "site.env"
@@ -317,7 +321,7 @@ def exercise(stage, *, fixture=None, overlay=None):
         before = runtime_boundary(docker, compose, project)
         body = (FIXTURES / "cdc_acceptance.py").read_text(encoding="utf-8")
         if fixture is not None:
-            phase = "OWNED_STORAGE_FAILURE_AND_RECOVERY"
+            phase = f"OWNED_{fixture_name}_FAILURE_AND_RECOVERY"
             fixture(docker, compose, project, before, checkpoint, body)
         else:
             phase = "SYNTHETIC_WORKLOAD_BEFORE"
@@ -396,18 +400,27 @@ def exercise(stage, *, fixture=None, overlay=None):
             "PASS: closed CDC resume, INSERT/UPDATE/DELETE and cursor parity"
         )
     else:
-        print("PASS: closed CDC storage failure and exact recovery")
+        print(
+            "PASS: closed CDC "
+            + fixture_name.lower()
+            + " failure and exact recovery"
+        )
     return 0
 
 
-def main(*, fixture=None, overlay=None):
+def main(*, fixture=None, overlay=None, fixture_name="STORAGE"):
     """他の環境ではDockerに触れず終了する。"""
     try:
         parent = check_runner(os.environ)
         with tempfile.TemporaryDirectory(
             prefix="r-cdc-ci-", dir=parent
         ) as stage:
-            return exercise(Path(stage), fixture=fixture, overlay=overlay)
+            return exercise(
+                Path(stage),
+                fixture=fixture,
+                overlay=overlay,
+                fixture_name=fixture_name,
+            )
     except (
         AcceptanceError,
         OSError,

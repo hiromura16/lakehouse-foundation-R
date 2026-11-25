@@ -1,0 +1,61 @@
+name: 閉域CDCと合成宛先の送信待ち復旧
+
+on:  # yamllint disable-line rule:truthy
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/cdc-edge-outbox.yml
+      - .dockerignore
+      - compose.yaml
+      - compose.cdc.yaml
+      - native/**
+      - contracts/native/**
+      - medallion/**
+      - infra/proxy/**
+      - infra/cdc/**
+      - tests/integration/native/compose.broker.yaml
+      - tests/integration/native/compose.cdc-continuity.yaml
+      - tests/integration/native/compose.cdc-storage-failure.yaml
+      - tests/integration/native/cdc_acceptance.py
+      - tests/integration/native/cdc_checkpoint.py
+      - tests/integration/native/prepare_cdc.py
+      - tests/test_cdc_edge_outbox_acceptance.py
+      - scripts/cdc_edge_outbox_acceptance.py
+      - scripts/cdc_local_continuity.py
+      - scripts/cdc_storage_failure.py
+      - scripts/influx_local_acceptance.py
+      - scripts/raw_file_input.py
+      - scripts/landing_contract.py
+      - scripts/generate-demo.py
+      - scripts/source_scenarios.py
+      - scripts/sql_batch_worker.py
+
+permissions:
+  contents: read
+
+jobs:
+  synthetic-destination-recovery:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
+        with:
+          python-version: '3.14'
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+        with:
+          version: '0.13.7'
+          checksum: c5221ff41b7892bfc223543883600125f6a47fe845093e0f5bdff4f359196d83
+          enable-cache: false
+      - name: 閉域CDCの継続、合成宛先の復旧と完全一致
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          uv venv --python 3.14 "$RUNNER_TEMP/cdc-edge-outbox"
+          uv pip sync --python "$RUNNER_TEMP/cdc-edge-outbox/bin/python" \
+            --require-hashes native/edge/requirements-r2.lock
+          "$RUNNER_TEMP/cdc-edge-outbox/bin/python" \
+            -m scripts.cdc_edge_outbox_acceptance
