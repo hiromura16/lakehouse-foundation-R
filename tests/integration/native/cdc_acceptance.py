@@ -118,9 +118,7 @@ def publish(groups, *, previous=None):
             producer.produce(
                 f"{TOPIC_PREFIX}.{table}",
                 key=json.dumps({key: row[key]}),
-                value=event(
-                    table, operation, sequence, row, previous=previous
-                )
+                value=event(table, operation, sequence, row, previous=previous)
                 if operation
                 else None,
                 on_delivery=delivered,
