@@ -572,6 +572,83 @@
         "docs/native/ACCEPTANCE.md"
       ],
       "status": "active"
+    },
+    {
+      "path": "docs/reviews/cdc-self-contained-adr.md",
+      "title": "ADR: Foundation Rに閉じたCDC取り込みを追加する",
+      "purpose": "内包CDCを任意構成として追加する理由、代案、取り消し条件を整理する。",
+      "audience": [
+        "基盤構築担当",
+        "開発・設計担当",
+        "運用担当"
+      ],
+      "when_to_use": "追加構成の採否と責務を設計するとき。",
+      "category": "06 開発・レビュー",
+      "prerequisites": [
+        "docs/native/ARCHITECTURE.md"
+      ],
+      "next": [
+        "docs/reviews/cdc-self-contained-design.md",
+        "docs/reviews/cdc-self-contained-threat-model.md"
+      ],
+      "status": "reference"
+    },
+    {
+      "path": "docs/reviews/cdc-self-contained-design.md",
+      "title": "Foundation R内包CDCの現状と設計差分",
+      "purpose": "現行の証拠と未実装範囲を区別し、追加する契約と配置を確認する。",
+      "audience": [
+        "基盤構築担当",
+        "開発・設計担当",
+        "運用担当"
+      ],
+      "when_to_use": "SQL、topic、配備の後続差分を作る前。",
+      "category": "06 開発・レビュー",
+      "prerequisites": [
+        "docs/reviews/cdc-self-contained-adr.md"
+      ],
+      "next": [
+        "docs/reviews/cdc-self-contained-threat-model.md",
+        "docs/reviews/cdc-self-contained-acceptance.md"
+      ],
+      "status": "reference"
+    },
+    {
+      "path": "docs/reviews/cdc-self-contained-threat-model.md",
+      "title": "内包CDCの権限境界と否定試験",
+      "purpose": "SQLとKafkaを主体別に許可し、異なる権限と入力を否定試験で検証する。",
+      "audience": [
+        "基盤構築担当",
+        "開発・設計担当",
+        "運用担当"
+      ],
+      "when_to_use": "権限や公開境界を設計・レビューするとき。",
+      "category": "06 開発・レビュー",
+      "prerequisites": [
+        "docs/reviews/cdc-self-contained-design.md"
+      ],
+      "next": [
+        "docs/reviews/cdc-self-contained-acceptance.md"
+      ],
+      "status": "reference"
+    },
+    {
+      "path": "docs/reviews/cdc-self-contained-acceptance.md",
+      "title": "内包CDCの受入と配布物の復旧",
+      "purpose": "連結試験、成果物の復元、WAN断、後続PRの合格条件を定める。",
+      "audience": [
+        "基盤構築担当",
+        "開発・設計担当",
+        "運用担当"
+      ],
+      "when_to_use": "試験やサイト受入を計画するとき。",
+      "category": "06 開発・レビュー",
+      "prerequisites": [
+        "docs/reviews/cdc-self-contained-design.md",
+        "docs/reviews/cdc-self-contained-threat-model.md"
+      ],
+      "next": [],
+      "status": "reference"
     }
   ]
 }
