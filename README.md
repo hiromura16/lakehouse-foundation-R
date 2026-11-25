@@ -24,7 +24,7 @@ MES・ERP・設備の入力原本を保管し、工場別の日次生産、出�
 
 Dokployの **Projects → Create Service → Compose** から、公開GitHubの `main` と `compose.yaml` を指定します。配備先VMで生成した非公開設定を **Environment** へ登録し、**Deploy** を実行します。
 
-[最初からDokployで配備する手順](docs/native/START.md) · [会社のプロキシ・CA、追加構成](docs/native/COMPANY.md) · [会社VMの受入条件](docs/native/ACCEPTANCE.md)
+[最初からDokployで配備する手順](docs/native/START.md) · [会社のプロキシ・CA、追加構成](docs/native/COMPANY.md) · [会社VMの受入条件](docs/native/ACCEPTANCE.md) · [合成値で比較するDokploy配備モード](docs/native/DOKPLOY-MODES.md)
 
 ## やりたいことから探す
 

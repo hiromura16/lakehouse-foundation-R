@@ -30,6 +30,7 @@
 | [アーキテクチャと業務契約](<native/ARCHITECTURE.md>) | コンポーネントの役割と採用理由、業務契約と公開世代を確認します。 | 実装を理解・変更するとき。 | active |
 | [Dokployと企業ネットワーク](<native/COMPANY.md>) | Git・Docker・BuildKitの通信を準備し、Dokployで配備します。 | 会社環境の準備と配置時。 | active |
 | [レイクハウスの設計思想](<native/DESIGN.md>) | データの保存、品質、所有、AI利用の考え方をFoundation Rの実装と照らし合わせます。 | 設計判断を理解するときや、用途に合わせて構成を変更するとき。 | active |
+| [Dokploy配備モードの合成プラン](<native/DOKPLOY-MODES.md>) | 既存Composeを合成値だけで展開し、配備モードごとの差を確認する。 | Dokployの配備構成を選ぶ前、またはレシピ変更をレビューするとき。 | active |
 | [データ閲覧と管理画面を追加する](<native/GUI.md>) | Gold・Lakekeeper・Prometheusの認証付き閲覧画面を用意します。 | ブラウザーで実データと運用状態を確認するとき。 | active |
 | [Grafanaの稼働監視を設定ファイルで管理する](<native/MONITORING.md>) | PrometheusとGrafanaの監視対象・パネルを変更します。 | 起動確認や監視対象の変更時。 | active |
 | [運用、バックアップ、受入試験](<native/OPERATIONS.md>) | 障害対応、状態の保全と合成データでの受入を行います。 | 導入先で検証・運用するとき。 | active |
@@ -103,6 +104,7 @@
 | [アーキテクチャと業務契約](<native/ARCHITECTURE.md>) | コンポーネントの役割と採用理由、業務契約と公開世代を確認します。 |
 | [Dokployと企業ネットワーク](<native/COMPANY.md>) | Git・Docker・BuildKitの通信を準備し、Dokployで配備します。 |
 | [レイクハウスの設計思想](<native/DESIGN.md>) | データの保存、品質、所有、AI利用の考え方をFoundation Rの実装と照らし合わせます。 |
+| [Dokploy配備モードの合成プラン](<native/DOKPLOY-MODES.md>) | 既存Composeを合成値だけで展開し、配備モードごとの差を確認する。 |
 | [データ閲覧と管理画面を追加する](<native/GUI.md>) | Gold・Lakekeeper・Prometheusの認証付き閲覧画面を用意します。 |
 | [Grafanaの稼働監視を設定ファイルで管理する](<native/MONITORING.md>) | PrometheusとGrafanaの監視対象・パネルを変更します。 |
 | [運用、バックアップ、受入試験](<native/OPERATIONS.md>) | 障害対応、状態の保全と合成データでの受入を行います。 |
@@ -124,6 +126,7 @@
 | [オンプレとCloudflareをつなぐ](<native/CLOUDFLARE.md>) | Cloudflare TunnelとAccessで承認済みGoldを読み取る経路を配備します。 |
 | [Dokployと企業ネットワーク](<native/COMPANY.md>) | Git・Docker・BuildKitの通信を準備し、Dokployで配備します。 |
 | [レイクハウスの設計思想](<native/DESIGN.md>) | データの保存、品質、所有、AI利用の考え方をFoundation Rの実装と照らし合わせます。 |
+| [Dokploy配備モードの合成プラン](<native/DOKPLOY-MODES.md>) | 既存Composeを合成値だけで展開し、配備モードごとの差を確認する。 |
 | [データ閲覧と管理画面を追加する](<native/GUI.md>) | Gold・Lakekeeper・Prometheusの認証付き閲覧画面を用意します。 |
 | [Grafanaの稼働監視を設定ファイルで管理する](<native/MONITORING.md>) | PrometheusとGrafanaの監視対象・パネルを変更します。 |
 | [運用、バックアップ、受入試験](<native/OPERATIONS.md>) | 障害対応、状態の保全と合成データでの受入を行います。 |
