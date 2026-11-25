@@ -477,8 +477,9 @@ def permissions_safe(cursor, role="demo", *, full_audit=False):
     設置情報のSELECTだけを許可する。
     ソース読取元は full_audit の指定時を除き、所定の境界だけを確認する。
     全件監査はDBA向けの個別診断として厳格に実施し、起動時は適用しない。
-    メタデータの可視性は実際に接続したプリンシパルの権限で評価する。
+    メタデータの可視性だけでは、書込元がその対象を操作できるとは限らない。
     """
+    writer_runtime = role == "demo" and not full_audit
     roles = [
         "db_owner",
         "db_ddladmin",
@@ -538,6 +539,15 @@ def permissions_safe(cursor, role="demo", *, full_audit=False):
             ),
         ),
     ):
+        if writer_runtime and scope == "DATABASE":
+            dangerous += (
+                "ALTER ANY SCHEMA",
+                "SELECT",
+                "INSERT",
+                "UPDATE",
+                "DELETE",
+                "EXECUTE",
+            )
         cursor.execute(
             "SELECT permission_name FROM fn_my_permissions(NULL, %s) "
             "WHERE permission_name IN ("
@@ -549,6 +559,10 @@ def permissions_safe(cursor, role="demo", *, full_audit=False):
             return False
     if role == "source" and not full_audit:
         return source_permissions_safe(cursor)
+    if writer_runtime:
+        cursor.execute("SELECT IS_MEMBER(N'lh_demo_writer')")
+        if cursor.fetchone() != (1,):
+            return False
     business = [
         item["schema"] + "." + item["table"] for item in TABLES.values()
     ]
@@ -585,22 +599,25 @@ def permissions_safe(cursor, role="demo", *, full_audit=False):
         "o.is_ms_shipped=0 AND NOT (COALESCE(o.parent_object_id,0)>0 "
         "AND COALESCE(o.type,'') IN (" + child_types + "))"
     )
-    # 将来追加される型や未対応の権限対象が、固定の監査一覧から漏れて
-    # 通過するのを防ぐ。適用できるか不明な権限を試さず、その型を拒否する。
-    cursor.execute(
-        "SELECT TOP (1) o.object_id FROM sys.objects o WHERE "
-        + eligible
-        + " AND (o.type IS NULL OR o.parent_object_id IS NULL "
-        "OR o.type NOT IN (" + known_types + "))"
-    )
-    if cursor.fetchone():
-        return False
+    # DBA全件監査では未知の型も拒否する。実行前検査では、型の
+    # 可視性だけで拒否せず、対象型を限定せずに実効権限を評価する。
+    if not writer_runtime:
+        # 将来追加される型や未対応の権限対象が、固定の監査一覧から漏れて
+        # 通過するのを防ぐ。適用できるか不明な権限を試さず、その型を拒否する。
+        cursor.execute(
+            "SELECT TOP (1) o.object_id FROM sys.objects o WHERE "
+            + eligible
+            + " AND (o.type IS NULL OR o.parent_object_id IS NULL "
+            "OR o.type NOT IN (" + known_types + "))"
+        )
+        if cursor.fetchone():
+            return False
     for operation, allowed in allowed_by_operation.items():
         # 権限とオブジェクト型の組合せを推測して HAS_PERMS_BY_NAME を呼ぶと、
         # 未対応の組合せでNULLを返したり、不完全な型一覧からCLRやシノニムの
         # 権限が漏れたりする。列の権限を含めた実効権限を監査する。
-        # OUTER APPLY は結果が空または取得できない行もNULLとして残すため、
-        # 不完全なメタデータが見過ごされない。
+        # 書込前だけは空の権限集合をCROSS APPLYで区別する。
+        # 実際に返されたNULL行は監査と同様に拒否する。
         clause = "p.permission_name IS NULL OR (p.permission_name=%s"
         arguments = [operation]
         if allowed:
@@ -613,13 +630,17 @@ def permissions_safe(cursor, role="demo", *, full_audit=False):
         clause += ")"
         cursor.execute(
             "SELECT TOP (1) o.object_id FROM sys.objects o JOIN "
-            "sys.schemas s ON o.schema_id=s.schema_id OUTER APPLY "
-            "sys.fn_my_permissions(QUOTENAME(s.name)+N'.'+"
+            "sys.schemas s ON o.schema_id=s.schema_id "
+            + ("CROSS APPLY " if writer_runtime else "OUTER APPLY ")
+            + "sys.fn_my_permissions(QUOTENAME(s.name)+N'.'+"
             "QUOTENAME(o.name),N'OBJECT') p WHERE "
             + eligible
-            + " AND o.type IN ("
-            + known_types
-            + ") AND ("
+            + (
+                ""
+                if writer_runtime
+                else " AND o.type IN (" + known_types + ")"
+            )
+            + " AND ("
             + clause
             + ")",
             tuple(arguments),
@@ -637,8 +658,14 @@ def permissions_safe(cursor, role="demo", *, full_audit=False):
             "HAS_PERMS_BY_NAME(QUOTENAME(s.name)+N'.'+QUOTENAME(o.name),"
             " N'OBJECT', %s, c.name, N'COLUMN')"
         )
-        clause = check + " IS NULL OR (" + check + " = 1"
-        arguments = [operation, operation]
+        if writer_runtime:
+            # 適用外/非可視列のNULLを権限付与と混同しない。
+            # 管理対象の必須列は後段で別に1を確認する。
+            clause = "(" + check + " = 1"
+            arguments = [operation]
+        else:
+            clause = check + " IS NULL OR (" + check + " = 1"
+            arguments = [operation, operation]
         if allowed:
             clause += (
                 " AND s.name+N'.'+o.name NOT IN ("
@@ -661,12 +688,25 @@ def permissions_safe(cursor, role="demo", *, full_audit=False):
         if cursor.fetchone():
             return False
     # スキーマ全体への実効DDL権限は、空のスキーマでも許容しない。
+    schema_operations = ("ALTER", "CONTROL", "TAKE OWNERSHIP")
+    if writer_runtime:
+        # 将来追加される表への権限も、固定表別の付与には含まれない。
+        schema_operations += (
+            "INSERT",
+            "UPDATE",
+            "DELETE",
+            "SELECT",
+            "EXECUTE",
+        )
     cursor.execute(
         "SELECT TOP (1) s.schema_id FROM sys.schemas s WHERE s.name "
         "NOT IN (N'sys',N'INFORMATION_SCHEMA') AND "
-        "(HAS_PERMS_BY_NAME(s.name,N'SCHEMA',N'ALTER')=1 OR "
-        "HAS_PERMS_BY_NAME(s.name,N'SCHEMA',N'CONTROL')=1 OR "
-        "HAS_PERMS_BY_NAME(s.name,N'SCHEMA',N'TAKE OWNERSHIP')=1)"
+        "("
+        + " OR ".join(
+            "HAS_PERMS_BY_NAME(s.name,N'SCHEMA',N'" + operation + "')=1"
+            for operation in schema_operations
+        )
+        + ")"
     )
     if cursor.fetchone():
         return False
@@ -706,7 +746,58 @@ def permissions_safe(cursor, role="demo", *, full_audit=False):
         )
         if cursor.fetchone() != (1,):
             return False
+    if writer_runtime and not writer_columns_safe(cursor):
+        return False
     return side_effects_safe(cursor, role)
+
+
+def writer_columns_safe(cursor):
+    """固定DMLが使う列のSELECT/UPDATEは、実効1を必須にする。"""
+    required = {
+        "lh_demo_ctl.installation": {
+            "SELECT": (
+                "singleton_id",
+                "schema_version",
+                "installation_id",
+                "ownership_hash",
+            ),
+        },
+        "lh_demo_ctl.demo_runs": {
+            "SELECT": ("run_id",),
+            "UPDATE": (
+                "record_count",
+                "completed_at",
+                "status",
+                "target_mode",
+            ),
+        },
+    }
+    for item in TABLES.values():
+        required[item["schema"] + "." + item["table"]] = {
+            "SELECT": (item["pk"], "run_id", "original_values", "updated_at"),
+            "UPDATE": tuple(
+                column for column in item["columns"] if column != item["pk"]
+            )
+            + ("original_values",),
+        }
+    for name, operations in required.items():
+        for operation, columns in operations.items():
+            # 1文で複数列のDENY/不可視を検査する。
+            cursor.execute(
+                "SELECT "
+                + ", ".join(
+                    "HAS_PERMS_BY_NAME(%s,N'OBJECT',%s,%s,N'COLUMN')"
+                    for _ in columns
+                ),
+                tuple(
+                    value
+                    for column in columns
+                    for value in (name, operation, column)
+                ),
+            )
+            if cursor.fetchone() != (1,) * len(columns):
+                return False
+    return True
 
 
 def diagnose(values):
@@ -754,15 +845,18 @@ def diagnose(values):
                     rows=int(count),
                     last_updated_at=(stamp + "Z") if stamp else None,
                 )
-                cursor.execute(
-                    "SELECT is_tracked_by_cdc FROM sys.tables WHERE "
-                    "object_id=OBJECT_ID(%s)",
-                    (target,),
-                )
-                result["tables"][name]["cdc_enabled"] = bool(
-                    cursor.fetchone()[0]
-                )
-                # 権限を限定した書込元にはCDCの取得情報が見えない場合がある。
+                # どちらのCDCメタデータも書込許可や他の表の診断とは独立。
+                try:
+                    cursor.execute(
+                        "SELECT is_tracked_by_cdc FROM sys.tables WHERE "
+                        "object_id=OBJECT_ID(%s)",
+                        (target,),
+                    )
+                    status = cursor.fetchone()
+                    if status and status[0] is not None:
+                        result["tables"][name]["cdc_enabled"] = bool(status[0])
+                except Exception:
+                    pass
                 try:
                     cursor.execute(
                         "SELECT capture_instance FROM cdc.change_tables WHERE "

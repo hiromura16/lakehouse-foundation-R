@@ -329,6 +329,38 @@ class DiagnosticTests(unittest.TestCase):
         ):
             self.assertNotIn(hidden, rendered)
 
+    def test_hidden_cdc_metadata_never_gates_writer_or_other_tables(self):
+        handle = Handle()
+        cursor = mock.Mock()
+        current = None
+
+        def operate(statement, _args=()):
+            nonlocal current
+            if (
+                "is_tracked_by_cdc" in statement
+                or "cdc.change_tables" in statement
+            ):
+                raise RuntimeError("opaque error")
+            current = (4, None) if "COUNT_BIG" in statement else (1,)
+
+        cursor.execute.side_effect = operate
+        cursor.fetchone.side_effect = lambda: current
+        handle.cursor = lambda: cursor
+        with (
+            mock.patch.object(
+                DEMO, "connection", return_value=injected_connection(handle)
+            ),
+            mock.patch.object(DEMO, "ownership", return_value=1),
+            mock.patch.object(DEMO, "permissions_safe", return_value=True),
+        ):
+            result = DEMO.diagnose(VALUES)
+        self.assertTrue(result["permissions_safe"])
+        for table in result["tables"].values():
+            self.assertTrue(table["exists"])
+            self.assertEqual(table["rows"], 4)
+            self.assertIsNone(table["capture_instance"])
+        self.assertNotIn("opaque error", json.dumps(result))
+
     def test_connection_failure_does_not_invent_connection_or_row_success(
         self,
     ):
@@ -735,6 +767,12 @@ class PermissionTests(unittest.TestCase):
         object_type="U",
         unknown_object=False,
         unknown_permission=False,
+        metadata_only=False,
+        missing_writer=False,
+        missing_required_column=False,
+        schema_grant=False,
+        principals_visible=False,
+        impersonates=False,
     ):
         cursor = mock.Mock()
         result = [None]
@@ -742,13 +780,29 @@ class PermissionTests(unittest.TestCase):
 
         def execute(statement, arguments=()):
             statements.append((statement, arguments))
-            if statement.startswith("SELECT IS_MEMBER"):
+            if statement == "SELECT IS_MEMBER(N'lh_demo_writer')":
+                result[0] = (int(not missing_writer),)
+            elif statement.startswith("SELECT IS_MEMBER"):
                 count = statement.count("IS_MEMBER(") + statement.count(
                     "IS_SRVROLEMEMBER("
                 )
                 result[0] = tuple(
                     [None if unknown else int(broad)] + [0] * (count - 1)
                 )
+            elif statement == "SELECT DB_NAME()":
+                result[0] = (VALUES["DEMO_SQLSERVER_DATABASE"],)
+            elif statement.startswith(
+                "SELECT schema_version, installation_id"
+            ):
+                result[0] = (
+                    DEMO.SCHEMA_VERSION,
+                    VALUES["DEMO_SQLSERVER_INSTALLATION_ID"],
+                    DEMO.sha256(
+                        VALUES["DEMO_SQLSERVER_OWNERSHIP_TOKEN"].encode()
+                    ).hexdigest(),
+                )
+            elif "WITH (UPDLOCK,HOLDLOCK)" in statement:
+                result[0] = None
             elif statement.startswith("SELECT permission_name FROM"):
                 result[0] = [("CONTROL",)] if dangerous else []
             elif "FROM sys.sql_modules m" in statement:
@@ -762,10 +816,11 @@ class PermissionTests(unittest.TestCase):
                 if column_permission:
                     operation, name, column, effective = column_permission
                     self.assertIn("c.name, N'COLUMN'", statement)
-                    self.assertIn(" IS NULL OR ", statement)
+                    strict = " IS NULL OR " in statement
+                    allowed = arguments[2:] if strict else arguments[1:]
                     if operation == arguments[0] and (
-                        effective is None
-                        or (effective == 1 and name not in arguments[2:])
+                        (strict and effective is None)
+                        or (effective == 1 and name not in allowed)
                     ):
                         result[0] = (999, 1)
             elif "o.type NOT IN" in statement:
@@ -773,20 +828,37 @@ class PermissionTests(unittest.TestCase):
             elif "sys.objects o" in statement:
                 operation = arguments[0]
                 name = denied_object[1] if denied_object else None
-                audited_kind = "'" + object_type + "'" in statement
+                audited_kind = (
+                    "CROSS APPLY" in statement
+                    or "'" + object_type + "'" in statement
+                )
                 unsafe = (
                     audited_kind
                     and denied_object
                     and operation == denied_object[0]
                     and name not in arguments[1:]
                 )
-                result[0] = (999,) if unsafe or unknown_permission else None
+                denied = (
+                    unsafe
+                    or unknown_permission
+                    or (metadata_only and "OUTER APPLY" in statement)
+                )
+                result[0] = (999,) if denied else None
             elif "SELECT COUNT_BIG(*) FROM sys.tables" in statement:
                 result[0] = (len(arguments),)
+            elif "sys.schemas s WHERE" in statement:
+                result[0] = (999,) if schema_grant else None
+            elif "FROM sys.database_principals" in statement:
+                if principals_visible:
+                    self.assertIn("N'IMPERSONATE')=1", statement)
+                result[0] = (999,) if impersonates else None
+            elif "N'COLUMN')" in statement:
+                permissions = [1] * (len(arguments) // 3)
+                if missing_required_column:
+                    permissions[0] = None
+                result[0] = tuple(permissions)
             elif (
-                "sys.schemas s WHERE" in statement
-                or "FROM sys.database_principals" in statement
-                or "FROM sys.triggers" in statement
+                "FROM sys.triggers" in statement
                 or "FROM sys.foreign_keys" in statement
             ):
                 result[0] = None
@@ -840,14 +912,18 @@ class PermissionTests(unittest.TestCase):
             {"unknown_permission": True},
         ):
             with self.subTest(options=options):
-                self.assertFalse(DEMO.permissions_safe(self.cursor(**options)))
+                self.assertFalse(
+                    DEMO.permissions_safe(
+                        self.cursor(**options), full_audit=True
+                    )
+                )
 
     def test_query_contract_uses_applicable_permissions_not_guessed_pairs(
         self,
     ):
         """SQLの契約を静的に検証する。"""
         cursor = self.cursor()
-        self.assertTrue(DEMO.permissions_safe(cursor))
+        self.assertTrue(DEMO.permissions_safe(cursor, full_audit=True))
         object_queries = [
             statement
             for statement, _ in cursor.statements
@@ -983,9 +1059,76 @@ class PermissionTests(unittest.TestCase):
                         "name",
                         None,
                     )
-                )
+                ),
+                full_audit=True,
             )
         )
+
+    def test_writer_runtime_distinguishes_visibility_from_effective_grant(
+        self,
+    ):
+        for options in (
+            {"metadata_only": True, "unknown_object": True},
+            {"principals_visible": True},
+            {"column_permission": ("SELECT", "legacy.orders", "amount", None)},
+        ):
+            with self.subTest(options=options):
+                cursor = self.cursor(**options)
+                self.assertTrue(DEMO.permissions_safe(cursor))
+                statements = [query for query, _ in cursor.statements]
+                self.assertTrue(any("CROSS APPLY" in x for x in statements))
+                self.assertFalse(any("OUTER APPLY" in x for x in statements))
+        for options in (
+            {"missing_writer": True},
+            {"missing_required_column": True},
+            {"schema_grant": True},
+            {"impersonates": True},
+            {"unknown_permission": True},
+            {"object_type": "ZZ", "denied_object": ("UPDATE", "legacy.item")},
+        ):
+            with self.subTest(options=options):
+                self.assertFalse(DEMO.permissions_safe(self.cursor(**options)))
+
+    def test_real_mutate_entry_uses_writer_boundary_before_dml(self):
+        for legacy_write in (False, True):
+            with self.subTest(legacy_write=legacy_write):
+                cursor = self.cursor(
+                    metadata_only=True,
+                    principals_visible=True,
+                    denied_object=("UPDATE", "legacy.item")
+                    if legacy_write
+                    else None,
+                )
+                handle = Handle()
+                handle.cursor = lambda: cursor
+                with mock.patch.object(
+                    DEMO,
+                    "connection",
+                    return_value=injected_connection(handle),
+                ):
+                    if legacy_write:
+                        with self.assertRaises(DEMO.SqlServerError):
+                            DEMO.mutate(
+                                VALUES, "insert", run_id=RUN, consent=True
+                            )
+                    else:
+                        result = DEMO.mutate(
+                            VALUES, "insert", run_id=RUN, consent=True
+                        )
+                        self.assertEqual(result["changed_rows"], 1)
+                written = [
+                    stmt
+                    for stmt, _ in cursor.statements
+                    if stmt.startswith("INSERT INTO")
+                ]
+                self.assertEqual(handle.commits, 0 if legacy_write else 1)
+                self.assertEqual(len(written), 0 if legacy_write else 1)
+                self.assertFalse(
+                    any(
+                        "cdc.change_tables" in stmt
+                        for stmt, _ in cursor.statements
+                    )
+                )
 
     def test_source_dml_and_control_business_dml_are_denied(self):
         for role in ("source", "control"):

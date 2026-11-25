@@ -361,6 +361,12 @@ SQL Rawへ残る原本は抽出したJSONです。SQLiteのDBバックアップ�
 [SQLite専用のGitHub Actions](../../.github/workflows/sqlite.yml) は、同じ内容を再取得した時点、
 削除、3世代のGold読取、同じ観測の再送、RawのSHA-256を照合します。
 
+## 固定合成SQLの書込前検査
+
+固定合成SQLのDMLでは、設置情報と `lh_demo_writer` の所属、固定6表と実行記録に必要な実効権限、DBA設置済みの安全確認手続きの一致を確認します。管理対象外に実行できる書込・アクセス権限や、DB全体の強い権限があれば拒否します。別のオブジェクトやプリンシパルの名前がメタデータに見えるだけなら、データへのアクセス権があるとはみなしません。DBAの全件監査は別の厳格な検査です。
+
+writerからCDCのキャプチャ情報を読めないときは `capture_instance` が `null` になることがあります。これはキャプチャの有無を断定せず、固定DMLにCDCの読取権限を付ける必要もありません。キャプチャの確認はCDC readerまたはDBAの権限で別に行ってください。
+
 ## 固定SQLバッチをAPIで受け取る
 
 上流の固定SQL観測が生成した `<batch_id>.json` と完了印を `sql-batches/` に置く経路です。 `POST /run` に操作トークンと `action: sql-load`、`batch_id`、`observed_at` を送ります。PostgreSQL・SQLiteの抽出CLIがこの形式を作ります。SQL ServerのCSV・JSONL抽出は通常の `medallion` に渡します。[操作APIとSQLバッチ例](API.md)
