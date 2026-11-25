@@ -9,13 +9,14 @@ import subprocess
 import sys
 import tempfile
 import time
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal, DecimalException
 from pathlib import Path
 from urllib.parse import urlencode
 
 from native.setup import initialize
 from native.tools.setup import create_private
+from scripts import influx_equipment_fixture as equipment
 
 ROOT = Path(__file__).resolve().parents[1]
 INFLUX = "influxdb-local"
@@ -143,34 +144,138 @@ def no_prior_resources(model, project, docker):
         require(occupied.isdisjoint(proposed))
 
 
-def fixture_request(compose, token, path, expected_status, payload=None):
-    """固定のコンテナ内URLにだけ合成資格と入力をstdinで渡す。"""
+def producer_context(docker, compose, project, influx):
+    """接続する固有ネットワークと使用済みイメージを検証する。"""
+    require(PROJECT.fullmatch(project))
+    relay = compose("ps", "-q", "health-relay")
+    members = set()
+    for container, service in ((influx, INFLUX), (relay, "health-relay")):
+        require(re.fullmatch(r"[0-9a-f]{12,64}", container))
+        labels = json.loads(
+            docker(
+                "inspect",
+                "--type",
+                "container",
+                "--format",
+                "{{json .Config.Labels}}",
+                container,
+            )
+        )
+        require(
+            labels.get("com.docker.compose.project") == project
+            and labels.get("com.docker.compose.service") == service
+        )
+        created = docker(
+            "inspect", "--type", "container", "--format", "{{.Id}}", container
+        )
+        require(
+            re.fullmatch(r"[0-9a-f]{64}", created)
+            and created.startswith(container)
+        )
+        members.add(created)
+    name = f"{project}_influx_local"
+    network = json.loads(
+        docker("network", "inspect", "--format", "{{json .}}", name)
+    )
+    labels = network["Labels"]
+    require(
+        network["Name"] == name
+        and network["Driver"] == "bridge"
+        and network["Internal"] is True
+        and labels.get("com.docker.compose.project") == project
+        and labels.get("com.docker.compose.network") == "influx_local"
+        and set(network["Containers"]) == members
+        and len(members) == 2
+    )
+    network_id = network["Id"]
+    image = docker(
+        "inspect", "--type", "container", "--format", "{{.Image}}", influx
+    )
+    require(re.fullmatch(r"[0-9a-f]{64}", network_id))
+    require(re.fullmatch(r"sha256:[0-9a-f]{64}", image))
+    declared_volumes = json.loads(
+        docker(
+            "image", "inspect", "--format", "{{json .Config.Volumes}}", image
+        )
+    )
+    require(declared_volumes in (None, {}))
+    return network_id, image
+
+
+def producer_command(docker, project, context):
+    """同一イメージIDのcurlだけを、別の非特権一時コンテナで起動する。"""
+    network_id, image = context
+
+    def invoke(*command, timeout, input_text):
+        require(command[0] == "curl")
+        return docker(
+            "run",
+            "--rm",
+            "-i",
+            "--pull",
+            "never",
+            "--network",
+            network_id,
+            "--label",
+            f"com.docker.compose.project={project}",
+            "--label",
+            "foundation-r.fixture=equipment",
+            "--read-only",
+            "--no-healthcheck",
+            "--user",
+            "65534:65534",
+            "--cap-drop",
+            "ALL",
+            "--security-opt",
+            "no-new-privileges:true",
+            "--entrypoint",
+            "curl",
+            image,
+            *command[1:],
+            timeout=timeout,
+            input_text=input_text,
+        )
+
+    return invoke
+
+
+def fixture_request(
+    compose, token, path, expected_status, payload=None, *, producer=None
+):
+    """固定URLだけに合成資格と入力をstdinで渡す。"""
     require(re.fullmatch(r"apiv3_[A-Za-z0-9_-]{64}", token))
     config = 'header = "Authorization: Bearer ' + token + '"\n'
     if payload is not None:
         config += (
             "data-binary = " + json.dumps(payload, ensure_ascii=True) + "\n"
         )
+    protocol = equipment.ORIGIN if producer else "http://127.0.0.1:8181"
+    curl = (
+        "curl",
+        "--disable",
+        "--silent",
+        "--noproxy",
+        "*",
+        "--max-time",
+        "8",
+        "--config",
+        "-",
+        "--write-out",
+        "\n%{http_code}",
+        f"{protocol}{path}",
+    )
     try:
-        output = compose(
-            "exec",
-            "-T",
-            INFLUX,
-            "curl",
-            "--disable",
-            "--silent",
-            "--noproxy",
-            "*",
-            "--max-time",
-            "8",
-            "--config",
-            "-",
-            "--write-out",
-            "\n%{http_code}",
-            f"http://127.0.0.1:8181{path}",
-            timeout=15,
-            input_text=config,
-        )
+        if producer is None:
+            output = compose(
+                "exec",
+                "-T",
+                INFLUX,
+                *curl,
+                timeout=15,
+                input_text=config,
+            )
+        else:
+            output = producer(*curl, timeout=25, input_text=config)
     except subprocess.SubprocessError:
         raise FixtureError("CONTAINER_HTTP_TRANSPORT") from None
     body, sep, status = output.rpartition("\n")
@@ -378,6 +483,34 @@ def exercise(tmp):
         write_points(compose, token)
         stage = "SQL_READ_BEFORE_RESTART"
         before = read_points(compose, token)
+        stage = "EQUIPMENT_PRODUCER_BOUNDARY"
+        context = producer_context(docker, compose, project, container_before)
+        producer = producer_command(docker, project, context)
+        payload, expected = equipment.project_points(
+            equipment.fixture_lines(datetime.now(UTC))
+        )
+        stage = "EQUIPMENT_PRODUCER_WRITE"
+        fixture_request(
+            compose,
+            token,
+            equipment.write_path(),
+            "204",
+            payload,
+            producer=producer,
+        )
+        stage = "EQUIPMENT_PRODUCER_SQL_BEFORE"
+        require(
+            equipment.normalize_rows(
+                fixture_request(
+                    compose,
+                    token,
+                    equipment.read_path(),
+                    "200",
+                    producer=producer,
+                )
+            )
+            == expected
+        )
         stage = "FIXED_RELAY_PROBE"
         check_probe(compose, start_before)
         stage = "RESTART_AND_READ_ONLY_QUERY"
@@ -404,6 +537,24 @@ def exercise(tmp):
         )
         require(
             container_before == container_after and start_before < start_after
+        )
+        stage = "EQUIPMENT_PRODUCER_BOUNDARY_AFTER_RESTART"
+        require(
+            producer_context(docker, compose, project, container_after)
+            == context
+        )
+        stage = "EQUIPMENT_PRODUCER_SQL_AFTER"
+        require(
+            equipment.normalize_rows(
+                fixture_request(
+                    compose,
+                    token,
+                    equipment.read_path(),
+                    "200",
+                    producer=producer,
+                )
+            )
+            == expected
         )
         stage = "FIXED_RELAY_PROBE_AFTER_RESTART"
         check_probe(compose, start_after)
@@ -437,7 +588,7 @@ def exercise(tmp):
                 failed = True
     if failed:
         return 1
-    print("PASS: isolated Influx write/query, restart, relay and cleanup")
+    print("PASS: isolated Influx and equipment producer, restart and cleanup")
     return 0
 
 
