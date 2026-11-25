@@ -9,7 +9,7 @@ import argparse
 import json
 import time
 
-from confluent_kafka import Producer
+from confluent_kafka import Consumer, Producer, TopicPartition
 
 from native import api, engine
 
@@ -64,12 +64,26 @@ BUSINESS = {
 }
 
 
-def event(table, operation, sequence, row):
+CONTINUITY_ID = "CDC-CONTINUITY"
+PRIOR_PRODUCT = "Reinserted after restart"
+CONTINUITY = {
+    "continuity-insert": ("c", 10, "Continuity initial", 10),
+    "continuity-update": ("u", 11, "Continuity updated", 11),
+    "continuity-delete": ("d", 12, "Continuity updated", 12),
+}
+CONFIRM_PHASE = "continuity-confirm"
+
+
+def event(table, operation, sequence, row, *, previous=None):
     """Foundationが解釈する形式でソースイベントを作る。"""
     return json.dumps(
         {
             "op": operation,
-            "before": row if operation in ("u", "d") else None,
+            "before": (
+                (row if previous is None else previous)
+                if operation in ("u", "d")
+                else None
+            ),
             "after": None if operation == "d" else row,
             "source": {
                 "db": "synthetic_sales",
@@ -83,7 +97,7 @@ def event(table, operation, sequence, row):
     )
 
 
-def publish(groups):
+def publish(groups, *, previous=None):
     """テスト用DockerのDNS名へイベントを発行し、配信確認を検査する。"""
     producer = Producer(
         {
@@ -104,7 +118,7 @@ def publish(groups):
             producer.produce(
                 f"{TOPIC_PREFIX}.{table}",
                 key=json.dumps({key: row[key]}),
-                value=event(table, operation, sequence, row)
+                value=event(table, operation, sequence, row, previous=previous)
                 if operation
                 else None,
                 on_delivery=delivered,
@@ -113,19 +127,15 @@ def publish(groups):
         raise RuntimeError("試験用ブローカーへの送信に失敗しました。")
 
 
-def check(core, expected_count, expected_product):
+def check(core, expected_count, expected_product, *, continuity=None):
     """整合した世代の公開を待ち、変更しないRawと照合する。"""
     catalog = core.catalog()
     for _ in range(90):
         if not catalog.table_exists("cdc_events.events"):
             time.sleep(1)
             continue
-        raw = (
-            catalog.load_table("cdc_events.events")
-            .scan()
-            .to_arrow()
-            .to_pylist()
-        )
+        raw_table = catalog.load_table("cdc_events.events")
+        raw = raw_table.scan().to_arrow().to_pylist()
         release = engine.latest_release(core, catalog, "cdc_")
         if len(raw) >= expected_count and release:
             names = ("silver.erp_products", "quarantine.erp_products")
@@ -136,9 +146,11 @@ def check(core, expected_count, expected_product):
                 ).to_pylist()
                 for name in names
             ]
-            product = [row["product_name"] for row in live]
+            product = sorted(row["product_name"] for row in live)
             reasons = [row["validation_reason"] for row in rejected]
-            if product == expected_product and reasons == ["invalid_type"]:
+            if product == sorted(expected_product) and reasons == [
+                "invalid_type"
+            ]:
                 assert len(raw) == expected_count
                 assert len({row["event_id"] for row in raw}) == expected_count
                 offsets = sorted(int(row["offset"]) for row in raw)
@@ -151,6 +163,14 @@ def check(core, expected_count, expected_product):
                 ]
                 assert deleted == ([6] if expected_count >= 8 else [])
                 assert all(type(row["value_is_null"]) is bool for row in raw)
+                if continuity is not None:
+                    verify_continuity_raw(raw, live, continuity)
+                    raw_snapshot = engine.current_id(raw_table)
+                    assert type(raw_snapshot) is int and raw_snapshot > 0
+                    return {
+                        "raw_snapshot_id": raw_snapshot,
+                        "release_snapshot_id": release["release_snapshot_id"],
+                    }
                 print(
                     json.dumps(
                         {
@@ -168,13 +188,118 @@ def check(core, expected_count, expected_product):
     raise AssertionError("期待したCDCの世代が公開されませんでした。")
 
 
+def verify_continuity_raw(raw, live, sequence):
+    """新規の固定IDについて、順序・本文・現在値を照合する。"""
+    expected = list(CONTINUITY.values())[:sequence]
+    recent = sorted(
+        (
+            row
+            for row in raw
+            if json.loads(row["key_json"]) == {"product_id": CONTINUITY_ID}
+        ),
+        key=lambda row: int(row["offset"]),
+    )
+    assert len(recent) == len(expected)
+    previous = None
+    products_topic = f"{TOPIC_PREFIX}.erp_products"
+    for row, (operation, serial, label, count) in zip(
+        recent, expected, strict=True
+    ):
+        offset = count - 1
+        envelope = json.loads(row["envelope_json"])
+        assert row["topic"] == products_topic
+        assert row["partition"] == "0" and row["offset"] == str(offset)
+        assert row["event_id"] == json.dumps(
+            [products_topic, 0, offset], separators=(",", ":")
+        )
+        assert envelope["op"] == operation
+        assert envelope["source"]["event_serial_no"] == serial
+        assert envelope["before"] == previous
+        after = (
+            None
+            if operation == "d"
+            else {**DATA, "product_id": CONTINUITY_ID, "product_name": label}
+        )
+        assert envelope["after"] == after
+        if operation == "u":
+            assert previous is not None and after != previous
+        previous = after
+    target = [row for row in live if row["product_id"] == CONTINUITY_ID]
+    if sequence < len(CONTINUITY):
+        assert len(target) == 1
+        assert target[0]["product_name"] == expected[-1][2]
+    else:
+        assert not target
+    assert sorted(row["product_id"] for row in live) == sorted(
+        [DATA["product_id"]] + ([CONTINUITY_ID] if target else [])
+    )
+
+
+def broker_committed(expected):
+    """購読・commitを行わず、同じ合成groupの次の位置を照会する。"""
+    consumer = Consumer(
+        {
+            "bootstrap.servers": "test-broker:9092",
+            "group.id": "lakehouse-r-native-cdc-ci",
+            "enable.auto.commit": False,
+        }
+    )
+    partitions = [TopicPartition(f"{TOPIC_PREFIX}.erp_products", 0)]
+    try:
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            observed = consumer.committed(partitions, timeout=3)
+            if len(observed) == 1 and observed[0].error is None:
+                cursor = observed[0].offset
+                assert cursor <= expected
+                if cursor == expected:
+                    return cursor
+            time.sleep(1)
+    finally:
+        consumer.close()
+    raise AssertionError("固定した合成Kafkaの確定位置に到達しませんでした。")
+
+
+def run_continuity(phase):
+    """各変更を1件だけ投入し、再確認では何も投入しない。"""
+    if phase != CONFIRM_PHASE:
+        operation, serial, label, total = CONTINUITY[phase]
+        point = {**DATA, "product_id": CONTINUITY_ID, "product_name": label}
+        previous = (
+            {**point, "product_name": CONTINUITY["continuity-insert"][2]}
+            if operation == "u"
+            else None
+        )
+        publish(
+            [("erp_products", "product_id", [(operation, serial, point)])],
+            previous=previous,
+        )
+    else:
+        operation, _, label, total = CONTINUITY["continuity-delete"]
+    expected = [PRIOR_PRODUCT] + ([] if operation == "d" else [label])
+    result = check(api.core_module(), total, expected, continuity=total - 9)
+    result["broker_next_offset"] = broker_committed(total)
+    print(json.dumps(result))
+
+
 def main():
     """合成試験の1段階を実行し、期待するRaw・Silverの結果を待つ。"""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "phase", choices=["first", "delete", "resume", "business"]
+        "phase",
+        choices=[
+            "first",
+            "delete",
+            "resume",
+            "business",
+            *CONTINUITY,
+            CONFIRM_PHASE,
+        ],
     )
     args = parser.parse_args()
+    if args.phase in (*CONTINUITY, CONFIRM_PHASE):
+        run_continuity(args.phase)
+        return
     if args.phase == "business":
         publish(
             (table, key, [("c", 1, {**row, "updated_at": DATA["updated_at"]})])
