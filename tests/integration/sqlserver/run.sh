@@ -7,6 +7,11 @@ if [[ "${1:-}" == --sudo ]]; then
   dock=(sudo -n docker)
   shift
 fi
+mode=source
+if [[ "${1:-}" == --cdc-contract ]]; then
+  mode=cdc-contract
+  shift
+fi
 check_python="${1:?pymssqlを導入済みのPython実行ファイルを指定してください}"
 fixture=tests/integration/sqlserver
 image=mcr.microsoft.com/mssql/server@sha256:05644dad1266ca3d445d1e8f6d2ebb9a6a03df9a39376e0f7b48917356dca9d9
@@ -61,6 +66,9 @@ forceencryption = 1
 tlscert = /fixture-tls/server.pem
 tlskey = /fixture-tls/server-key.pem
 CONFIG
+if [[ "$mode" == cdc-contract ]]; then
+  printf '\n[sqlagent]\nenabled = true\n' >> "$stage/mssql.conf"
+fi
 chmod 0444 "$stage/mssql.conf"
 "${dock[@]}" pull "$image" >/dev/null
 "${dock[@]}" volume create "$certs" >/dev/null
@@ -83,5 +91,9 @@ if [[ ! "$binding" =~ ^127\.0\.0\.1:([1-9][0-9]*)$ ]]; then
   printf '%s\n' '合成SQL Serverのループバックポートを確認できません。' >&2
   exit 1
 fi
+entry=acceptance.py
+if [[ "$mode" == cdc-contract ]]; then
+  entry=cdc_contract_acceptance.py
+fi
 env -i PATH="$PATH" HOME="$stage" \
-  "$check_python" "$fixture/acceptance.py" "$stage" "${BASH_REMATCH[1]}"
+  "$check_python" "$fixture/$entry" "$stage" "${BASH_REMATCH[1]}"

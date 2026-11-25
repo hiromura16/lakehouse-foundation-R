@@ -14,7 +14,8 @@
 > **文書一覧:** [目的・読者から探す文書マニフェスト](<../DOCUMENTATION-MANIFEST.md>)
 <!-- doc-purpose:end -->
 
-ここで説明する追加構成は**未実装**です。以下の名前は設計を検証するための合成例です。
+SQLの専用契約だけを段階2で実装します。Broker、Connect、Coreとの連結・配置は
+引き続き**未実装**です。以下の名前は設計を検証するための合成例です。
 
 ## 現行の証拠と不足
 
@@ -43,6 +44,49 @@ Topic名は候補版の実出力と照合し、`demo_r_cdc.demo_r.foundation_r_d
 * JSON converterのschema有無、Decimal表現、精度と丸めの扱いを固定します。NULLと空文字、bitの真偽値、Unicode、Decimalの桁、datetime2の精度と時刻解釈を別に検証します。既存の汎用取り込みでのNULL・bool・数値時刻の扱いを専用モードの保証に流用しません。時刻列と更新版の順序、UTCへの写像と精度上限も受入試験で固定します。
 * snapshotの読み取り（r）、追加（c）、更新（u）、削除（d）ごとにbefore/afterとキーを照合します。値のない削除補助イベント（tombstone）は、許可topicと型付きkeyで判定し、削除そのものと区別します。認める加算DDLと拒否する破壊的変更は別テストです。
 * 再開前には、Broker cluster IDに加えてtopic ID（取得不能なら作成時に明示更新する世代ID）、partition集合、ソース・捕捉の識別、契約hash、確定先と状態DBの由来を照合します。同じクラスタ内でtopicを作り直した場合も同一扱いにせず、証拠不足なら停止します。自動offset resetは行いません。
+
+## 段階2: DBA用SQLの専用契約
+
+[DBA用入口](../../scripts/cdc_sql_contract.py) は接続先を省略できず、通常は
+読取のみです。既存のSQLデモと異なる専用スキーマ、設置マーカー、読取専用ロール、
+合成投入専用ロールを使用します。6表の列名、順序、型・桁・NULL、固定の主キー、
+専用capture名とcapture列を照合します。既存のLanding契約は変更しません。
+
+1. DBAが対象DBを別経路で照合し、SQL Server 2022、対象DBのCDCが有効、既存の
+   capture・cleanup両ジョブがあること、別系統に稼働可能な既存captureがあること、
+   変更作業の排他を確認します。DDLが見えるだけでは足りず、実表と変更表の両方、
+   追跡有効、削除待ちでないことと有効な開始LSNを検査します。レプリケーションと併用するDBは今回対象外です。
+   アプリはDBのCDC、Agent、初回captureを設定・起動せず、不足なら停止します。
+   DBAはサーバー／DBで有効なDDLのフック（トリガー等）が対象の操作に
+   別系統への副作用を起こさないことを確認します。SQL ServerがCDC管理用に
+   用意した内部トリガーを一律に無効化する手順ではありません。
+2. DBAの接続設定はリポジトリ外の所有者専用ファイルに置きます。既存の認証・TLS
+   項目 `SOURCE_SQLSERVER_HOST`、`SOURCE_SQLSERVER_PORT`、
+   `SOURCE_SQLSERVER_DATABASE`、`SOURCE_SQLSERVER_USER`、
+   `SOURCE_SQLSERVER_PASSWORD`、`SOURCE_SQLSERVER_CA_FILE` と、設置担当が
+   別途照合した `CDC_EXPECTED_DATABASE`、`CDC_EXPECTED_BROKER_GUID`、
+   `CDC_INSTALLATION_ID`（小文字hex 32桁）を明示します。DB名とService Broker
+   GUIDは同じ対象を指すことを接続後に確認します。GUIDが複製されたDBの区別は
+   この値だけではできないので、DBAがTLSの接続先と復元履歴も照合します。
+3. `python scripts/cdc_sql_contract.py --settings /path/to/private.env` で検査し、
+   空なら `ABSENT`、期待する設置と完全一致なら `VERIFIED` です。承認後に
+   `--apply` を追加した場合に限り、新規の専用範囲を作成します。途中の拒否、
+   名前や形の衝突、別の設置ID、同名の実体への置き換えを自動修復しません。
+   「変更なし」は設置の一致であり、Agentの稼働やConnectorの接続は証明しません。
+4. 実行主体へのロール追加は別途DBAが審査します。readerには6表とSQL Serverが
+   作成する限定CDC取得関数へのSELECTだけ、writerには6表のI/U/DとSELECTだけを
+   設定します。対象関数の識別子・作成日時・SQL側で計算した実装全文のハッシュを
+   設置時に固定し、想定外の
+   行レベルセキュリティ（RLS）が付いた場合も停止します。この照合は専用ロールの
+   直接付与と所属先が対象です。実アカウントが他ロール・public・既存の
+   所有権チェーン等から継承する権限は別途DBAが現地で検査します。
+   非公開ログインを作成しません。本段階で確認するのは限定readerの
+   SQL取得関数であり、Debeziumのdirect/functionの選定やstream動作の保証では
+   ありません。隔離CI以外でDBに変更は加えません。
+
+公開するのは合成契約と手順だけです。既存データ・他capture・共有ジョブの削除、
+DB全体のCDCや設定の変更、対象の破棄や巻き戻しはこの入口に実装しません。
+復旧が必要な場合は、既存系と保持位置を保存し、DBAが個別に承認してください。
 
 ## Topicの保持・起動契約
 

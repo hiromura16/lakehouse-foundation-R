@@ -6,6 +6,7 @@ on:  # yamllint disable-line rule:truthy
       - .github/workflows/sqlserver.yml
       - infra/source/sqlserver-tables.example.json
       - medallion/sources.json
+      - scripts/cdc_sql_contract.py
       - scripts/extract-sqlserver.py
       - scripts/generate-demo.py
       - tests/integration/sqlserver/**
@@ -37,3 +38,24 @@ jobs:
           uv pip sync --python "$RUNNER_TEMP/sqlserver-check/bin/python" \
             --require-hashes --only-binary :all: tests/integration/sqlserver/requirements.lock
           bash tests/integration/sqlserver/run.sh "$RUNNER_TEMP/sqlserver-check/bin/python"
+
+  cdc-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+        with:
+          version: '0.13.7'
+          checksum: c5221ff41b7892bfc223543883600125f6a47fe845093e0f5bdff4f359196d83
+          enable-cache: false
+      - name: 独立CDCのSQL契約と権限を合成DBだけで確認
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          uv venv --python 3.14 "$RUNNER_TEMP/sqlserver-cdc-check"
+          uv pip sync --python "$RUNNER_TEMP/sqlserver-cdc-check/bin/python" \
+            --require-hashes --only-binary :all: tests/integration/sqlserver/requirements.lock
+          bash tests/integration/sqlserver/run.sh --cdc-contract "$RUNNER_TEMP/sqlserver-cdc-check/bin/python"
