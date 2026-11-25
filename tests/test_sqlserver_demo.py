@@ -780,7 +780,9 @@ class PermissionTests(unittest.TestCase):
 
         def execute(statement, arguments=()):
             statements.append((statement, arguments))
-            if statement == "SELECT IS_MEMBER(N'lh_demo_writer')":
+            if statement == "SELECT OBJECT_ID(%s)":
+                result[0] = (None,)
+            elif statement == "SELECT IS_MEMBER(N'lh_demo_writer')":
                 result[0] = (int(not missing_writer),)
             elif statement.startswith("SELECT IS_MEMBER"):
                 count = statement.count("IS_MEMBER(") + statement.count(
@@ -1064,36 +1066,152 @@ class PermissionTests(unittest.TestCase):
             )
         )
 
-    def test_writer_runtime_distinguishes_visibility_from_effective_grant(
-        self,
-    ):
+    def test_writer_has_strict_default_even_with_visible_principals(self):
+        cursor = self.cursor(principals_visible=True)
+        self.assertTrue(DEMO.permissions_safe(cursor))
+        statements = [query for query, _ in cursor.statements]
+        self.assertTrue(any("OUTER APPLY" in query for query in statements))
         for options in (
-            {"metadata_only": True, "unknown_object": True},
-            {"principals_visible": True},
+            {"metadata_only": True},
+            {"unknown_object": True},
             {"column_permission": ("SELECT", "legacy.orders", "amount", None)},
-        ):
-            with self.subTest(options=options):
-                cursor = self.cursor(**options)
-                self.assertTrue(DEMO.permissions_safe(cursor))
-                statements = [query for query, _ in cursor.statements]
-                self.assertTrue(any("CROSS APPLY" in x for x in statements))
-                self.assertFalse(any("OUTER APPLY" in x for x in statements))
-        for options in (
             {"missing_writer": True},
             {"missing_required_column": True},
             {"schema_grant": True},
             {"impersonates": True},
             {"unknown_permission": True},
-            {"object_type": "ZZ", "denied_object": ("UPDATE", "legacy.item")},
         ):
             with self.subTest(options=options):
                 self.assertFalse(DEMO.permissions_safe(self.cursor(**options)))
+
+    def test_writer_policy_never_reads_unverified_or_writable_source(self):
+        cursor = mock.Mock()
+        cursor.fetchone.side_effect = [(90,), (0,)]
+        self.assertIsNone(DEMO.writer_policy(cursor, "unused"))
+        self.assertEqual(cursor.execute.call_count, 2)
+        cursor.reset_mock()
+        cursor.fetchone.side_effect = [(90,), (1,)]
+        cursor.fetchall.side_effect = [
+            [(*column, 0, 0, 0) for column in DEMO.POLICY_COLUMNS],
+            [(name,) for name in DEMO.POLICY_KEY],
+            [("SELECT",), ("UPDATE",)],
+        ]
+        self.assertIsNone(DEMO.writer_policy(cursor, "unused"))
+        self.assertEqual(cursor.execute.call_count, 5)
+
+    def test_writer_policy_rejects_changed_storage_contract(self):
+        columns = [(*column, 0, 0, 0) for column in DEMO.POLICY_COLUMNS]
+        key = [(name,) for name in DEMO.POLICY_KEY]
+        for actual_columns, actual_key in (
+            (
+                [
+                    ("installation_id", "varchar", *columns[0][2:]),
+                    *columns[1:],
+                ],
+                key,
+            ),
+            ([(*columns[0][:2], 16, *columns[0][3:]), *columns[1:]], key),
+            (
+                [
+                    (*columns[0][:3], "incorrect", *columns[0][4:]),
+                    *columns[1:],
+                ],
+                key,
+            ),
+            (columns, list(reversed(key))),
+        ):
+            with self.subTest(columns_equal=actual_columns == columns):
+                cursor = mock.Mock()
+                cursor.fetchone.side_effect = [(90,), (1,)]
+                cursor.fetchall.side_effect = [actual_columns, actual_key]
+                self.assertIsNone(DEMO.writer_policy(cursor, "unused"))
+                self.assertLessEqual(cursor.execute.call_count, 4)
+
+    def test_writer_policy_exact_target_identity_and_object_level_operation(
+        self,
+    ):
+        sid = b"fixture"
+        stamp = DEMO.datetime(2026, 1, 1)
+        installation = VALUES["DEMO_SQLSERVER_INSTALLATION_ID"]
+        row = (
+            installation,
+            sid,
+            7,
+            42,
+            11,
+            "legacy",
+            "items",
+            stamp,
+            "UPDATE",
+            11,
+            "legacy",
+            "items",
+            stamp,
+        )
+        for altered, level, expected in (
+            ([row], 1, {"SELECT": [90], "EXECUTE": [91], "UPDATE": [42]}),
+            ([row], 0, None),
+            ([row, row], 1, None),
+            ([row] * 65, 1, None),
+            ([("wrong", *row[1:])], 1, None),
+            ([(installation, b"other", *row[2:])], 1, None),
+            ([(*row[:8], "EXECUTE", *row[9:])], 1, None),
+            ([(installation, sid, 8, *row[3:])], 1, None),
+            ([(*row[:-1], None)], 1, None),
+            ([(*row[:9], 12, *row[10:])], 1, None),
+        ):
+            with self.subTest(
+                count=len(altered), level=level, expected=expected
+            ):
+                cursor = mock.Mock()
+                cursor.fetchone.side_effect = [
+                    (90,),
+                    (1,),
+                    (0,),
+                    (sid, 7),
+                    (level,),
+                    (level,),
+                ]
+                cursor.fetchall.side_effect = [
+                    [(*column, 0, 0, 0) for column in DEMO.POLICY_COLUMNS],
+                    [(name,) for name in DEMO.POLICY_KEY],
+                    [("SELECT",)],
+                    altered,
+                ]
+                with mock.patch.object(
+                    DEMO, "writer_delegation_checker", return_value=91
+                ):
+                    self.assertEqual(
+                        DEMO.writer_policy(cursor, installation), expected
+                    )
+
+    def test_writer_requires_exact_dbo_delegation_checker_and_single_bit(self):
+        definition = (
+            DEMO.Path(DEMO.__file__)
+            .with_name("sqlserver_writer_legacy_delegation.sql")
+            .read_text(encoding="utf-8")
+            .rstrip("\n")
+        )
+        for response, expected in (
+            ([(91, definition), (1,), None], 91),
+            ([(91, definition), (0,)], None),
+            ([(91, definition), (1,), (1,)], None),
+            ([(91, definition + " ")], None),
+            ([None], None),
+        ):
+            with self.subTest(
+                expected=expected, response_length=len(response)
+            ):
+                cursor = mock.Mock()
+                cursor.fetchone.side_effect = response
+                self.assertEqual(
+                    DEMO.writer_delegation_checker(cursor), expected
+                )
 
     def test_real_mutate_entry_uses_writer_boundary_before_dml(self):
         for legacy_write in (False, True):
             with self.subTest(legacy_write=legacy_write):
                 cursor = self.cursor(
-                    metadata_only=True,
                     principals_visible=True,
                     denied_object=("UPDATE", "legacy.item")
                     if legacy_write

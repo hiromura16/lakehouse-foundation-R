@@ -27,6 +27,23 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_VERSION = 1
 SAFETY_CHECKER = "lh_demo_ctl.check_write_safety_v1"
+WRITER_POLICY = "lh_demo_ctl.writer_legacy_policy_v2"
+WRITER_DELEGATION = "lh_demo_ctl.check_writer_legacy_delegation_v2"
+POLICY_COLLATION = "Latin1_General_100_BIN2"
+POLICY_COLUMNS = (
+    ("installation_id", "char", 32, POLICY_COLLATION),
+    ("writer_sid", "varbinary", 85, None),
+    ("writer_principal_id", "int", 4, None),
+    ("object_id", "int", 4, None),
+    ("schema_id", "int", 4, None),
+    ("schema_name", "sysname", 256, POLICY_COLLATION),
+    ("table_name", "sysname", 256, POLICY_COLLATION),
+    ("object_created_at", "datetime", 8, None),
+    ("operation", "varchar", 6, POLICY_COLLATION),
+)
+POLICY_KEY = ("installation_id", "writer_sid", "object_id", "operation")
+POLICY_LIMIT = 64
+POLICY_OPERATIONS = frozenset(("SELECT", "INSERT", "UPDATE", "DELETE"))
 SAFETY_DEFINITION = (
     Path(__file__)
     .with_name("sqlserver_safety.sql")
@@ -469,7 +486,204 @@ def source_permissions_safe(cursor):
     return True
 
 
-def permissions_safe(cursor, role="demo", *, full_audit=False):
+def writer_delegation_checker(cursor):
+    """権限を委任できないことをdboの完全なカタログから確認する。"""
+    definition = (
+        Path(__file__)
+        .with_name("sqlserver_writer_legacy_delegation.sql")
+        .read_text(encoding="utf-8")
+        .rstrip("\n")
+    )
+    cursor.execute(
+        "SELECT o.object_id,m.definition FROM sys.sql_modules m "
+        "JOIN sys.objects o ON m.object_id=o.object_id "
+        "JOIN sys.schemas s ON o.schema_id=s.schema_id "
+        "WHERE o.object_id=OBJECT_ID(%s,N'P') AND o.is_ms_shipped=0 "
+        "AND m.execute_as_principal_id=DATABASE_PRINCIPAL_ID(N'dbo') "
+        "AND s.principal_id=DATABASE_PRINCIPAL_ID(N'dbo') "
+        "AND COALESCE(o.principal_id,s.principal_id)="
+        "DATABASE_PRINCIPAL_ID(N'dbo') AND m.uses_ansi_nulls=1 "
+        "AND m.uses_quoted_identifier=1",
+        (WRITER_DELEGATION,),
+    )
+    row = cursor.fetchone()
+    if (
+        not row
+        or len(row) != 2
+        or type(row[0]) is not int
+        or row[0] <= 0
+        or not isinstance(row[1], str)
+        or row[1].replace("\r\n", "\n") != definition
+    ):
+        return None
+    cursor.execute("EXEC [lh_demo_ctl].[check_writer_legacy_delegation_v2]")
+    if cursor.fetchone() != (1,) or cursor.fetchone() is not None:
+        return None
+    return row[0]
+
+
+def writer_policy(cursor, installation_id):
+    """DBAだけが変更できる所定の表から、所定の狭い例外を取得する。
+
+    未設置・不可視なら例外なし。見えるが同一性またはACLが不明なら拒否する。
+    設定や利用者の入力から、例外となる対象名や操作を受け取らない。
+    """
+    cursor.execute("SELECT OBJECT_ID(%s)", (WRITER_POLICY,))
+    found = cursor.fetchone()
+    if not found or len(found) != 1:
+        return None
+    policy_id = found[0]
+    if policy_id is None:
+        return {}
+    if type(policy_id) is not int or policy_id <= 0:
+        return None
+    cursor.execute(
+        "SELECT COUNT_BIG(*) FROM sys.tables t JOIN sys.schemas s "
+        "ON t.schema_id=s.schema_id WHERE t.object_id=%s "
+        "AND t.is_ms_shipped=0 AND t.temporal_type=0 AND t.is_external=0 "
+        "AND t.is_memory_optimized=0 "
+        "AND s.principal_id=DATABASE_PRINCIPAL_ID(N'dbo') "
+        "AND COALESCE(t.principal_id,s.principal_id)="
+        "DATABASE_PRINCIPAL_ID(N'dbo')",
+        (policy_id,),
+    )
+    if cursor.fetchone() != (1,):
+        return None
+    cursor.execute(
+        "SELECT c.name,TYPE_NAME(c.user_type_id),c.max_length,"
+        "c.collation_name,"
+        "c.is_computed,c.is_hidden,c.is_nullable "
+        "FROM sys.columns c WHERE c.object_id=%s ORDER BY c.column_id",
+        (policy_id,),
+    )
+    if tuple(cursor.fetchall()) != tuple(
+        (*column, 0, 0, 0) for column in POLICY_COLUMNS
+    ):
+        return None
+    cursor.execute(
+        "SELECT c.name FROM sys.indexes i JOIN sys.index_columns k "
+        "ON i.object_id=k.object_id AND i.index_id=k.index_id "
+        "JOIN sys.columns c ON c.object_id=k.object_id "
+        "AND c.column_id=k.column_id "
+        "WHERE i.object_id=%s AND i.is_primary_key=1 AND i.is_unique=1 "
+        "AND i.is_disabled=0 AND k.key_ordinal>0 ORDER BY k.key_ordinal",
+        (policy_id,),
+    )
+    if tuple(row[0] for row in cursor.fetchall()) != POLICY_KEY:
+        return None
+    cursor.execute(
+        "SELECT p.permission_name FROM sys.fn_my_permissions(%s,N'OBJECT') p",
+        (WRITER_POLICY,),
+    )
+    permissions = {row[0] for row in cursor.fetchall()}
+    if "SELECT" not in permissions or not permissions <= {
+        "SELECT",
+        "VIEW DEFINITION",
+    }:
+        return None
+    cursor.execute(
+        "SELECT COUNT_BIG(*) FROM sys.columns c WHERE c.object_id=%s AND "
+        "(COALESCE(HAS_PERMS_BY_NAME(%s,N'OBJECT',N'UPDATE',"
+        "c.name,N'COLUMN'),1)<>0 OR "
+        "COALESCE(HAS_PERMS_BY_NAME(%s,N'OBJECT',N'SELECT',"
+        "c.name,N'COLUMN'),0)<>1)",
+        (policy_id, WRITER_POLICY, WRITER_POLICY),
+    )
+    if cursor.fetchone() != (0,):
+        return None
+    cursor.execute(
+        "SELECT sid,principal_id FROM sys.database_principals "
+        "WHERE principal_id=DATABASE_PRINCIPAL_ID() "
+        "AND principal_id>4 AND type='S' AND authentication_type=1 "
+        "AND sid=SUSER_SID(ORIGINAL_LOGIN())"
+    )
+    principal = cursor.fetchone()
+    if (
+        not principal
+        or len(principal) != 2
+        or not isinstance(principal[0], bytes)
+        or not principal[0]
+        or type(principal[1]) is not int
+        or principal[1] <= 4
+    ):
+        return None
+    delegation_id = writer_delegation_checker(cursor)
+    if delegation_id is None:
+        return None
+    cursor.execute(
+        "SELECT TOP (65) p.installation_id,p.writer_sid,"
+        "p.writer_principal_id,p.object_id,"
+        "p.schema_id,p.schema_name,p.table_name,"
+        "p.object_created_at,p.operation,"
+        "t.schema_id,s.name,t.name,t.create_date "
+        "FROM [lh_demo_ctl].[writer_legacy_policy_v2] p "
+        "LEFT JOIN sys.tables t ON p.object_id=t.object_id "
+        "AND t.is_ms_shipped=0 AND t.is_external=0 "
+        "AND t.temporal_type=0 AND t.is_memory_optimized=0 "
+        "LEFT JOIN sys.schemas s ON t.schema_id=s.schema_id"
+    )
+    rows = cursor.fetchall()
+    if len(rows) > POLICY_LIMIT:
+        return None
+    admitted = {"SELECT": [policy_id], "EXECUTE": [delegation_id]}
+    for row in rows:
+        (
+            installation,
+            sid,
+            writer_id,
+            target_id,
+            schema_id,
+            schema,
+            target,
+            created,
+            operation,
+            actual_schema_id,
+            actual_schema,
+            actual_target,
+            actual_created,
+        ) = row
+        if (
+            installation != installation_id
+            or sid != principal[0]
+            or writer_id != principal[1]
+            or type(target_id) is not int
+            or target_id <= 0
+            or type(schema_id) is not int
+            or schema_id <= 0
+            or schema_id != actual_schema_id
+            or not isinstance(schema, str)
+            or not IDENTIFIER.fullmatch(schema)
+            or schema.casefold()
+            in {
+                *(name.casefold() for name in SCHEMAS.values()),
+                "sys",
+                "information_schema",
+            }
+            or not isinstance(target, str)
+            or not IDENTIFIER.fullmatch(target)
+            or schema != actual_schema
+            or target != actual_target
+            or not isinstance(created, datetime)
+            or created != actual_created
+            or not isinstance(operation, str)
+            or operation not in POLICY_OPERATIONS
+            or target_id in admitted.get(operation, ())
+        ):
+            return None
+        # 許可するのは明示した表全体の実効操作だけ。列単位の付与は別扱い。
+        cursor.execute(
+            "SELECT HAS_PERMS_BY_NAME(%s,N'OBJECT',%s)",
+            ("[" + schema + "].[" + target + "]", operation),
+        )
+        if cursor.fetchone() != (1,):
+            return None
+        admitted.setdefault(operation, []).append(target_id)
+    return admitted
+
+
+def permissions_safe(
+    cursor, role="demo", *, full_audit=False, installation_id=None
+):
     """広範なロール、危険な権限、管理対象外へのアクセスを検出したら拒否する。
 
     書込元に以前から付与されている権限は調べるだけで、取り消さない。
@@ -563,6 +777,11 @@ def permissions_safe(cursor, role="demo", *, full_audit=False):
         cursor.execute("SELECT IS_MEMBER(N'lh_demo_writer')")
         if cursor.fetchone() != (1,):
             return False
+    admitted = {}
+    if writer_runtime and installation_id is not None:
+        admitted = writer_policy(cursor, installation_id)
+        if admitted is None:
+            return False
     business = [
         item["schema"] + "." + item["table"] for item in TABLES.values()
     ]
@@ -599,25 +818,20 @@ def permissions_safe(cursor, role="demo", *, full_audit=False):
         "o.is_ms_shipped=0 AND NOT (COALESCE(o.parent_object_id,0)>0 "
         "AND COALESCE(o.type,'') IN (" + child_types + "))"
     )
-    # DBA全件監査では未知の型も拒否する。実行前検査では、型の
-    # 可視性だけで拒否せず、対象型を限定せずに実効権限を評価する。
-    if not writer_runtime:
-        # 将来追加される型や未対応の権限対象が、固定の監査一覧から漏れて
-        # 通過するのを防ぐ。適用できるか不明な権限を試さず、その型を拒否する。
-        cursor.execute(
-            "SELECT TOP (1) o.object_id FROM sys.objects o WHERE "
-            + eligible
-            + " AND (o.type IS NULL OR o.parent_object_id IS NULL "
-            "OR o.type NOT IN (" + known_types + "))"
-        )
-        if cursor.fetchone():
-            return False
+    # 未対応の型を権限確認済みとみなさず、全監査と同じく拒否する。
+    cursor.execute(
+        "SELECT TOP (1) o.object_id FROM sys.objects o WHERE "
+        + eligible
+        + " AND (o.type IS NULL OR o.parent_object_id IS NULL "
+        "OR o.type NOT IN (" + known_types + "))"
+    )
+    if cursor.fetchone():
+        return False
     for operation, allowed in allowed_by_operation.items():
         # 権限とオブジェクト型の組合せを推測して HAS_PERMS_BY_NAME を呼ぶと、
         # 未対応の組合せでNULLを返したり、不完全な型一覧からCLRやシノニムの
         # 権限が漏れたりする。列の権限を含めた実効権限を監査する。
-        # 書込前だけは空の権限集合をCROSS APPLYで区別する。
-        # 実際に返されたNULL行は監査と同様に拒否する。
+        # 不明な実効権限は、承認済み表であっても拒否する。
         clause = "p.permission_name IS NULL OR (p.permission_name=%s"
         arguments = [operation]
         if allowed:
@@ -627,19 +841,22 @@ def permissions_safe(cursor, role="demo", *, full_audit=False):
                 + ")"
             )
             arguments += allowed
+        if operation in admitted:
+            ids = admitted[operation]
+            clause += (
+                " AND o.object_id NOT IN (" + ",".join("%s" for _ in ids) + ")"
+            )
+            arguments += ids
         clause += ")"
         cursor.execute(
             "SELECT TOP (1) o.object_id FROM sys.objects o JOIN "
             "sys.schemas s ON o.schema_id=s.schema_id "
-            + ("CROSS APPLY " if writer_runtime else "OUTER APPLY ")
-            + "sys.fn_my_permissions(QUOTENAME(s.name)+N'.'+"
+            "OUTER APPLY sys.fn_my_permissions(QUOTENAME(s.name)+N'.'+"
             "QUOTENAME(o.name),N'OBJECT') p WHERE "
             + eligible
-            + (
-                ""
-                if writer_runtime
-                else " AND o.type IN (" + known_types + ")"
-            )
+            + " AND o.type IN ("
+            + known_types
+            + ")"
             + " AND ("
             + clause
             + ")",
@@ -658,14 +875,8 @@ def permissions_safe(cursor, role="demo", *, full_audit=False):
             "HAS_PERMS_BY_NAME(QUOTENAME(s.name)+N'.'+QUOTENAME(o.name),"
             " N'OBJECT', %s, c.name, N'COLUMN')"
         )
-        if writer_runtime:
-            # 適用外/非可視列のNULLを権限付与と混同しない。
-            # 管理対象の必須列は後段で別に1を確認する。
-            clause = "(" + check + " = 1"
-            arguments = [operation]
-        else:
-            clause = check + " IS NULL OR (" + check + " = 1"
-            arguments = [operation, operation]
+        clause = check + " IS NULL OR (" + check + " = 1"
+        arguments = [operation, operation]
         if allowed:
             clause += (
                 " AND s.name+N'.'+o.name NOT IN ("
@@ -673,6 +884,12 @@ def permissions_safe(cursor, role="demo", *, full_audit=False):
                 + ")"
             )
             arguments += allowed
+        if operation in admitted:
+            ids = admitted[operation]
+            clause += (
+                " AND o.object_id NOT IN (" + ",".join("%s" for _ in ids) + ")"
+            )
+            arguments += ids
         clause += ")"
         cursor.execute(
             "SELECT TOP (1) o.object_id, c.column_id FROM sys.columns c "
@@ -828,7 +1045,10 @@ def diagnose(values):
                 result["ownership"] = True
             except SqlServerError:
                 return result
-            result["permissions_safe"] = permissions_safe(cursor)
+            result["permissions_safe"] = permissions_safe(
+                cursor,
+                installation_id=selected["DEMO_SQLSERVER_INSTALLATION_ID"],
+            )
             for name in TABLES:
                 target = table_name(name)
                 cursor.execute("SELECT OBJECT_ID(%s, N'U')", (target,))
@@ -1021,7 +1241,9 @@ def prepare_data(data):
 def check_writer(cursor, values):
     """DMLを行う前に、所有権と限定された実効権限を確認する。"""
     ownership(cursor, values)
-    if not permissions_safe(cursor):
+    if not permissions_safe(
+        cursor, installation_id=values["DEMO_SQLSERVER_INSTALLATION_ID"]
+    ):
         raise SqlServerError(
             "Fixed demo writer permissions exceed the allowed boundary "
             "or are incomplete."

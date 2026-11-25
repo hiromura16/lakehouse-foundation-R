@@ -10,6 +10,8 @@ on:  # yamllint disable-line rule:truthy
       - scripts/generate-demo.py
       - scripts/sqlserver_demo.py
       - scripts/sqlserver_safety.sql
+      - scripts/sqlserver_writer_legacy_policy.sql
+      - scripts/sqlserver_writer_legacy_delegation.sql
       - tests/integration/sqlserver/**
   pull_request:
     paths: *sqlserver_paths

@@ -17,6 +17,9 @@ LOGIN = "fixture_fixed_writer"
 ROLE = "lh_demo_writer"
 OTHER_PRINCIPAL = "fixture_reader"
 OTHER_OBJECT = "dbo.fixture_writer_unrelated"
+EXTRA_OBJECT = "dbo.fixture_writer_not_approved"
+LEGACY_ROLE = "fixture_legacy_limited"
+LEGACY_PARENT = "fixture_legacy_parent"
 NEIGHBOR_RUN = "0123456789ab"
 NEIGHBOR_PRODUCT = "CDC-" + NEIGHBOR_RUN
 NEIGHBOR_ROW = (NEIGHBOR_PRODUCT, NEIGHBOR_RUN, "fixture neighbor", None)
@@ -101,9 +104,13 @@ def install(connect, admin, author):
             f"INSERT INTO {OTHER_OBJECT} (id,note) VALUES (%s,%s)",
             SENTINEL,
         )
-        # SQL Server 2022の隔離fixtureだけで、セキュリティメタデータを
-        # 可視化する。比較対象にはここでオブジェクト権限を付与しない。
-        cursor.execute(f"GRANT VIEW SECURITY DEFINITION TO [{ROLE}]")
+        cursor.execute(
+            f"CREATE TABLE {EXTRA_OBJECT} "
+            "(id int PRIMARY KEY, note nvarchar(64))"
+        )
+        cursor.execute(
+            f"GRANT VIEW DEFINITION ON OBJECT::{OTHER_OBJECT} TO [{ROLE}]"
+        )
         cursor.execute(
             f"GRANT VIEW DEFINITION ON USER::[{OTHER_PRINCIPAL}] TO [{ROLE}]"
         )
@@ -150,6 +157,63 @@ def assert_untouched_neighbors(cursor):
     assert cursor.fetchall() == [NEIGHBOR_ROW]
 
 
+def install_policy(connect, admin, author):
+    """管理接続だけで、実効権限に一致する合成の承認4件を設ける。"""
+    with connect(admin) as cursor:
+        for name in ("policy", "delegation"):
+            cursor.execute(
+                (ROOT / "scripts" / f"sqlserver_writer_legacy_{name}.sql")
+                .read_text(encoding="utf-8")
+                .rstrip("\n")
+            )
+        cursor.execute(
+            f"INSERT INTO {WRITER.WRITER_POLICY} "
+            "SELECT %s,p.sid,p.principal_id,o.object_id,o.schema_id,s.name,"
+            "o.name,o.create_date,v.verb FROM sys.objects o "
+            "JOIN sys.schemas s ON s.schema_id=o.schema_id "
+            "CROSS JOIN sys.database_principals p "
+            "CROSS JOIN (VALUES ('SELECT'),('INSERT'),('UPDATE'),('DELETE')) "
+            "AS v(verb) "
+            "WHERE p.name=%s AND o.object_id=OBJECT_ID(%s,N'U')",
+            (author["DEMO_SQLSERVER_INSTALLATION_ID"], LOGIN, OTHER_OBJECT),
+        )
+        cursor.execute(
+            f"SELECT operation FROM {WRITER.WRITER_POLICY} "
+            "WHERE installation_id=%s",
+            (author["DEMO_SQLSERVER_INSTALLATION_ID"],),
+        )
+        assert set(cursor.fetchall()) == {
+            ("SELECT",),
+            ("INSERT",),
+            ("UPDATE",),
+            ("DELETE",),
+        }
+        cursor.execute(f"GRANT SELECT ON {WRITER.WRITER_POLICY} TO [{ROLE}]")
+        cursor.execute(
+            f"GRANT EXECUTE,VIEW DEFINITION ON {WRITER.WRITER_DELEGATION} "
+            f"TO [{ROLE}]"
+        )
+
+
+def assert_fixture_denied(connect, admin, author):
+    """拒否が確実にDML前であり、別runと外部センチネルを維持する。"""
+    denied_run = "fedcba543210"
+    try:
+        WRITER.mutate(author, "insert", run_id=denied_run, consent=True)
+    except WRITER.SqlServerError as error:
+        assert "permissions exceed the allowed boundary" in str(error)
+    else:
+        raise AssertionError
+    with connect(admin) as cursor:
+        assert_committed_product(cursor, denied_run, "delete")
+        assert_untouched_neighbors(cursor)
+        cursor.execute(
+            "SELECT COUNT_BIG(*) FROM lh_demo_ctl.demo_runs WHERE run_id=%s",
+            (denied_run,),
+        )
+        assert cursor.fetchone() == (0,)
+
+
 def verify_fixed_writer(connect, admin):
     """権限のない名前は許容し、実際の境界外実効UPDATEは拒否する。"""
     author = {
@@ -176,75 +240,42 @@ def verify_fixed_writer(connect, admin):
                 author["DEMO_SQLSERVER_DATABASE"],
                 LOGIN,
             )
-            outcomes = []
-            phase = "METADATA_OBJECT_ID_QUERY"
+            phase = "METADATA_ONLY_LEGACY"
             cursor.execute(
-                "SELECT OBJECT_ID(%s,N'U'), OBJECT_ID(%s,N'U')",
-                (OTHER_OBJECT, "[dbo].[fixture_writer_unrelated]"),
+                "SELECT OBJECT_ID(%s,N'U'), DATABASE_PRINCIPAL_ID(%s), "
+                "HAS_PERMS_BY_NAME(%s,N'OBJECT',N'UPDATE')",
+                (OTHER_OBJECT, OTHER_PRINCIPAL, OTHER_OBJECT),
             )
-            visible, quoted = cursor.fetchone()
-            if visible is None:
-                outcomes.append("OBJECT_ID_MISSING")
-            if quoted is None:
-                outcomes.append("QUOTED_OBJECT_ID_MISSING")
-            if (
-                visible is not None
-                and quoted is not None
-                and visible != quoted
-            ):
-                outcomes.append("OBJECT_ID_MISMATCH")
-            phase = "METADATA_CATALOG_QUERY"
-            cursor.execute(
-                "SELECT o.object_id FROM sys.objects o "
-                "JOIN sys.schemas s ON s.schema_id=o.schema_id "
-                "WHERE s.name=N'dbo' AND o.name=N'fixture_writer_unrelated' "
-                "AND o.type=N'U'"
-            )
-            catalog = cursor.fetchall()
-            if not catalog:
-                outcomes.append("CATALOG_OBJECT_MISSING")
-            elif catalog != [(visible,)]:
-                outcomes.append("CATALOG_OBJECT_MISMATCH")
-            phase = "METADATA_PRINCIPAL_QUERY"
-            cursor.execute(
-                "SELECT DATABASE_PRINCIPAL_ID(%s)", (OTHER_PRINCIPAL,)
-            )
-            if cursor.fetchone()[0] is None:
-                outcomes.append("PRINCIPAL_ID_MISSING")
-            phase = "METADATA_EFFECTIVE_UPDATE_QUERY"
-            cursor.execute(
-                "SELECT HAS_PERMS_BY_NAME(%s,N'OBJECT',N'UPDATE')",
-                (OTHER_OBJECT,),
-            )
-            write = cursor.fetchone()[0]
-            if write != 0:
-                outcomes.append(
-                    "EFFECTIVE_UPDATE_ON"
-                    if write == 1
-                    else "EFFECTIVE_UPDATE_UNKNOWN"
+            visible, principal, write = cursor.fetchone()
+            assert visible and principal and write == 0
+            for verb in ("INSERT", "UPDATE", "DELETE"):
+                cursor.execute(
+                    "SELECT HAS_PERMS_BY_NAME(%s,N'OBJECT',%s)",
+                    (OTHER_OBJECT, verb),
                 )
-            if outcomes:
-                phase = "METADATA_" + "+".join(outcomes)
-                raise AssertionError
-            phase = "EMPTY_EFFECTIVE_OBJECT_PERMISSIONS"
+                assert cursor.fetchone() == (0,)
             cursor.execute(
-                "SELECT COUNT_BIG(*) FROM sys.fn_my_permissions(%s,N'OBJECT')",
+                "SELECT permission_name "
+                "FROM sys.fn_my_permissions(%s,N'OBJECT')",
                 (OTHER_OBJECT,),
             )
-            assert cursor.fetchone() == (0,)
-            phase = "LEGACY_OUTER_APPLY_NULL_ROW"
-            cursor.execute(
-                "SELECT p.permission_name FROM sys.objects o "
-                "JOIN sys.schemas s ON o.schema_id=s.schema_id "
-                "OUTER APPLY sys.fn_my_permissions(QUOTENAME(s.name)+N'.'+"
-                "QUOTENAME(o.name),N'OBJECT') p "
-                "WHERE o.object_id=%s AND p.permission_name IS NULL",
-                (visible,),
+            assert cursor.fetchall() == [("VIEW DEFINITION",)]
+            assert WRITER.permissions_safe(
+                cursor,
+                installation_id=author["DEMO_SQLSERVER_INSTALLATION_ID"],
             )
-            assert cursor.fetchall() == [(None,)]
-            phase = "FIXED_RUNTIME_PERMISSIONS"
-            assert WRITER.side_effects_safe(cursor)
-            assert WRITER.permissions_safe(cursor)
+
+        phase = "VERIFY_EMPTY_TVF_PRIMITIVE_NOT_VISIBLE_CASE"
+        with WRITER.connection(author) as session:
+            cursor = session.cursor()
+            for join, expected in (("OUTER", [(None,)]), ("CROSS", [])):
+                cursor.execute(
+                    "SELECT p.permission_name FROM (VALUES (1)) as seed(id) "
+                    + join
+                    + " APPLY (SELECT CAST(NULL as nvarchar(128)) "
+                    "AS permission_name WHERE seed.id=0) p"
+                )
+                assert cursor.fetchall() == expected
 
         phase = "FIXED_DML"
         before = WRITER.diagnose(author)
@@ -266,10 +297,114 @@ def verify_fixed_writer(connect, admin):
                 assert_committed_product(cursor, run_id, action)
                 assert_untouched_neighbors(cursor)
 
-        phase = "REFUSE_EFFECTIVE_LEGACY_UPDATE"
+        phase = "CREATE_BOUNDED_NESTED_ROLE"
         with connect(admin) as cursor:
-            cursor.execute(f"REVOKE VIEW SECURITY DEFINITION FROM [{ROLE}]")
-            cursor.execute(f"GRANT UPDATE ON {OTHER_OBJECT} TO [{ROLE}]")
+            cursor.execute(f"CREATE ROLE [{LEGACY_ROLE}] AUTHORIZATION dbo")
+            cursor.execute(f"CREATE ROLE [{LEGACY_PARENT}] AUTHORIZATION dbo")
+            cursor.execute(
+                f"ALTER ROLE [{LEGACY_PARENT}] ADD MEMBER [{LOGIN}]"
+            )
+            cursor.execute(
+                f"ALTER ROLE [{LEGACY_ROLE}] ADD MEMBER [{LEGACY_PARENT}]"
+            )
+        phase = "SECOND_LIMITED_ROLE_MEMBERSHIP_ALONE"
+        with WRITER.connection(author) as session:
+            cursor = session.cursor()
+            cursor.execute("SELECT IS_MEMBER(%s)", (LEGACY_PARENT,))
+            assert cursor.fetchone() == (1,)
+            assert WRITER.permissions_safe(
+                cursor,
+                installation_id=author["DEMO_SQLSERVER_INSTALLATION_ID"],
+            )
+        phase = "SAME_APPROVED_VERBS_EFFECTIVE_BEFORE_POLICY"
+        with connect(admin) as cursor:
+            cursor.execute(
+                f"GRANT SELECT,INSERT,UPDATE,DELETE ON {OTHER_OBJECT} "
+                f"TO [{LEGACY_ROLE}]"
+            )
+        with WRITER.connection(author) as session:
+            cursor = session.cursor()
+            for verb in ("SELECT", "INSERT", "UPDATE", "DELETE"):
+                cursor.execute(
+                    "SELECT HAS_PERMS_BY_NAME(%s,N'OBJECT',%s)",
+                    (OTHER_OBJECT, verb),
+                )
+                assert cursor.fetchone() == (1,)
+            cursor.execute(
+                "SELECT permission_name FROM sys.fn_my_permissions("
+                "%s,N'OBJECT')",
+                (OTHER_OBJECT,),
+            )
+            assert {
+                "SELECT",
+                "INSERT",
+                "UPDATE",
+                "DELETE",
+            } <= {row[0] for row in cursor.fetchall()}
+        phase = "OLD_POLICY_REJECTS_SAME_EFFECTIVE_GRANTS"
+        assert_fixture_denied(connect, admin, author)
+        phase = "INSTALL_DBA_POLICY"
+        install_policy(connect, admin, author)
+        phase = "APPROVED_NESTED_ROLE_AND_FIXED_DML"
+        legacy_run = "789012abcdef"
+        before = WRITER.diagnose(author)
+        assert before["ownership"] and before["permissions_safe"]
+        for action in ("insert", "update", "delete"):
+            result = WRITER.mutate(
+                author, action, run_id=legacy_run, consent=True
+            )
+            assert result["changed_rows"] == 1 and result["source_only"]
+            with connect(admin) as cursor:
+                assert_committed_product(cursor, legacy_run, action)
+                assert_untouched_neighbors(cursor)
+        phase = "REFUSE_OUTSIDE_POLICY"
+        with connect(admin) as cursor:
+            cursor.execute(
+                f"GRANT UPDATE ON {EXTRA_OBJECT} TO [{LEGACY_ROLE}]"
+            )
+        assert_fixture_denied(connect, admin, author)
+        with connect(admin) as cursor:
+            cursor.execute(
+                f"REVOKE UPDATE ON {EXTRA_OBJECT} FROM [{LEGACY_ROLE}]"
+            )
+        phase = "REFUSE_BROAD_SCHEMA_UPDATE"
+        with connect(admin) as cursor:
+            cursor.execute(f"GRANT UPDATE ON SCHEMA::dbo TO [{LEGACY_ROLE}]")
+        with WRITER.connection(author) as session:
+            cursor = session.cursor()
+            cursor.execute(
+                "SELECT HAS_PERMS_BY_NAME(N'dbo',N'SCHEMA',N'UPDATE')"
+            )
+            assert cursor.fetchone() == (1,)
+        assert_fixture_denied(connect, admin, author)
+        with connect(admin) as cursor:
+            cursor.execute(
+                f"REVOKE UPDATE ON SCHEMA::dbo FROM [{LEGACY_ROLE}]"
+            )
+        phase = "REFUSE_UNAPPROVED_ALTER"
+        with connect(admin) as cursor:
+            cursor.execute(f"GRANT ALTER ON {OTHER_OBJECT} TO [{LEGACY_ROLE}]")
+        assert_fixture_denied(connect, admin, author)
+        with connect(admin) as cursor:
+            cursor.execute(
+                f"REVOKE ALTER ON {OTHER_OBJECT} FROM [{LEGACY_ROLE}]"
+            )
+        phase = "REFUSE_EXPLICIT_LEGACY_COLUMN_GRANT"
+        with connect(admin) as cursor:
+            # 表の権限と列の権限は、実際のwriterが継承する別ロールに付く。
+            cursor.execute(
+                f"GRANT UPDATE ON OBJECT::{OTHER_OBJECT} (note) "
+                f"TO [{LEGACY_PARENT}]"
+            )
+            cursor.execute(
+                "SELECT COUNT_BIG(*) FROM sys.database_permissions "
+                "WHERE class=1 AND major_id=OBJECT_ID(%s,N'U') "
+                "AND minor_id=COLUMNPROPERTY(major_id,N'note',N'ColumnId') "
+                "AND minor_id>0 AND permission_name=N'UPDATE' AND state=N'G' "
+                "AND grantee_principal_id=DATABASE_PRINCIPAL_ID(%s)",
+                (OTHER_OBJECT, LEGACY_PARENT),
+            )
+            assert cursor.fetchone() == (1,)
         with WRITER.connection(author) as session:
             cursor = session.cursor()
             cursor.execute(
@@ -277,26 +412,98 @@ def verify_fixed_writer(connect, admin):
                 (OTHER_OBJECT,),
             )
             assert cursor.fetchone() == (1,)
-            assert not WRITER.permissions_safe(cursor)
-        denied_run = "fedcba543210"
-        try:
-            WRITER.mutate(author, "insert", run_id=denied_run, consent=True)
-        except WRITER.SqlServerError as error:
-            assert "permissions exceed the allowed boundary" in str(error)
-        else:
-            raise AssertionError
+        assert_fixture_denied(connect, admin, author)
         with connect(admin) as cursor:
-            assert_committed_product(cursor, denied_run, "delete")
-            assert_untouched_neighbors(cursor)
             cursor.execute(
-                "SELECT COUNT_BIG(*) FROM lh_demo_ctl.demo_runs "
-                "WHERE run_id=%s",
-                (denied_run,),
+                f"REVOKE UPDATE ON OBJECT::{OTHER_OBJECT} (note) "
+                f"FROM [{LEGACY_PARENT}]"
             )
-            assert cursor.fetchone() == (0,)
+        assert WRITER.diagnose(author)["permissions_safe"]
+        for grantee, mode in ((LOGIN, "DIRECT"), (LEGACY_ROLE, "NESTED")):
+            phase = "REFUSE_WRITER_DELEGATION_" + mode
+            with connect(admin) as cursor:
+                cursor.execute(
+                    f"GRANT UPDATE ON {OTHER_OBJECT} TO [{grantee}] "
+                    "WITH GRANT OPTION"
+                )
+                cursor.execute(
+                    "SELECT COUNT_BIG(*) FROM sys.database_permissions "
+                    "WHERE class=1 AND major_id=OBJECT_ID(%s,N'U') "
+                    "AND minor_id=0 AND permission_name=N'UPDATE' "
+                    "AND state=N'W' "
+                    "AND grantee_principal_id=DATABASE_PRINCIPAL_ID(%s)",
+                    (OTHER_OBJECT, grantee),
+                )
+                assert cursor.fetchone() == (1,)
+            assert_fixture_denied(connect, admin, author)
+            with connect(admin) as cursor:
+                cursor.execute(
+                    f"REVOKE UPDATE ON {OTHER_OBJECT} FROM [{grantee}] CASCADE"
+                )
+                if grantee == LEGACY_ROLE:
+                    cursor.execute(
+                        f"GRANT UPDATE ON {OTHER_OBJECT} TO [{LEGACY_ROLE}]"
+                    )
+            assert WRITER.diagnose(author)["permissions_safe"]
+        phase = "REFUSE_POLICY_COLUMN_MUTATION"
+        with connect(admin) as cursor:
+            cursor.execute(
+                f"GRANT UPDATE ON OBJECT::{WRITER.WRITER_POLICY} "
+                f"(operation) TO [{LOGIN}]"
+            )
+        assert_fixture_denied(connect, admin, author)
+        with connect(admin) as cursor:
+            cursor.execute(
+                f"REVOKE UPDATE ON OBJECT::{WRITER.WRITER_POLICY} "
+                f"(operation) FROM [{LOGIN}]"
+            )
+        phase = "REFUSE_DANGEROUS_ROLES"
+        for role in ("db_owner", "db_ddladmin", "sysadmin"):
+            server = role == "sysadmin"
+            kind = "SERVER ROLE" if server else "ROLE"
+            database = (
+                "master" if server else admin["SOURCE_SQLSERVER_DATABASE"]
+            )
+            phase = "REFUSE_ROLE_" + role.upper()
+            with connect(admin, SOURCE_SQLSERVER_DATABASE=database) as cursor:
+                cursor.execute(f"ALTER {kind} [{role}] ADD MEMBER [{LOGIN}]")
+            with WRITER.connection(author) as session:
+                cursor = session.cursor()
+                function = "IS_SRVROLEMEMBER" if server else "IS_MEMBER"
+                cursor.execute(f"SELECT {function}(%s)", (role,))
+                assert cursor.fetchone() == (1,)
+            assert_fixture_denied(connect, admin, author)
+            with connect(admin, SOURCE_SQLSERVER_DATABASE=database) as cursor:
+                cursor.execute(f"ALTER {kind} [{role}] DROP MEMBER [{LOGIN}]")
+            assert WRITER.diagnose(author)["permissions_safe"]
+        for verb, target in (
+            ("UPDATE", "lh_demo_erp.products"),
+            ("INSERT", "lh_demo_ctl.demo_runs"),
+        ):
+            phase = "REFUSE_MISSING_FIXED_" + verb
+            with connect(admin) as cursor:
+                cursor.execute(f"REVOKE {verb} ON {target} FROM [{ROLE}]")
+            with WRITER.connection(author) as session:
+                cursor = session.cursor()
+                cursor.execute(
+                    "SELECT HAS_PERMS_BY_NAME(%s,N'OBJECT',%s)",
+                    (target, verb),
+                )
+                assert cursor.fetchone() == (0,)
+            assert_fixture_denied(connect, admin, author)
+            with connect(admin) as cursor:
+                cursor.execute(f"GRANT {verb} ON {target} TO [{ROLE}]")
+            assert WRITER.diagnose(author)["permissions_safe"]
+        phase = "REFUSE_STALE_POLICY_OBJECT_IDENTITY"
+        with connect(admin) as cursor:
+            cursor.execute(
+                f"UPDATE {WRITER.WRITER_POLICY} SET object_created_at="
+                "DATEADD(day,-1,object_created_at)"
+            )
+        assert_fixture_denied(connect, admin, author)
     except Exception:
         raise AssertionError(f"Fixed writer fixture failed: {phase}") from None
     print(
-        "Visible empty object permissions, fixed I/U/D and "
-        "unrelated effective UPDATE denial verified."
+        "Metadata-only visibility, bounded legacy grants, fixed I/U/D and "
+        "permissions outside the approved policy verified."
     )
