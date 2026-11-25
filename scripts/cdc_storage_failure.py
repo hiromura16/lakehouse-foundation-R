@@ -207,6 +207,53 @@ def restored_evidence(fixture, before):
     raise AcceptanceError from None
 
 
+RAW_PROOF_STAGES = frozenset(
+    {"CATALOG", "SNAPSHOT", "READ", "CONTENT", "TRANSPORT"}
+)
+
+
+def read_raw_proof(fixture, expected_snapshot, *, attempts=1):
+    """既知Rawの認証付き読取を確認し、一時transportだけ上限付き再試行。"""
+    for attempt in range(attempts):
+        stage = "PROCESS"
+        try:
+            output = fixture(
+                "storage-raw-proof",
+                "--raw-snapshot",
+                str(expected_snapshot),
+                timeout=20,
+            )
+            stage = "EVIDENCE"
+            value = json.loads(output)
+            require(
+                isinstance(value, dict)
+                and set(value) == {"snapshot", "sha256"}
+                and type(value["snapshot"]) is int
+                and value["snapshot"] == expected_snapshot
+                and isinstance(value["sha256"], str)
+                and re.fullmatch(r"[0-9a-f]{64}", value["sha256"])
+            )
+        except subprocess.CalledProcessError as error:
+            prefix = "CDC_RAW_PROOF_"
+            output = (error.stdout or "").strip()
+            if error.returncode == 1 and output.startswith(prefix):
+                marker = output.removeprefix(prefix)
+                if marker in RAW_PROOF_STAGES:
+                    stage = marker
+            if stage == "TRANSPORT" and attempt + 1 < attempts:
+                time.sleep(1)
+                continue
+        except subprocess.TimeoutExpired:
+            stage = "TIMEOUT"
+        except (AcceptanceError, ValueError, TypeError, KeyError):
+            pass
+        else:
+            return value
+        print(f"FAIL: STORAGE_RAW_PROOF_{stage}", flush=True)
+        raise AcceptanceError from None
+    raise AcceptanceError
+
+
 def storage_case(docker, compose, project, original, checkpoint, body):
     """1件の追加だけを使い、現在値・Rawと両方の確定位置を照合する。"""
     ids, _ = original
@@ -214,7 +261,7 @@ def storage_case(docker, compose, project, original, checkpoint, body):
     consumer = ids["native-cdc"]
     broker = ids["test-broker"]
 
-    def fixture(phase, timeout=130):
+    def fixture(phase, *args, timeout=130):
         return compose(
             "exec",
             "-T",
@@ -222,6 +269,7 @@ def storage_case(docker, compose, project, original, checkpoint, body):
             "python",
             "-",
             phase,
+            *args,
             timeout=timeout,
             input_text=body,
         ).strip()
@@ -261,6 +309,9 @@ def storage_case(docker, compose, project, original, checkpoint, body):
             fixture(action)
         checkpoint(8)
         before = evidence(fixture("storage-baseline"), 9)
+        stage = "RAW_PROOF_BASELINE"
+        raw_snapshot = before["raw_snapshot_id"]
+        raw_before = read_raw_proof(fixture, raw_snapshot)
 
         stage = "RAW_FAILURE"
         boundary()
@@ -305,8 +356,14 @@ def storage_case(docker, compose, project, original, checkpoint, body):
         require(storage_volume(docker, storage, project) == owned_volume)
         stage = "RESTORE_PENDING_CHECKPOINT"
         checkpoint(8)
+        stage = "RESTORE_AUTHENTICATED_RAW"
+        require(
+            read_raw_proof(fixture, raw_snapshot, attempts=4) == raw_before
+        )
+        boundary("native-cdc")
         stage = "RESTORE_PENDING_GENERATION_AND_BROKER"
         restored_evidence(fixture, before)
+        boundary("native-cdc")
 
         stage = "EXACT_RECOVERY"
         docker("start", consumer)

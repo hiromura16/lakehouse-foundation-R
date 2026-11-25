@@ -1,5 +1,6 @@
 """障害を再試行や空の成功と取り違えないよう、制御順序を検査する。"""
 
+import errno
 import json
 import runpy
 import subprocess
@@ -28,6 +29,11 @@ def snapshot(raw, release, cursor):
             "broker_next_offset": cursor,
         }
     )
+
+
+def raw_proof(snapshot_id=1, sha="a" * 64):
+    """合成の認証付きRaw読み戻し結果。"""
+    return json.dumps({"snapshot": snapshot_id, "sha256": sha})
 
 
 def failure(kind="OSError", frames=None):
@@ -87,7 +93,7 @@ class StorageFailureTest(unittest.TestCase):
             {".to_arrow()", "table.append("},
         )
 
-    def scenario(self, *, log, unpublished_same=True):
+    def scenario(self, *, log, unpublished_same=True, raw_proof_same=True):
         """コンテナは一切起動せず、呼出の列だけを記録する。"""
         events = []
         status = {
@@ -117,8 +123,13 @@ class StorageFailureTest(unittest.TestCase):
                 status["State"].update(Running=True, StartedAt="new")
 
         def compose(*args, **_):
-            phase = args[-1]
+            phase = args[5] if len(args) > 5 else args[-1]
             events.append((phase,))
+            if phase == "storage-raw-proof":
+                self.assertEqual(args[6:], ("--raw-snapshot", "1"))
+                if stored["up"] and events.count((phase,)) == 2:
+                    return raw_proof(sha=("a" if raw_proof_same else "b") * 64)
+                return raw_proof()
             if phase == "-":
                 return "HTTP_403" if stored["up"] else "TCP_UNAVAILABLE"
             if phase == "storage-baseline":
@@ -173,6 +184,7 @@ class StorageFailureTest(unittest.TestCase):
             [
                 ("start", "storage-id"),
                 ("-",),
+                ("storage-raw-proof",),
                 ("storage-restored",),
             ],
         )
@@ -339,11 +351,159 @@ class StorageFailureTest(unittest.TestCase):
                 )
                 fixture.assert_called_once_with("storage-restored")
 
+    def test_authenticated_probe_retries_only_transport_and_is_bounded(self):
+        command = ["synthetic"]
+        transient = subprocess.CalledProcessError(
+            1, command, output="CDC_RAW_PROOF_TRANSPORT"
+        )
+        read = Mock(side_effect=[transient, raw_proof()])
+        with patch.object(outage.time, "sleep") as wait:
+            self.assertEqual(
+                outage.read_raw_proof(read, 1, attempts=4),
+                json.loads(raw_proof()),
+            )
+        self.assertEqual(read.call_count, 2)
+        read.assert_called_with(
+            "storage-raw-proof", "--raw-snapshot", "1", timeout=20
+        )
+        wait.assert_called_once_with(1)
+
+        for outcome, count in (
+            (transient, 4),
+            (
+                subprocess.CalledProcessError(
+                    1, command, output="CDC_RAW_PROOF_READ"
+                ),
+                1,
+            ),
+            (
+                subprocess.CalledProcessError(
+                    1, command, output="CDC_RAW_PROOF_CONTENT"
+                ),
+                1,
+            ),
+            (
+                subprocess.CalledProcessError(
+                    1, command, output="CDC_RAW_PROOF_SNAPSHOT"
+                ),
+                1,
+            ),
+            (
+                subprocess.CalledProcessError(
+                    2, command, output="CDC_RAW_PROOF_TRANSPORT"
+                ),
+                1,
+            ),
+            (
+                subprocess.CalledProcessError(
+                    1, command, output="CDC_RAW_PROOF_TRANSPORT hint"
+                ),
+                1,
+            ),
+            (subprocess.TimeoutExpired(command, 20), 1),
+            (raw_proof(snapshot_id=2), 1),
+            (raw_proof(sha="not-a-digest"), 1),
+        ):
+            read = (
+                Mock(side_effect=outcome)
+                if isinstance(outcome, Exception)
+                else Mock(return_value=outcome)
+            )
+            with (
+                patch.object(outage.time, "sleep") as wait,
+                patch("builtins.print"),
+                self.assertRaises(AcceptanceError),
+            ):
+                outage.read_raw_proof(read, 1, attempts=4)
+            self.assertEqual(read.call_count, count)
+            self.assertEqual(wait.call_count, count - 1)
+
+    def test_raw_proof_uses_exact_snapshot_and_sanitizes_refusals(self):
+        source = outage.closed.FIXTURES / "cdc_acceptance.py"
+        with patch.dict(
+            sys.modules, {"confluent_kafka": Mock(), "native": Mock()}
+        ):
+            proof = runpy.run_path(str(source))["raw_proof"]
+        fixture = proof.__globals__
+        core = Mock()
+        table = core.catalog.return_value.load_table.return_value
+        fixture["engine"].current_id.return_value = 44
+        result = table.scan.return_value.to_arrow.return_value
+        result.schema = []
+        result.to_pylist.return_value = [
+            {"event_id": str(n), "offset": str(n)} for n in range(9)
+        ]
+        with patch("builtins.print") as logged:
+            proof(core, 44)
+        first = json.loads(logged.call_args.args[0])
+        self.assertEqual(first["snapshot"], 44)
+        core.catalog.return_value.load_table.assert_called_once_with(
+            "cdc_events.events"
+        )
+        table.scan.assert_called_once_with(snapshot_id=44)
+        result.schema = [Mock(name="synthetic field", nullable=True)]
+        result.schema[0].name = "added-field"
+        with patch("builtins.print") as logged:
+            proof(core, 44)
+        self.assertNotEqual(
+            first["sha256"], json.loads(logged.call_args.args[0])["sha256"]
+        )
+        result.to_pylist.return_value.pop()
+        with patch("builtins.print") as logged, self.assertRaises(SystemExit):
+            proof(core, 44)
+        logged.assert_called_once_with("CDC_RAW_PROOF_CONTENT", flush=True)
+
+        for error, expected in (
+            (OSError(errno.ECONNRESET, "fixture detail"), "TRANSPORT"),
+            (
+                OSError(
+                    "AWS Error NETWORK_CONNECTION during GetObject "
+                    "operation: curlCode: 7, example"
+                ),
+                "TRANSPORT",
+            ),
+            (
+                OSError(
+                    "AWS Error NETWORK_CONNECTION during GetObject "
+                    "operation: curlCode: 60, certificate"
+                ),
+                "READ",
+            ),
+            (PermissionError(errno.EACCES, "fixture detail"), "READ"),
+            (FileNotFoundError(errno.ENOENT, "object absent"), "READ"),
+            (
+                OSError(
+                    "AWS Error ACCESS_DENIED during HeadObject operation: 403"
+                ),
+                "READ",
+            ),
+            (ValueError("schema detail"), "READ"),
+        ):
+            table.scan.return_value.to_arrow.side_effect = error
+            with (
+                patch("builtins.print") as logged,
+                self.assertRaises(SystemExit),
+            ):
+                proof(core, 44)
+            logged.assert_called_once_with(
+                "CDC_RAW_PROOF_" + expected, flush=True
+            )
+        table.scan.reset_mock()
+        with patch("builtins.print") as logged, self.assertRaises(SystemExit):
+            proof(core, 45)
+        logged.assert_called_once_with("CDC_RAW_PROOF_SNAPSHOT", flush=True)
+        table.scan.assert_not_called()
+
     def test_uncertain_failure_or_changed_snapshot_never_resumes(self):
-        for log, same in ((failure("ValueError"), True), (failure(), False)):
-            with self.subTest(same=same):
+        cases = (
+            (failure("ValueError"), True, True),
+            (failure(), False, True),
+            (failure(), True, False),
+        )
+        for log, same, raw_same in cases:
+            with self.subTest(same=same, raw_same=raw_same):
                 events, docker, compose, inspect = self.scenario(
-                    log=log, unpublished_same=same
+                    log=log, unpublished_same=same, raw_proof_same=raw_same
                 )
                 with (
                     patch.object(outage, "inspect", new=inspect),

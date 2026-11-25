@@ -6,8 +6,11 @@ businessでは隔離再生との照合に使う工場の計画・実績・出荷
 """
 
 import argparse
+import errno
 import json
+import re
 import time
+from hashlib import sha256
 
 from confluent_kafka import Consumer, Producer, TopicPartition
 
@@ -344,6 +347,69 @@ def run_continuity(phase):
     print(json.dumps(result))
 
 
+# Arrow 26.0.1のS3エラー表現とlibcurlの接続/時間切れ/送受信だけ。
+# 文中の任意の断片、HTTPエラー、DNS、TLS、復号や認可は受け付けない。
+RAW_TRANSPORT = re.compile(
+    r"(?:When reading information for key '[^'\n]*' "
+    r"in bucket '[^'\n]*': )?"
+    r"AWS Error NETWORK_CONNECTION during (?:HeadObject|GetObject) "
+    r"operation: curlCode: (?:7|28|55|56), "
+)
+
+
+def raw_transport_error(error):
+    """認証付きのオブジェクト読取中の一時接続失敗だけを選別する。"""
+    return error.errno in {
+        errno.ECONNREFUSED,
+        errno.ECONNRESET,
+        errno.ETIMEDOUT,
+    } or (error.errno is None and RAW_TRANSPORT.match(str(error)) is not None)
+
+
+def raw_proof(core, expected_snapshot):
+    """既知のRaw世代を認証付きで走査し、schemaと9件の内容を照合可能にする。"""
+    stage = "CATALOG"
+    try:
+        table = core.catalog().load_table("cdc_events.events")
+        stage = "SNAPSHOT"
+        current = engine.current_id(table)
+        if type(current) is not int or current != expected_snapshot:
+            raise AssertionError
+        stage = "READ"
+        try:
+            data = table.scan(snapshot_id=current).to_arrow()
+        except OSError as error:
+            if raw_transport_error(error):
+                stage = "TRANSPORT"
+            raise
+        stage = "CONTENT"
+        rows = sorted(data.to_pylist(), key=lambda row: row["event_id"])
+        if (
+            len(rows) != 9
+            or len({row["event_id"] for row in rows}) != 9
+            or sorted(int(row["offset"]) for row in rows) != list(range(9))
+        ):
+            raise AssertionError
+        fields = [
+            (field.name, str(field.type), field.nullable)
+            for field in data.schema
+        ]
+        contents = json.dumps(
+            [fields, rows],
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode()
+        print(
+            json.dumps(
+                {"snapshot": current, "sha256": sha256(contents).hexdigest()}
+            )
+        )
+    except Exception:
+        print(f"CDC_RAW_PROOF_{stage}", flush=True)
+        raise SystemExit(1) from None
+
+
 def run_storage(phase):
     """閉域S3試験で使用する合成イベントと読み取り専用の観測。"""
     if phase == "storage-old-cursor":
@@ -492,13 +558,22 @@ def main():
             CONFIRM_PHASE,
             *ORDERING,
             "storage-old-cursor",
+            "storage-raw-proof",
             "storage-publish",
             "storage-baseline",
             "storage-restored",
             "storage-recovered",
         ],
     )
+    parser.add_argument("--raw-snapshot", type=int)
     args = parser.parse_args()
+    if args.phase == "storage-raw-proof":
+        if args.raw_snapshot is None or args.raw_snapshot <= 0:
+            parser.error("expected a positive Raw snapshot")
+        raw_proof(api.core_module(), args.raw_snapshot)
+        return
+    if args.raw_snapshot is not None:
+        parser.error("Raw snapshot is only accepted for the Raw proof")
     if args.phase in ORDERING:
         run_ordering(args.phase)
         return
