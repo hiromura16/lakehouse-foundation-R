@@ -30,6 +30,22 @@ WRITER = "fixture_cdc_writer"
 SIBLING = "fixture_sibling_v1"
 SIBLING_ROLE = "fixture_sibling_reader"
 EMPTY_LSN = bytes(10)
+EXPECTED_MAJOR = 16
+PUBLIC_CONTRACT_ERRORS = {
+    "DATABASE_MISMATCH",
+    "DATABASE_PREREQUISITES",
+    "DATABASE_UNVERIFIED",
+    "DBA_REQUIRED",
+    "DEDICATED_TRANSACTION_REQUIRED",
+    "FIXTURE_FORCED_POST_DDL_ROLLBACK",
+    "INSTALLATION_MISMATCH",
+    "LIVE_INCUMBENT_CAPTURE_REQUIRED",
+    "NAMESPACE_COLLISION",
+    "PREEXISTING_CDC_JOBS_REQUIRED",
+    "ROLLBACK_NOT_CONFIRMED",
+    "SQL_OPERATION_FAILED",
+    "TABLE_SHAPE_MISMATCH",
+}
 
 
 @contextmanager
@@ -84,7 +100,8 @@ def require_contract_denial(settings, name, guid, installation, reason):
     try:
         configure(settings, name, guid, installation, apply=True)
     except CONTRACT.ContractError as error:
-        assert str(error) == reason
+        if str(error) != reason:
+            raise
         return
     raise AssertionError("Expected contract denial")
 
@@ -97,6 +114,23 @@ def require_sql_denial(settings, statement, numbers, arguments=()):
         assert error.args[0] in numbers
         return
     raise AssertionError("Expected SQL permission denial")
+
+
+def safe_failure(error):
+    """診断は固定の種類・範囲内のエラー番号だけ。SQL例外本文は返さない。"""
+    if isinstance(error, pymssql.Error):
+        code = error.args[0] if error.args else None
+        if type(code) is int and 0 <= code <= 999999:
+            return f"SQL_DRIVER_{code}"
+        return "SQL_DRIVER_FAILURE"
+    if isinstance(error, CONTRACT.ContractError):
+        reason = str(error)
+        return (
+            reason if reason in PUBLIC_CONTRACT_ERRORS else "CONTRACT_FAILURE"
+        )
+    if isinstance(error, AssertionError):
+        return "ASSERTION_FAILED"
+    return "UNEXPECTED_FAILURE"
 
 
 def database_guid(settings):
@@ -430,6 +464,12 @@ def verify(stage, port):
                     raise AssertionError
                 sleep(2)
 
+        phase = "CDC_FIXTURE_SQL2022_VERSION"
+        assert execute(
+            master,
+            "SELECT CONVERT(int,SERVERPROPERTY('ProductMajorVersion'))",
+        ) == [(EXPECTED_MAJOR,)]
+
         phase = "CDC_FIXTURE_OWN_DATABASE"
         execute(master, f"CREATE DATABASE [{DATABASE}]")
         guid = database_guid(admin)
@@ -439,8 +479,9 @@ def verify(stage, port):
         )
         ensure_absent(admin)
 
-        phase = "CDC_MISSING_JOBS_DENIED"
+        phase = "CDC_ENABLE_FIXTURE_DATABASE"
         execute(admin, "EXEC sys.sp_cdc_enable_db")
+        phase = "CDC_MISSING_JOBS_DENIED"
         require_contract_denial(
             admin,
             DATABASE,
@@ -596,9 +637,9 @@ def verify(stage, port):
         ) == [(86,)]
         assert jobs(collision) == collision_jobs
         assert sibling_state(collision) == collision_sibling
-    except Exception:
+    except Exception as error:
         raise AssertionError(
-            f"SQL CDC contract fixture failed: {phase}"
+            f"SQL CDC contract fixture failed: {phase} / {safe_failure(error)}"
         ) from None
     print("SQL CDC contract and limited principals verified.")
 

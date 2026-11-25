@@ -15,6 +15,11 @@ fi
 check_python="${1:?pymssqlを導入済みのPython実行ファイルを指定してください}"
 fixture=tests/integration/sqlserver
 image=mcr.microsoft.com/mssql/server@sha256:05644dad1266ca3d445d1e8f6d2ebb9a6a03df9a39376e0f7b48917356dca9d9
+if [[ "$mode" == cdc-contract ]]; then
+  # 独立CDCの対象版は SQL Server 2022 (16.0.4325.4) のみ。
+  # MCR 2022-latest の検証済み linux/amd64 manifest。既存source試験は変更しない。
+  image=mcr.microsoft.com/mssql/server@sha256:4525e3efac9f3e241cb003bb2ff2a82818b502f37e12049d788b1a9fa7e13b7f
+fi
 umask 077
 stage=$(mktemp -d)
 stage=$(cd -- "$stage" && pwd -P)
