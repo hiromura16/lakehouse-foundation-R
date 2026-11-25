@@ -165,22 +165,67 @@ def verify_fixed_writer(connect, admin):
     phase = "INSTALL"
     try:
         install(connect, admin, author)
-        phase = "METADATA_OBJECT_VISIBILITY"
+        phase = "WRITER_SETTINGS_VALIDATION"
+        WRITER.validate_settings(author)
+        phase = "WRITER_TLS_AND_LOGIN"
         with WRITER.connection(author) as session:
             cursor = session.cursor()
-            cursor.execute(
-                "SELECT OBJECT_ID(%s,N'U'), DATABASE_PRINCIPAL_ID(%s), "
-                "HAS_PERMS_BY_NAME(%s,N'OBJECT',N'UPDATE')",
-                (OTHER_OBJECT, OTHER_PRINCIPAL, OTHER_OBJECT),
+            phase = "WRITER_SESSION_IDENTITY"
+            cursor.execute("SELECT DB_NAME(), USER_NAME()")
+            assert cursor.fetchone() == (
+                author["DEMO_SQLSERVER_DATABASE"],
+                LOGIN,
             )
-            visible, principal, write = cursor.fetchone()
-            assert visible and principal and write == 0
+            outcomes = []
+            phase = "METADATA_OBJECT_ID_QUERY"
             cursor.execute(
-                "SELECT COUNT_BIG(*) FROM sys.objects "
-                "WHERE object_id=%s AND type=N'U'",
-                (visible,),
+                "SELECT OBJECT_ID(%s,N'U'), OBJECT_ID(%s,N'U')",
+                (OTHER_OBJECT, "[dbo].[fixture_writer_unrelated]"),
             )
-            assert cursor.fetchone() == (1,)
+            visible, quoted = cursor.fetchone()
+            if visible is None:
+                outcomes.append("OBJECT_ID_MISSING")
+            if quoted is None:
+                outcomes.append("QUOTED_OBJECT_ID_MISSING")
+            if (
+                visible is not None
+                and quoted is not None
+                and visible != quoted
+            ):
+                outcomes.append("OBJECT_ID_MISMATCH")
+            phase = "METADATA_CATALOG_QUERY"
+            cursor.execute(
+                "SELECT o.object_id FROM sys.objects o "
+                "JOIN sys.schemas s ON s.schema_id=o.schema_id "
+                "WHERE s.name=N'dbo' AND o.name=N'fixture_writer_unrelated' "
+                "AND o.type=N'U'"
+            )
+            catalog = cursor.fetchall()
+            if not catalog:
+                outcomes.append("CATALOG_OBJECT_MISSING")
+            elif catalog != [(visible,)]:
+                outcomes.append("CATALOG_OBJECT_MISMATCH")
+            phase = "METADATA_PRINCIPAL_QUERY"
+            cursor.execute(
+                "SELECT DATABASE_PRINCIPAL_ID(%s)", (OTHER_PRINCIPAL,)
+            )
+            if cursor.fetchone()[0] is None:
+                outcomes.append("PRINCIPAL_ID_MISSING")
+            phase = "METADATA_EFFECTIVE_UPDATE_QUERY"
+            cursor.execute(
+                "SELECT HAS_PERMS_BY_NAME(%s,N'OBJECT',N'UPDATE')",
+                (OTHER_OBJECT,),
+            )
+            write = cursor.fetchone()[0]
+            if write != 0:
+                outcomes.append(
+                    "EFFECTIVE_UPDATE_ON"
+                    if write == 1
+                    else "EFFECTIVE_UPDATE_UNKNOWN"
+                )
+            if outcomes:
+                phase = "METADATA_" + "+".join(outcomes)
+                raise AssertionError
             phase = "EMPTY_EFFECTIVE_OBJECT_PERMISSIONS"
             cursor.execute(
                 "SELECT COUNT_BIG(*) FROM sys.fn_my_permissions(%s,N'OBJECT')",
