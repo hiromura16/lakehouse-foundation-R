@@ -74,6 +74,7 @@
 | 文書 | 何のために読むか | 読むタイミング | 区分 |
 | --- | --- | --- | --- |
 | [変更する人のための読みやすさと検証規約](<../CONTRIBUTING.md>) | 読みやすいコード・コメント・CLI説明と、専用uv環境での品質検査規約を揃える。 | コードや文書を変更する前と、差分をレビューに出す前。 | active |
+| [承認済みGoldの送信待ち台帳（オフライン試作）](<native/GOLD-OUTBOX.md>) | 承認済み成果物のローカル保存、リモート確定とローカルACKの分離を確認する。 | WAN復旧時のGold外部配送を設計するとき。 | active |
 | [アクセス行列: 通常利用・ローカル業務継続・緊急管理](<reviews/zero-trust-dokploy-access-matrix.md>) | アプリ別の認証、認可、ネットワーク、障害時の境界を定める。 | Foundation Rの配備とアクセス分離を設計・レビューするとき。 | active |
 | [ADR: ローカル優先と配備・アクセス境界の分離](<reviews/zero-trust-dokploy-adr.md>) | ローカル優先の設計選択、代案、および取り消せる条件を記録する。 | Foundation Rの配備とアクセス分離を設計・レビューするとき。 | active |
 | [Foundation Rのゼロトラスト・Dokploy・WAN断耐性の差分レビュー](<reviews/zero-trust-dokploy-gap-analysis.md>) | 追跡済み構成を棚卸しし、オンプレの自律運転を守る設計と段階的な受入条件を決める。 | Dokployの配備モードや人アクセス、WAN断耐性の変更を設計・レビューするとき。 | active |
@@ -127,6 +128,7 @@
 | [Dokployと企業ネットワーク](<native/COMPANY.md>) | Git・Docker・BuildKitの通信を準備し、Dokployで配備します。 |
 | [レイクハウスの設計思想](<native/DESIGN.md>) | データの保存、品質、所有、AI利用の考え方をFoundation Rの実装と照らし合わせます。 |
 | [Dokploy配備モードの合成プラン](<native/DOKPLOY-MODES.md>) | 既存Composeを合成値だけで展開し、配備モードごとの差を確認する。 |
+| [承認済みGoldの送信待ち台帳（オフライン試作）](<native/GOLD-OUTBOX.md>) | 承認済み成果物のローカル保存、リモート確定とローカルACKの分離を確認する。 |
 | [データ閲覧と管理画面を追加する](<native/GUI.md>) | Gold・Lakekeeper・Prometheusの認証付き閲覧画面を用意します。 |
 | [Grafanaの稼働監視を設定ファイルで管理する](<native/MONITORING.md>) | PrometheusとGrafanaの監視対象・パネルを変更します。 |
 | [運用、バックアップ、受入試験](<native/OPERATIONS.md>) | 障害対応、状態の保全と合成データでの受入を行います。 |
@@ -160,6 +162,7 @@
 | [目的・読者から探す文書マニフェスト](<DOCUMENTATION-MANIFEST.md>) | 公開Markdown全件の固有の目的・読者・読む時点を、目的別と読者別に引く。 |
 | [標準CDCのRawから隔離復元する](<native/CDC-SHADOW.md>) | 汎用CDCの確定済みRawを読み出し、元環境から切り離したSQLiteとIcebergへ再現する。 |
 | [オンプレとCloudflareをつなぐ](<native/CLOUDFLARE.md>) | Cloudflare TunnelとAccessで承認済みGoldを読み取る経路を配備します。 |
+| [承認済みGoldの送信待ち台帳（オフライン試作）](<native/GOLD-OUTBOX.md>) | 承認済み成果物のローカル保存、リモート確定とローカルACKの分離を確認する。 |
 | [工場のシフト暦で公開結果を照合する](<native/SHIFT-REPORT.md>) | 公開世代のSilverを工場の現地シフト暦と照合し、実績・停止報告の根拠を保存します。 |
 | [工場テレメトリの接続と受入](<native/TELEMETRY.md>) | 設備のMQTTを集め、Kafka経由の再送とGreptimeDBの時系列検索を検証します。 |
 | [運用ポータルと追加ツール](<native/TOOLS.md>) | n8n、OpenObserve、InfluxDBの設置と初回操作を確認します。 |
@@ -177,6 +180,7 @@
 | [変更する人のための読みやすさと検証規約](<../CONTRIBUTING.md>) | 読みやすいコード・コメント・CLI説明と、専用uv環境での品質検査規約を揃える。 |
 | [目的・読者から探す文書マニフェスト](<DOCUMENTATION-MANIFEST.md>) | 公開Markdown全件の固有の目的・読者・読む時点を、目的別と読者別に引く。 |
 | [ネイティブ処理系の比較試験](<native/EVALUATION.md>) | Sail、RisingWave、GreptimeDB、DataFusion、Ballista、Cometを合成データで起動・検証します。 |
+| [承認済みGoldの送信待ち台帳（オフライン試作）](<native/GOLD-OUTBOX.md>) | 承認済み成果物のローカル保存、リモート確定とローカルACKの分離を確認する。 |
 | [構想と実装の対応](<native/ROADMAP.md>) | 設計上の目的と稼働する機能、評価候補を確認します。 |
 | [アクセス行列: 通常利用・ローカル業務継続・緊急管理](<reviews/zero-trust-dokploy-access-matrix.md>) | アプリ別の認証、認可、ネットワーク、障害時の境界を定める。 |
 | [ADR: ローカル優先と配備・アクセス境界の分離](<reviews/zero-trust-dokploy-adr.md>) | ローカル優先の設計選択、代案、および取り消せる条件を記録する。 |
