@@ -159,6 +159,54 @@ def evidence(value, expected):
     return item
 
 
+RESTORE_STAGES = frozenset(
+    {
+        "OBSERVATION",
+        "CATALOG",
+        "RAW_READ",
+        "RAW_COUNT",
+        "RAW_CONTENT",
+        "RELEASE_READ",
+        "RELEASE_MISSING",
+        "SILVER_READ",
+        "SILVER_CONTENT",
+        "SNAPSHOT_SHAPE",
+        "BROKER_COMMITTED",
+        "BROKER_WATERMARK",
+    }
+)
+
+
+def restored_evidence(fixture, before):
+    """復旧後・再開前の観測失敗を固定コードだけで区別する。"""
+    step = "OBSERVATION_PROCESS"
+    try:
+        output = fixture("storage-restored")
+        step = "EVIDENCE_INVALID"
+        after = evidence(output, 9)
+        step = "RAW_SNAPSHOT_CHANGED"
+        require(after["raw_snapshot_id"] == before["raw_snapshot_id"])
+        step = "RELEASE_SNAPSHOT_CHANGED"
+        require(after["release_snapshot_id"] == before["release_snapshot_id"])
+        step = "BROKER_COMMITTED"
+        require(after["broker_next_offset"] == before["broker_next_offset"])
+    except subprocess.CalledProcessError as error:
+        prefix = "CDC_RESTORE_"
+        output = (error.stdout or "").strip()
+        if error.returncode == 1 and output.startswith(prefix):
+            marker = output.removeprefix(prefix)
+            if marker in RESTORE_STAGES:
+                step = marker
+    except subprocess.TimeoutExpired:
+        step = "OBSERVATION_TIMEOUT"
+    except (AcceptanceError, ValueError, TypeError, KeyError):
+        pass
+    else:
+        return
+    print(f"FAIL: STORAGE_RESTORE_{step}", flush=True)
+    raise AcceptanceError from None
+
+
 def storage_case(docker, compose, project, original, checkpoint, body):
     """1件の追加だけを使い、現在値・Rawと両方の確定位置を照合する。"""
     ids, _ = original
@@ -258,7 +306,7 @@ def storage_case(docker, compose, project, original, checkpoint, body):
         stage = "RESTORE_PENDING_CHECKPOINT"
         checkpoint(8)
         stage = "RESTORE_PENDING_GENERATION_AND_BROKER"
-        require(evidence(fixture("storage-restored"), 9) == before)
+        restored_evidence(fixture, before)
 
         stage = "EXACT_RECOVERY"
         docker("start", consumer)

@@ -2,6 +2,7 @@
 
 import json
 import runpy
+import subprocess
 import sys
 import unittest
 from unittest.mock import Mock, call, patch
@@ -208,18 +209,135 @@ class StorageFailureTest(unittest.TestCase):
                     product_names.append(
                         fixture["CONTINUITY"]["continuity-insert"][2]
                     )
+                labels = {}
+                if phase == "storage-restored":
+                    label = check.call_args.kwargs["note_stage"]
+                    self.assertTrue(callable(label))
+                    labels = {"note_stage": label}
                 check.assert_called_once_with(
                     core,
                     total,
                     product_names,
                     continuity=continuity,
                     snapshots=True,
+                    **labels,
                 )
-                cursor.assert_called_once_with(total, high=high)
+                cursor.assert_called_once_with(total, high=high, **labels)
                 self.assertEqual(
                     json.loads(printed.call_args.args[0]),
                     {"raw_snapshot_id": 1, "broker_next_offset": total},
                 )
+
+    def test_restored_child_failures_keep_nonzero_and_only_fixed_markers(self):
+        source = outage.closed.FIXTURES / "cdc_acceptance.py"
+        with patch.dict(
+            sys.modules, {"confluent_kafka": Mock(), "native": Mock()}
+        ):
+            run_storage = runpy.run_path(str(source))["run_storage"]
+        codepaths = run_storage.__globals__
+        for where, stage in (
+            ("check", "RAW_READ"),
+            ("check", "RAW_COUNT"),
+            ("check", "SILVER_READ"),
+            ("broker_committed", "BROKER_COMMITTED"),
+            ("broker_committed", "BROKER_WATERMARK"),
+        ):
+            with self.subTest(stage=stage):
+
+                def fail(*_args, note_stage, **_kwargs):
+                    """実値が出ないことを確認する固定の合成障害。"""
+                    note_stage(stage)
+                    raise ValueError("redacted fixture detail")
+
+                with (
+                    patch.dict(
+                        codepaths,
+                        {
+                            "check": Mock(return_value={"raw_snapshot_id": 1}),
+                            where: fail,
+                        },
+                    ),
+                    patch("builtins.print") as output,
+                    self.assertRaises(SystemExit) as failed,
+                ):
+                    run_storage("storage-restored")
+                self.assertEqual(failed.exception.code, 1)
+                output.assert_called_once_with(
+                    "CDC_RESTORE_" + stage, flush=True
+                )
+
+    def test_exact_observers_report_io_vs_high_mismatch(self):
+        source = outage.closed.FIXTURES / "cdc_acceptance.py"
+        with patch.dict(
+            sys.modules, {"confluent_kafka": Mock(), "native": Mock()}
+        ):
+            fixture = runpy.run_path(str(source))["run_storage"].__globals__
+        core = Mock()
+        table = core.catalog.return_value.load_table.return_value
+        table.scan.side_effect = OSError("synthetic storage not ready")
+        seen = []
+        with self.assertRaises(OSError):
+            fixture["check"](core, 9, [], note_stage=seen.append)
+        self.assertEqual(seen, ["CATALOG", "RAW_READ"])
+
+        broker = fixture["Consumer"].return_value
+        broker.committed.return_value = [Mock(error=None, offset=9)]
+        broker.get_watermark_offsets.return_value = (0, 9)
+        seen.clear()
+        with self.assertRaises(AssertionError):
+            fixture["broker_committed"](9, high=10, note_stage=seen.append)
+        self.assertEqual(seen, ["BROKER_COMMITTED", "BROKER_WATERMARK"])
+        broker.close.assert_called_once_with()
+        broker.get_watermark_offsets.assert_called_once_with(
+            fixture["TopicPartition"].return_value, timeout=3, cached=False
+        )
+
+    def test_restored_host_whitelists_exact_token_and_checks_both_snapshots(
+        self,
+    ):
+        prior = outage.evidence(snapshot(1, "1", 9), 9)
+        process_error = subprocess.CalledProcessError
+        command = ["synthetic"]
+        cases = (
+            (snapshot(2, "1", 9), "RAW_SNAPSHOT_CHANGED"),
+            (snapshot(1, "2", 9), "RELEASE_SNAPSHOT_CHANGED"),
+            (snapshot(1, "1", 10), "EVIDENCE_INVALID"),
+            (
+                process_error(1, command, output="CDC_RESTORE_RAW_READ"),
+                "RAW_READ",
+            ),
+            (
+                process_error(
+                    1, command, output="CDC_RESTORE_BROKER_WATERMARK"
+                ),
+                "BROKER_WATERMARK",
+            ),
+            (
+                process_error(1, command, output="CDC_RESTORE_RAW_READ extra"),
+                "OBSERVATION_PROCESS",
+            ),
+            (
+                process_error(2, command, output="CDC_RESTORE_RAW_READ"),
+                "OBSERVATION_PROCESS",
+            ),
+            (subprocess.TimeoutExpired(command, 130), "OBSERVATION_TIMEOUT"),
+        )
+        for result, expected in cases:
+            with self.subTest(expected=expected):
+                fixture = (
+                    Mock(side_effect=result)
+                    if isinstance(result, Exception)
+                    else Mock(return_value=result)
+                )
+                with (
+                    patch("builtins.print") as output,
+                    self.assertRaises(AcceptanceError),
+                ):
+                    outage.restored_evidence(fixture, prior)
+                output.assert_called_once_with(
+                    "FAIL: STORAGE_RESTORE_" + expected, flush=True
+                )
+                fixture.assert_called_once_with("storage-restored")
 
     def test_uncertain_failure_or_changed_snapshot_never_resumes(self):
         for log, same in ((failure("ValueError"), True), (failure(), False)):
