@@ -433,6 +433,8 @@ def inspect(cursor, installation_id):
     for table, columns in TABLES.items():
         capture = capture_name(table)
         row = by_name[capture]
+        if row[0] != expected_objects[table]:
+            raise ContractError("CAPTURE_SOURCE_IDENTITY_MISMATCH")
         if not owned_capture_matches(row, expected_objects[table], table):
             raise ContractError("CAPTURE_IDENTITY_MISMATCH")
         actual_columns = query(
@@ -448,19 +450,17 @@ def inspect(cursor, installation_id):
         change, function = capture + "_CT", "fn_cdc_get_all_changes_" + capture
         expected_artifact_names.update((change, function))
         if indexed_artifacts.get(change) != (row[1], "U", None):
-            raise ContractError("CAPTURE_ARTIFACT_MISMATCH")
+            raise ContractError("CAPTURE_CHANGE_TABLE_MISMATCH")
         function_info = indexed_artifacts.get(function)
-        if (
-            not function_info
-            or function_info[1] not in {"IF", "TF"}
-            or not complete_definition_digest(function_info[2])
-        ):
-            raise ContractError("CAPTURE_ARTIFACT_MISMATCH")
+        if not function_info or function_info[1] not in {"IF", "TF"}:
+            raise ContractError("CAPTURE_FUNCTION_IDENTITY_MISMATCH")
+        if not complete_definition_digest(function_info[2]):
+            raise ContractError("CAPTURE_FUNCTION_DEFINITION_UNVERIFIED")
         functions.add(function_info[0])
     if len(artifacts) != len(expected_artifact_names) or (
         set(indexed_artifacts) != expected_artifact_names
     ):
-        raise ContractError("CAPTURE_ARTIFACT_MISMATCH")
+        raise ContractError("CAPTURE_ARTIFACT_SET_MISMATCH")
     protected = [*expected_objects.values(), *(row[1] for row in captures)]
     rls = query(
         cursor,
@@ -503,12 +503,16 @@ def check_roles(cursor, roles, tables, functions):
         "WHERE member_principal_id IN (%s,%s)",
         (reader, writer, reader, writer),
     )
-    if (
-        other
-        or set(permissions) != allowed
-        or len(permissions) != len(allowed)
-    ):
-        raise ContractError("ROLE_PERMISSIONS_MISMATCH")
+    observed = set(permissions)
+    if other:
+        raise ContractError("ROLE_SCOPE_OR_INHERITANCE_MISMATCH")
+    if len(observed) != len(permissions) or observed - allowed:
+        raise ContractError("ROLE_UNEXPECTED_OBJECT_PERMISSIONS")
+    missing = allowed - observed
+    if any(permission[1] in functions for permission in missing):
+        raise ContractError("ROLE_REQUIRED_FUNCTION_PERMISSIONS_MISSING")
+    if missing:
+        raise ContractError("ROLE_REQUIRED_TABLE_PERMISSIONS_MISSING")
 
 
 def create(cursor, installation_id):
