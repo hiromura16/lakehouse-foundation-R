@@ -51,6 +51,12 @@ def message_record(message):
     }
 
 
+def observed_record(runtime, message):
+    """配送の本文に失敗しても、直前に読んだ位置を区別する。"""
+    runtime.note_read(message)
+    return message_record(message)
+
+
 def materialize(admin, state, *, prefix="cdc_"):
     """SQLite現在値からcdc_bronzeの6表を置換し、CDC派生SQLを実行する。
 
@@ -209,7 +215,9 @@ def poll_maintenance(consumer, runtime, next_observation, interval):
     割当コールバックと再構築要求を速やかに処理できるようにする。
     ブローカーの応答が遅くても観測が集中しないよう、観測完了から次を計る。
     """
-    consumer.poll(0.2)
+    message = consumer.poll(0.2)
+    if message is not None and not message.error():
+        runtime.note_read(message)
     if time.monotonic() >= next_observation:
         runtime.observe()
         return time.monotonic() + interval
@@ -302,7 +310,12 @@ def run(
         lost_state=lost_state,
     )
     server = start_server(control)
-    consumer.subscribe(list(topics), on_assign=runtime.assign)
+    consumer.subscribe(
+        list(topics),
+        on_assign=runtime.assign,
+        on_revoke=runtime.revoke_cursors,
+        on_lost=runtime.revoke_cursors,
+    )
     print(
         json.dumps(
             {
@@ -352,7 +365,7 @@ def run(
                         else:
                             raise RuntimeError("Kafka consumer failed.")
                     else:
-                        record = message_record(message)
+                        record = observed_record(runtime, message)
                         records.append(record)
                         batch_bytes += len((record["key"] or "").encode())
                         batch_bytes += len((record["value"] or "").encode())

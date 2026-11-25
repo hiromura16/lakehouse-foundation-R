@@ -66,6 +66,20 @@ class Control:
             self.status.update(copy.deepcopy(values))
             self.status["observation_time"] = observed_at()
 
+    def update_partition_read(self, index, offset):
+        """読取位置だけを即時更新し、確定・ACKの観測は変更しない。"""
+        with self.lock:
+            rows = self.status["partitions"]
+            if 0 <= index < len(rows):
+                rows[index]["last_read_offset"] = offset
+
+    def clear_partition_cursors(self):
+        """再割当等で全区画の一時的な観測を同時に未知へ戻す。"""
+        with self.lock:
+            for row in self.status["partitions"]:
+                row["last_read_offset"] = None
+                row["broker_ack_next_offset"] = None
+
     def enqueue(self):
         """再構築要求を1件だけ登録し、競合やクエリ保留時は拒否する。"""
         with self.lock:

@@ -47,6 +47,9 @@ class Runtime:
             or state.get("blocked") == "true"
         )
         self.partitions = []
+        self.cursor_assignment = {}
+        self.read_offsets = {}
+        self.ack_offsets = {}
         self.error_code = "CDC_REBUILD_REQUIRED" if self.maintenance else None
         self.appended = 0
         self.observe()
@@ -57,8 +60,65 @@ class Runtime:
             self.admin.STATE.get("blocked")
         )
 
+    def clear_cursors(self):
+        """割当や再構築をまたいで前の観測を流用しない。"""
+        self.read_offsets.clear()
+        self.ack_offsets.clear()
+        self.control.clear_partition_cursors()
+
+    def revoke_cursors(self, _client, _partitions):
+        """配送制御は変更せず、失効した割当の観測だけを消す。"""
+        self.cursor_assignment.clear()
+        self.clear_cursors()
+
+    def note_read(self, message):
+        """成功したpoll直後、本文を解釈する前の位置を保持する。"""
+        key = message.topic(), message.partition()
+        offset = message.offset()
+        if (
+            key in self.cursor_assignment
+            and type(offset) is int
+            and offset >= 0
+        ):
+            self.read_offsets[key] = offset
+            self.control.update_partition_read(
+                self.cursor_assignment[key], offset
+            )
+
+    def note_ack(self, requested, response):
+        """同期commitの応答で、成功を照合できた区画の次位置だけ保持。"""
+        if not isinstance(response, list):
+            return
+        expected = {
+            (part.topic, part.partition): part.offset for part in requested
+        }
+        seen = set()
+        confirmed = {}
+        for item in response:
+            topic = getattr(item, "topic", None)
+            partition = getattr(item, "partition", None)
+            if not isinstance(topic, str) or type(partition) is not int:
+                continue
+            key = topic, partition
+            offset = getattr(item, "offset", None)
+            if key in seen:
+                confirmed.pop(key, None)
+                continue
+            seen.add(key)
+            if (
+                key in self.cursor_assignment
+                and type(offset) is int
+                and offset >= 0
+                and expected.get(key) == offset
+                and getattr(item, "error", False) is None
+            ):
+                confirmed[key] = offset
+        # SQLite完了位置と同じ状態更新までACKの公開を待つ。
+        self.ack_offsets.update(confirmed)
+
     def assign(self, client, partitions):
         """再開位置を選ぶ前に、ブローカーに残る履歴範囲を確認する。"""
+        self.revoke_cursors(client, partitions)
         bounds = {}
         for partition in partitions:
             if partition.topic not in self.topics:
@@ -89,6 +149,10 @@ class Runtime:
                 ]
         self.partitions = list(partitions)
         client.assign(partitions)
+        self.cursor_assignment = {
+            (part.topic, part.partition): index
+            for index, part in enumerate(self.partitions)
+        }
         if self.maintenance and partitions:
             client.pause(partitions)
         self.observe()
@@ -118,11 +182,26 @@ class Runtime:
                     lag = high - completed - 1
             except Exception:
                 low = high = None
+            key = partition.topic, partition.partition
+            if position in ("broker_reset", "retention_gap"):
+                self.read_offsets.pop(key, None)
+                self.ack_offsets.pop(key, None)
+            elif type(low) is int and type(high) is int and 0 <= low <= high:
+                # 完了位置が範囲内でも、未処理の読取位置や古いACKは
+                # 最新のbroker範囲から外れ得る。従来の状態は変更しない。
+                read_offset = self.read_offsets.get(key)
+                if read_offset is not None and not low <= read_offset < high:
+                    self.read_offsets.pop(key)
+                ack_offset = self.ack_offsets.get(key)
+                if ack_offset is not None and not low <= ack_offset <= high:
+                    self.ack_offsets.pop(key)
             result.append(
                 {
                     "table": target,
                     "partition": partition.partition,
                     "completed_offset": completed,
+                    "last_read_offset": self.read_offsets.get(key),
+                    "broker_ack_next_offset": self.ack_offsets.get(key),
                     "broker_low": low,
                     "broker_high": high,
                     "next_offset": completed + 1,
@@ -197,6 +276,7 @@ class Runtime:
         if request_id is None:
             return False
         snapshot_id = None
+        self.clear_cursors()
         self.observe(busy=True)
         try:
             if self.blocked():
@@ -217,7 +297,8 @@ class Runtime:
             plan = self.resume_plan(self.state)
             for partition in plan:
                 self.broker.seek(partition)
-            self.broker.commit(offsets=plan, asynchronous=False)
+            response = self.broker.commit(offsets=plan, asynchronous=False)
+            self.note_ack(plan, response)
             if self.partitions:
                 self.broker.resume(self.partitions)
             self.maintenance = False
@@ -277,13 +358,12 @@ class Runtime:
             for record in records:
                 key = record["topic"], record["partition"]
                 offsets[key] = max(offsets.get(key, -1), record["offset"] + 1)
-            self.broker.commit(
-                offsets=[
-                    self.partition_factory(topic, partition, offset)
-                    for (topic, partition), offset in offsets.items()
-                ],
-                asynchronous=False,
-            )
+            plan = [
+                self.partition_factory(topic, partition, offset)
+                for (topic, partition), offset in offsets.items()
+            ]
+            response = self.broker.commit(offsets=plan, asynchronous=False)
+            self.note_ack(plan, response)
             self.error_code = None
             self.control.update(last_success=observed_at())
             self.observe()
