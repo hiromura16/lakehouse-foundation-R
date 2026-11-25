@@ -7,9 +7,19 @@ if [[ "${1:-}" == --sudo ]]; then
   dock=(sudo -n docker)
   shift
 fi
+mode=source
+if [[ "${1:-}" == --cdc-contract ]]; then
+  mode=cdc-contract
+  shift
+fi
 check_python="${1:?pymssqlを導入済みのPython実行ファイルを指定してください}"
 fixture=tests/integration/sqlserver
 image=mcr.microsoft.com/mssql/server@sha256:05644dad1266ca3d445d1e8f6d2ebb9a6a03df9a39376e0f7b48917356dca9d9
+if [[ "$mode" == cdc-contract ]]; then
+  # 独立CDCの対象版は SQL Server 2022 (16.0.4325.4) のみ。
+  # MCR 2022-latest の検証済み linux/amd64 manifest。既存source試験は変更しない。
+  image=mcr.microsoft.com/mssql/server@sha256:4525e3efac9f3e241cb003bb2ff2a82818b502f37e12049d788b1a9fa7e13b7f
+fi
 umask 077
 stage=$(mktemp -d)
 stage=$(cd -- "$stage" && pwd -P)
@@ -54,6 +64,9 @@ openssl x509 -req -in "$stage/server.csr" -CA "$stage/ca.pem" \
 {
   printf 'MSSQL_SA_PASSWORD=Aa9!%s\n' "$(openssl rand -hex 24)"
   printf 'MSSQL_PID=Developer\nMSSQL_MEMORY_LIMIT_MB=2048\n'
+  if [[ "$mode" == cdc-contract ]]; then
+    printf 'MSSQL_AGENT_ENABLED=true\n'
+  fi
 } > "$stage/fixture.env"
 cat > "$stage/mssql.conf" <<'CONFIG'
 [network]
@@ -61,6 +74,9 @@ forceencryption = 1
 tlscert = /fixture-tls/server.pem
 tlskey = /fixture-tls/server-key.pem
 CONFIG
+if [[ "$mode" == cdc-contract ]]; then
+  printf '\n[sqlagent]\nenabled = true\n' >> "$stage/mssql.conf"
+fi
 chmod 0444 "$stage/mssql.conf"
 "${dock[@]}" pull "$image" >/dev/null
 "${dock[@]}" volume create "$certs" >/dev/null
@@ -83,5 +99,9 @@ if [[ ! "$binding" =~ ^127\.0\.0\.1:([1-9][0-9]*)$ ]]; then
   printf '%s\n' '合成SQL Serverのループバックポートを確認できません。' >&2
   exit 1
 fi
+entry=acceptance.py
+if [[ "$mode" == cdc-contract ]]; then
+  entry=cdc_contract_acceptance.py
+fi
 env -i PATH="$PATH" HOME="$stage" \
-  "$check_python" "$fixture/acceptance.py" "$stage" "${BASH_REMATCH[1]}"
+  "$check_python" "$fixture/$entry" "$stage" "${BASH_REMATCH[1]}"
