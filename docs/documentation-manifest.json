@@ -329,6 +329,25 @@
       "status": "active"
     },
     {
+      "path": "docs/native/GOLD-OUTBOX.md",
+      "title": "承認済みGoldの送信待ち台帳（オフライン試作）",
+      "purpose": "承認済み成果物のローカル保存、リモート確定とローカルACKの分離を確認する。",
+      "audience": [
+        "基盤構築担当",
+        "開発・設計担当",
+        "運用担当"
+      ],
+      "when_to_use": "WAN復旧時のGold外部配送を設計するとき。",
+      "category": "06 開発・レビュー",
+      "prerequisites": [
+        "docs/native/CLOUDFLARE.md"
+      ],
+      "next": [
+        "docs/reviews/zero-trust-dokploy-wan-recovery.md"
+      ],
+      "status": "active"
+    },
+    {
       "path": "docs/native/CLOUDFLARE.md",
       "title": "オンプレとCloudflareをつなぐ",
       "purpose": "Cloudflare TunnelとAccessで承認済みGoldを読み取る経路を配備します。",
