@@ -535,6 +535,24 @@
         "docs/reviews/zero-trust-dokploy-threat-test.md"
       ],
       "status": "active"
+    },
+    {
+      "path": "docs/native/DOKPLOY-MODES.md",
+      "title": "Dokploy配備モードの合成プラン",
+      "purpose": "既存Composeを合成値だけで展開し、配備モードごとの差を確認する。",
+      "audience": [
+        "初めて使う人",
+        "基盤構築担当"
+      ],
+      "when_to_use": "Dokployの配備構成を選ぶ前、またはレシピ変更をレビューするとき。",
+      "category": "01 入口・学習",
+      "prerequisites": [
+        "docs/native/COMPANY.md"
+      ],
+      "next": [
+        "docs/native/ACCEPTANCE.md"
+      ],
+      "status": "active"
     }
   ]
 }
