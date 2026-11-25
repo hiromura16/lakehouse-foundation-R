@@ -69,6 +69,8 @@ python3 scripts/dokploy_capacity.py core-local --local-influx
 
 **隔離runnerの証拠。** 追加のGitHub-hosted PRジョブは、自分で作った固有プロジェクトと合成資格だけで、書込み・SQL応答、同じInfluxサービスの再起動前後の読取一致、固定リレーとPrometheus監視、ホストportがないことと後片付けを検査します。InfluxDB・監視サーバー類にはホストportを割り当てず、再起動の前に採った成功サンプルを再起動後の証拠に使いません。他の標準workflowは変えません。実行結果が出るまでは、この文書はその合格を主張しません。このジョブでも実際のWAN断、外部依存のないコールド起動、実環境のDokploy・CDC・機器・既存PoCは確認しません。
 
+**別の合成設備送り手。** 同じ隔離ジョブの一時クライアントは、既存のInfluxイメージIDと所有を確認した専用networkだけを使用し、ホスト公開・mount・外部取得なしで起動します。確定済みの[設備v1契約](SOURCES.md#設備時系列jsonl)から、合成2点の系列・UTC時刻・sequence・値・品質を別fixture用DBに投影し、再起動後は再送せず同じ値を照合します。同一系列・同時刻でsequenceが異なる入力は合成器で明示拒否し、実運用のInflux行同一性・重複処理・再送は規定しません。管理tokenは使い捨て試験だけに限定し、用途別の実機認可や設備プロトコル、Iceberg正本への取込、WAN断の証明ではありません。
+
 ## サービス別の棚卸しと暫定容量
 
 合成プランとは別に、 `dokploy_capacity.py` は、[開発用ロック](../../requirements-dev.lock)にあるPyYAMLを利用して追跡済みのCompose宣言を読み、同じ合成用Composeで有効になったサービスの上限だけを集計します。GitやVMから実際のEnvironment／実機容量を取りません。

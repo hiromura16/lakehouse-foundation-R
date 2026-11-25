@@ -14,6 +14,11 @@ on:  # yamllint disable-line rule:truthy
       - native/tools/setup.py
       - native/setup.py
       - scripts/influx_local_acceptance.py
+      - scripts/influx_equipment_fixture.py
+      - native/sensor_contract.py
+      - native/sensor.py
+      - contracts/native/sensor-event-v1.json
+      - tests/test_influx_equipment_fixture.py
       - tests/test_influx_local_acceptance.py
 
 permissions:
