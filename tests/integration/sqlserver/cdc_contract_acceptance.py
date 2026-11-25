@@ -56,8 +56,10 @@ def numeric_code(value):
 class CaptureNotReady(AssertionError):
     """DB名・ジョブ名・LSNを出さず、診断を定型化する。"""
 
-    def __init__(self, scanner_error=None):
+    def __init__(self, probe, scanner_present, scanner_error=None):
         super().__init__()
+        self.probe = probe
+        self.scanner_present = scanner_present
         self.scanner_error = scanner_error
 
 
@@ -156,9 +158,14 @@ def safe_failure(error):
             return "AGENT_SESSION_MISSING_NO_CERTIFICATE_ERROR"
         return "AGENT_SESSION_MISSING_LOG_UNAVAILABLE"
     if isinstance(error, CaptureNotReady):
+        scanner = (
+            "SCAN_SESSION" if error.scanner_present else "NO_SCAN_SESSION"
+        )
         if numeric_code(error.scanner_error):
-            return f"CDC_SCAN_ERROR_{error.scanner_error}"
-        return "NO_INITIALIZED_LSN_NO_SCAN_ERROR"
+            scanner += f"_ERROR_{error.scanner_error}"
+        else:
+            scanner += "_NO_ERROR"
+        return sibling_probe_summary(error.probe) + "/" + scanner
     if isinstance(error, AssertionError):
         return "ASSERTION_FAILED"
     return "UNEXPECTED_FAILURE"
@@ -327,18 +334,92 @@ def ensure_fixture_capture_started(settings, job_id, owned_database_guid):
     raise AssertionError
 
 
-def wait_for_live_sibling(settings):
-    """共有captureの実在だけでなく、初期化済みの開始位置を待つ。"""
-    deadline = monotonic() + 90
-    while monotonic() < deadline:
-        rows = execute(
+def lsn_status(name):
+    """固定SQL式のLSNを、生の値を返さない0/1/NULLに正規化する。"""
+    if name not in {"x.start_lsn", "f.minimum_lsn"}:
+        raise AssertionError
+    return (
+        f"CASE WHEN {name} IS NULL THEN NULL "
+        f"WHEN DATALENGTH({name})=10 AND "
+        f"{name}<>0x00000000000000000000 THEN 1 ELSE 0 END"
+    )
+
+
+def sibling_probe(settings):
+    """兄弟captureの行を先に絞り込み、失敗条件を隠さず観測する。"""
+    rows = execute(
+        settings,
+        "SELECT CASE WHEN t.object_id=OBJECT_ID(N'dbo.fixture_sibling',N'U') "
+        "THEN 1 ELSE 0 END,"
+        "CASE WHEN ct.object_id=OBJECT_ID(%s,N'U') THEN 1 ELSE 0 END,"
+        "t.is_tracked_by_cdc,x.has_drop_pending,"
+        + lsn_status("x.start_lsn")
+        + ","
+        + lsn_status("f.minimum_lsn")
+        + ",CASE WHEN x.start_lsn=f.minimum_lsn THEN 1 ELSE 0 END "
+        "FROM cdc.change_tables x "
+        "LEFT JOIN sys.tables t ON t.object_id=x.source_object_id "
+        "LEFT JOIN sys.tables ct ON ct.object_id=x.object_id "
+        "CROSS APPLY (VALUES (sys.fn_cdc_get_min_lsn(x.capture_instance))) "
+        "f(minimum_lsn) WHERE x.capture_instance COLLATE "
+        "Latin1_General_100_BIN2=%s",
+        ("[cdc].[" + SIBLING + "_CT]", SIBLING),
+    )
+    if len(rows) != 1:
+        return ()
+    observation = rows[0]
+    if len(observation) != 7:
+        return ()
+    sentinel = False
+    if observation[:2] == (1, 1):
+        # 名前・型・IDを照合できた隔離fixtureの変更表だけを読む。
+        sentinel = execute(
             settings,
-            "SELECT x.start_lsn FROM cdc.change_tables x JOIN sys.tables t "
-            "ON t.object_id=x.source_object_id WHERE x.capture_instance=%s "
-            "AND t.is_tracked_by_cdc=1 AND x.has_drop_pending=0",
-            (SIBLING,),
+            f"SELECT COUNT_BIG(*) FROM [cdc].[{SIBLING}_CT] "
+            "WHERE id=1 AND note=N'既存番兵' AND [__$operation]=2",
+        ) == [(1,)]
+    return (*observation, sentinel)
+
+
+def sibling_probe_summary(probe):
+    """生のLSNや識別子を含まない、固定の状態語だけに変換する。"""
+    if len(probe) != 8:
+        return "CAPTURE_CATALOG_NOT_SINGLE"
+    src, ct, tracked, pending, catalog, minimum, same, sentinel = probe
+    pending_state = (
+        "DROP_NONE"
+        if pending == 0
+        else "DROP_PENDING"
+        if pending == 1
+        else "DROP_UNKNOWN"
+    )
+
+    def init_state(value):
+        return "READY" if value == 1 else "NULL" if value is None else "ZERO"
+
+    return "+".join(
+        (
+            "SOURCE_OK" if src == 1 else "SOURCE_MISMATCH",
+            "CT_OK" if ct == 1 else "CT_MISMATCH",
+            "TRACKED" if tracked == 1 else "NOT_TRACKED",
+            pending_state,
+            "CATALOG_" + init_state(catalog),
+            "FN_" + init_state(minimum),
+            "LSNS_MATCH" if same == 1 else "LSNS_NOT_MATCHED",
+            "SENTINEL_CAPTURED"
+            if sentinel is True
+            else "SENTINEL_NOT_CAPTURED",
         )
-        if len(rows) == 1 and rows[0][0] not in (None, EMPTY_LSN):
+    )
+
+
+def wait_for_live_sibling(settings):
+    """最大90秒で、元表・変更表・有効LSNと実際の番兵を確認する。"""
+    deadline = monotonic() + 90
+    probe = ()
+    while monotonic() < deadline:
+        probe = sibling_probe(settings)
+        if probe == (1, 1, 1, 0, 1, 1, 1, True):
             return
         sleep(1)
     errors = execute(
@@ -346,7 +427,14 @@ def wait_for_live_sibling(settings):
         "SELECT TOP (1) error_number FROM sys.dm_cdc_errors "
         "ORDER BY entry_time DESC",
     )
-    raise CaptureNotReady(errors[0][0] if len(errors) == 1 else None)
+    scanner_present = execute(
+        settings,
+        "SELECT CASE WHEN EXISTS (SELECT 1 FROM sys.dm_cdc_log_scan_sessions "
+        "WHERE session_id>0) THEN 1 ELSE 0 END",
+    ) == [(1,)]
+    raise CaptureNotReady(
+        probe, scanner_present, errors[0][0] if len(errors) == 1 else None
+    )
 
 
 def sibling_state(settings):
