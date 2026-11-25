@@ -239,7 +239,10 @@ class ResourceTest(unittest.TestCase):
             ):
                 self.assertEqual(capacity.main([mode]), 0)
             normalize.assert_not_called()
-            self.assertEqual(json.loads(out.getvalue())["mode"], mode)
+            output = json.loads(out.getvalue())
+            self.assertEqual(output["mode"], mode)
+            self.assertEqual(output["static_status"], "NOT_IMPLEMENTED")
+            self.assertFalse(output["startup_verified"])
 
 
 @unittest.skipUnless(

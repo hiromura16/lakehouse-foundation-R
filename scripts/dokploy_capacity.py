@@ -395,6 +395,7 @@ def main(argv=None):
         for key in ("cdc", "alerting", "tools_metrics", "profile")
     }
     exit_status = 0
+    report_status = "PASS"
     try:
         reserve = {name: getattr(args, f"reserve_{name}") for name in RESERVES}
         if mode in (CATALOG, "all-lab", *plan.PLANNED):
@@ -407,6 +408,8 @@ def main(argv=None):
             output = {"modes": MODES, "legacy_compatibility_mode": LEGACY}
             if mode in (CATALOG, "all-lab"):
                 output["lab_choices"] = lab_choices()
+            if mode != CATALOG:
+                report_status = "NOT_IMPLEMENTED"
         else:
             limits = None
             if args.synthetic_capacity is not None:
@@ -444,9 +447,18 @@ def main(argv=None):
                         mode, options
                     )
                     exit_status = 3 if assessment == "deny" else 4
+                    report_status = (
+                        "INSUFFICIENT" if assessment == "deny" else "UNKNOWN"
+                    )
         print(
             json.dumps(
-                {"mode": mode, "scope": "synthetic-only", **output},
+                {
+                    "mode": mode,
+                    "scope": "synthetic-only",
+                    "static_status": report_status,
+                    "startup_verified": False,
+                    **output,
+                },
                 sort_keys=True,
             )
         )

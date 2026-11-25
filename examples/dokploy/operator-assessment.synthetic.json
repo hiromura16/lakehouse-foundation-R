@@ -1,0 +1,87 @@
+{
+  "version": 1,
+  "mode": "standard",
+  "capacity": {
+    "cpu_milli": 16000,
+    "memory_mib": 32768,
+    "disk_mib": 131072
+  },
+  "workload": {
+    "cpu_milli": {
+      "known_floor": 3000,
+      "complete": false
+    },
+    "memory_mib": {
+      "known_floor": 11168,
+      "complete": false
+    },
+    "disk_mib": {
+      "known_floor": null,
+      "complete": false
+    }
+  },
+  "reserves": {
+    "os": {
+      "cpu_milli": 1000,
+      "memory_mib": 2048,
+      "disk_mib": 8192
+    },
+    "docker": {
+      "cpu_milli": 500,
+      "memory_mib": 1024,
+      "disk_mib": 4096
+    },
+    "dokploy": {
+      "cpu_milli": 1000,
+      "memory_mib": 2048,
+      "disk_mib": 2048
+    },
+    "traefik": {
+      "cpu_milli": 500,
+      "memory_mib": 512,
+      "disk_mib": 1024
+    },
+    "existing_poc": {
+      "cpu_milli": null,
+      "memory_mib": null,
+      "disk_mib": null
+    },
+    "headroom": {
+      "cpu_milli": 2000,
+      "memory_mib": 0,
+      "disk_mib": 16384
+    }
+  },
+  "measured": {
+    "cpu_busy_pct": null,
+    "cpu_window_minutes": null,
+    "memory_available_mib": null,
+    "disk_free_mib": null,
+    "swap_in_delta_pages": null,
+    "swap_out_delta_pages": null,
+    "swap_window_minutes": null
+  },
+  "collisions": {
+    "project": {
+      "conflicts": null,
+      "complete": false
+    },
+    "container": {
+      "conflicts": null,
+      "complete": false
+    },
+    "network": {
+      "conflicts": null,
+      "complete": false
+    },
+    "volume": {
+      "conflicts": null,
+      "complete": false
+    },
+    "port": {
+      "conflicts": null,
+      "complete": false
+    }
+  },
+  "thresholds": {}
+}
