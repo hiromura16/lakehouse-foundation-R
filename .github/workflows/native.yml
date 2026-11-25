@@ -1,4 +1,4 @@
-name: Foundation R 標準構成の受入検査
+name: Foundation R 標準構成検証
 
 on:  # yamllint disable-line rule:truthy
   push:

@@ -448,4 +448,5 @@ HIGH 63件です。同じイメージを使う2つのPostgreSQLサービスは1�
 - 専用の空の検証projectで `tests/integration/native/acceptance.py` を実行し、センサー、公開世代の固定、読み書きトークンの分離、Grafanaのプロビジョニングを確認します。このテストは指定landingへ合成ファイルを書き込みます。
 - 会社の受入では、Git取得と認証、デーモンpull、BuildKitの依存取得、配置後の接続、実データと運用上限、バックアップからの復元をそれぞれ確認します。
 
-監視設定の検査は [Grafanaの設定変更手順](MONITORING.md) にあります。契約やソース変更をレビューする場合は、 [品質検査規約](../../CONTRIBUTING.md) とCIの `Foundation R 標準構成の受入検査` および既存の `Validate public source` を確認します。
+監視設定の検査は [Grafanaの設定変更手順](MONITORING.md) にあります。契約やソース変更をレビューする場合は、 [品質検査規約](../../CONTRIBUTING.md) とCIの `Foundation R 標準構成検証` および既存の `Validate public source` を確認します。
+この二つは別の検査です。標準構成検証はCI上でComposeを起動し、合成データで動作を確かめます。SAT（実際の配置先でのシステム受入）やUAT（利用者による受入）の代わりではありません。公開ソース検証は、リポジトリの静的な検査を行います。
