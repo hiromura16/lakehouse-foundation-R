@@ -1,7 +1,10 @@
 """閉域CDC受入の構成と実行時境界を合成データだけで検査する。"""
 
 import json
+import runpy
+import sys
 import unittest
+from copy import deepcopy
 from unittest.mock import Mock, patch
 
 from scripts import cdc_local_continuity as cdc
@@ -133,6 +136,121 @@ class ContinuityTest(unittest.TestCase):
                 self.assertRaises(cdc.AcceptanceError),
             ):
                 cdc.runtime_boundary(live_docker(**options), compose, PROJECT)
+
+    def test_closed_workload_separates_broker_and_sqlite_positions(self):
+        results = [
+            {
+                "raw_snapshot_id": snap,
+                "release_snapshot_id": str(snap + 10),
+                "broker_next_offset": offset,
+            }
+            for snap, offset in ((1, 10), (2, 11), (3, 12), (3, 12))
+        ]
+        compose = Mock(side_effect=map(json.dumps, results))
+        checkpoint = Mock()
+        cdc.verify_closed_workload(compose, checkpoint, "fixture source")
+        self.assertEqual(
+            [call.args[-1] for call in compose.call_args_list],
+            [
+                "continuity-insert",
+                "continuity-update",
+                "continuity-delete",
+                "continuity-confirm",
+            ],
+        )
+        self.assertEqual(
+            [call.args[0] for call in checkpoint.call_args_list],
+            [9, 10, 11, 11],
+        )
+
+    def test_cursor_mismatch_or_post_delete_generation_change_is_not_success(
+        self,
+    ):
+        results = [
+            {
+                "raw_snapshot_id": snap,
+                "release_snapshot_id": str(snap + 10),
+                "broker_next_offset": offset,
+            }
+            for snap, offset in ((1, 10), (2, 11), (3, 12), (3, 12))
+        ]
+        for position, field, value in (
+            (0, "broker_next_offset", 9),
+            (0, "broker_next_offset", 10.0),
+            (0, "broker_next_offset", True),
+            (0, "release_snapshot_id", "0"),
+            (0, "release_snapshot_id", "１２"),
+            (1, "raw_snapshot_id", 1),
+            (3, "release_snapshot_id", "44"),
+        ):
+            with self.subTest(field=field, position=position):
+                changed = [item.copy() for item in results]
+                changed[position][field] = value
+                with self.assertRaises(cdc.AcceptanceError):
+                    cdc.verify_closed_workload(
+                        Mock(side_effect=map(json.dumps, changed)),
+                        Mock(),
+                        "fixture source",
+                    )
+
+    def test_raw_verifies_exact_delivery_and_real_before_after(self):
+        # 受入コンテナ外ではKafkaクライアントを起動しない。
+        imports = {"confluent_kafka": Mock(), "native": Mock()}
+        with patch.dict(sys.modules, imports):
+            fixture = runpy.run_path(str(cdc.FIXTURES / "cdc_acceptance.py"))
+        verify = fixture["verify_continuity_raw"]
+        base = {**fixture["DATA"], "product_id": "CDC-CONTINUITY"}
+        first = {**base, "product_name": "Continuity initial"}
+        changed = {**base, "product_name": "Continuity updated"}
+        topic = "foundation_r.synthetic_sales.dbo.erp_products"
+        rows = [
+            {
+                "key_json": '{"product_id":"CDC-CONTINUITY"}',
+                "topic": topic,
+                "partition": "0",
+                "offset": str(offset),
+                "event_id": f'["{topic}",0,{offset}]',
+                "envelope_json": json.dumps(
+                    {
+                        "op": op,
+                        "source": {"event_serial_no": offset + 1},
+                        "before": before,
+                        "after": after,
+                    }
+                ),
+            }
+            for offset, op, before, after in (
+                (9, "c", None, first),
+                (10, "u", first, changed),
+                (11, "d", changed, None),
+            )
+        ]
+        live = [fixture["DATA"]]
+        verify(rows, live, 3)
+        for field, value in (
+            ("topic", topic + "_other"),
+            ("partition", "1"),
+            ("event_id", f'["{topic}",1,10]'),
+        ):
+            with self.subTest(field=field), self.assertRaises(AssertionError):
+                corrupt = deepcopy(rows)
+                corrupt[1][field] = value
+                verify(corrupt, live, 3)
+        for index, field, value in (
+            (0, "before", first),
+            (1, "before", changed),
+            (2, "before", first),
+            (2, "after", changed),
+        ):
+            with (
+                self.subTest(index=index, field=field),
+                self.assertRaises(AssertionError),
+            ):
+                corrupt = deepcopy(rows)
+                envelope = json.loads(corrupt[index]["envelope_json"])
+                envelope[field] = value
+                corrupt[index]["envelope_json"] = json.dumps(envelope)
+                verify(corrupt, live, 3)
 
     def test_outside_host_fails_before_docker(self):
         with (

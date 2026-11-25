@@ -164,6 +164,54 @@ def runtime_boundary(docker, compose, project):
     return ids, network_ids
 
 
+def verify_closed_workload(compose, checkpoint, body):
+    """同じ閉域のまま確定を個別に待ち、最後は読取だけで照合する。"""
+    previous = None
+    for phase, offset in (
+        ("continuity-insert", 9),
+        ("continuity-update", 10),
+        ("continuity-delete", 11),
+        ("continuity-confirm", 11),
+    ):
+        observation = json.loads(
+            compose(
+                "exec",
+                "-T",
+                "lakehouse",
+                "python",
+                "-",
+                phase,
+                timeout=130,
+                input_text=body,
+            )
+        )
+        require(
+            isinstance(observation, dict)
+            and set(observation)
+            == {
+                "raw_snapshot_id",
+                "release_snapshot_id",
+                "broker_next_offset",
+            }
+            and type(observation["raw_snapshot_id"]) is int
+            and observation["raw_snapshot_id"] > 0
+            and isinstance(observation["release_snapshot_id"], str)
+            and re.fullmatch(
+                r"[1-9][0-9]*", observation["release_snapshot_id"]
+            )
+            and type(observation["broker_next_offset"]) is int
+            and observation["broker_next_offset"] == offset + 1
+        )
+        checkpoint(offset)
+        raw = observation["raw_snapshot_id"]
+        release = observation["release_snapshot_id"]
+        if phase == "continuity-confirm":
+            require(previous == (raw, release))
+        elif previous is not None:
+            require(raw != previous[0] and release != previous[1])
+        previous = (raw, release)
+
+
 def exercise(stage):
     """別枠の合成資源で、閉域起動とbroker/consumer再開だけを観測する。"""
     project = f"foundation-r-cdc-local-ci-{secrets.token_hex(8)}"
@@ -289,6 +337,9 @@ def exercise(stage):
             input_text=body,
         )
         checkpoint(8)
+        phase = "CLOSED_WORKLOAD_AND_CURSORS"
+        verify_closed_workload(compose, checkpoint, body)
+        require(runtime_boundary(docker, compose, project) == before)
     except (
         AcceptanceError,
         OSError,
@@ -317,7 +368,7 @@ def exercise(stage):
                 failed = True
     if failed:
         return 1
-    print("PASS: closed synthetic CDC and cached broker/consumer resume")
+    print("PASS: closed CDC resume, INSERT/UPDATE/DELETE and cursor parity")
     return 0
 
 
