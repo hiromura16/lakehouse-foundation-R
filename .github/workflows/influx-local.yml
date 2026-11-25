@@ -1,0 +1,33 @@
+name: ローカルInfluxDBの隔離受入
+
+on:  # yamllint disable-line rule:truthy
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/influx-local.yml
+      - compose.yaml
+      - compose.influx.local.yaml
+      - native/Dockerfile.configured
+      - native/network/health-relay.conf
+      - native/monitoring/**
+      - native/tools/influx.Dockerfile
+      - native/tools/demo.py
+      - native/tools/setup.py
+      - native/setup.py
+      - scripts/influx_local_acceptance.py
+      - tests/test_influx_local_acceptance.py
+
+permissions:
+  contents: read
+
+jobs:
+  local-influx:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: 専用のvolumeとloopbackで書込・照会・再起動を照合
+        run: python3 -m scripts.influx_local_acceptance
