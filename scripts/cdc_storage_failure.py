@@ -245,16 +245,20 @@ def storage_case(docker, compose, project, original, checkpoint, body):
             == {"broker_next_offset": 9}
         )
 
-        stage = "RESTORED_BEFORE_RESUME"
+        stage = "RESTORE_START"
         docker("start", storage)
+        stage = "RESTORE_READINESS"
         wait_until(
             lambda: state(storage)["Health"]["Status"], "healthy", seconds=150
         )
         wait_until(probe, "HTTP_403")
+        stage = "RESTORE_OWNERSHIP"
         boundary("native-cdc")
         require(storage_volume(docker, storage, project) == owned_volume)
+        stage = "RESTORE_PENDING_CHECKPOINT"
         checkpoint(8)
-        require(evidence(fixture("storage-baseline"), 9) == before)
+        stage = "RESTORE_PENDING_GENERATION_AND_BROKER"
+        require(evidence(fixture("storage-restored"), 9) == before)
 
         stage = "EXACT_RECOVERY"
         docker("start", consumer)

@@ -1,6 +1,8 @@
 """障害を再試行や空の成功と取り違えないよう、制御順序を検査する。"""
 
 import json
+import runpy
+import sys
 import unittest
 from unittest.mock import Mock, call, patch
 
@@ -100,9 +102,7 @@ class StorageFailureTest(unittest.TestCase):
         stored = {"up": True}
         before = snapshot(1, "1", 9)
         after = snapshot(2, "2", 10)
-        baselines = iter(
-            (before, before if unpublished_same else (snapshot(2, "1", 9)))
-        )
+        restored = before if unpublished_same else snapshot(2, "1", 9)
 
         def docker(*args, **_):
             events.append(args)
@@ -121,7 +121,9 @@ class StorageFailureTest(unittest.TestCase):
             if phase == "-":
                 return "HTTP_403" if stored["up"] else "TCP_UNAVAILABLE"
             if phase == "storage-baseline":
-                return next(baselines)
+                return before
+            if phase == "storage-restored":
+                return restored
             if phase == "storage-publish":
                 status["State"].update(
                     Status="exited", ExitCode=1, Running=False, OOMKilled=False
@@ -170,7 +172,7 @@ class StorageFailureTest(unittest.TestCase):
             [
                 ("start", "storage-id"),
                 ("-",),
-                ("storage-baseline",),
+                ("storage-restored",),
             ],
         )
         self.assertEqual(events.count(("storage-publish",)), 1)
@@ -178,6 +180,46 @@ class StorageFailureTest(unittest.TestCase):
             checkpoint.call_args_list,
             [call(8), call(8), call(8), call(9), call(9)],
         )
+
+    def test_fixture_keeps_restored_event_pending_on_same_broker(self):
+        imports = {"confluent_kafka": Mock(), "native": Mock()}
+        source = outage.closed.FIXTURES / "cdc_acceptance.py"
+        with patch.dict(sys.modules, imports):
+            run_storage = runpy.run_path(str(source))["run_storage"]
+        fixture = run_storage.__globals__
+        core = fixture["api"].core_module.return_value
+        for phase, total, high, continuity in (
+            ("storage-baseline", 9, 9, None),
+            ("storage-restored", 9, 10, None),
+            ("storage-recovered", 10, 10, 1),
+        ):
+            with self.subTest(phase=phase):
+                check = Mock(return_value={"raw_snapshot_id": 1})
+                cursor = Mock(return_value=total)
+                with (
+                    patch.dict(
+                        fixture, {"check": check, "broker_committed": cursor}
+                    ),
+                    patch("builtins.print") as printed,
+                ):
+                    run_storage(phase)
+                product_names = [fixture["PRIOR_PRODUCT"]]
+                if continuity is not None:
+                    product_names.append(
+                        fixture["CONTINUITY"]["continuity-insert"][2]
+                    )
+                check.assert_called_once_with(
+                    core,
+                    total,
+                    product_names,
+                    continuity=continuity,
+                    snapshots=True,
+                )
+                cursor.assert_called_once_with(total, high=high)
+                self.assertEqual(
+                    json.loads(printed.call_args.args[0]),
+                    {"raw_snapshot_id": 1, "broker_next_offset": total},
+                )
 
     def test_uncertain_failure_or_changed_snapshot_never_resumes(self):
         for log, same in ((failure("ValueError"), True), (failure(), False)):

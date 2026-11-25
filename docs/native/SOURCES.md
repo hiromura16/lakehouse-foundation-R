@@ -403,6 +403,6 @@ docker compose -p "$project" --env-file "$site" -f compose.yaml -f compose.cdc.y
 
 運用上の別ゲート: リモート配送は別台帳で送信待ち、リモート確定、ローカルACKを区別する設計が必要です。毒データ隔離、再配送、順序・遅着削除、保持越えの欠損・滞留時刻など、[WAN設計](../reviews/zero-trust-dokploy-wan-recovery.md)の残りの受入は別に扱います。
 
-[別の閉域ストレージ障害受入](../../.github/workflows/cdc-storage-failure.yml)は、GitHubの使い捨てrunnerで合成SeaweedFSだけを停止します。brokerは稼働させたまま、到達不能を確認してから1件を発行します。Raw保存経路のI/O失敗とconsumerの異常終了、SQLiteとKafkaの位置据え置きをそれぞれ確認します。同じ保存先を先に復旧し、consumerを再開する前にRawと公開世代に変更がないことを照合します。その後、再送せず、同じconsumerで未処理の1件だけを取り込んで正しい現在値と確定位置になることを検査します。試験専用設定でのみconsumerの自動再起動を止め、稼働中のサイトや通常のCompose設定は変更しません。
+[別の閉域ストレージ障害受入](../../.github/workflows/cdc-storage-failure.yml)は、GitHubの使い捨てrunnerで合成SeaweedFSだけを停止します。brokerは稼働させたまま、到達不能を確認してから1件を発行します。Raw保存経路のI/O失敗とconsumerの異常終了、SQLiteとKafkaの位置据え置きをそれぞれ確認します。同じ保存先を先に復旧し、consumerを再開する前にRawと公開世代に変更がないことと、Kafkaの確定位置は据え置きでも末尾には未処理の1件が保持されていることを照合します。その後、再送せず、同じconsumerで未処理の1件だけを取り込んで正しい現在値と確定位置になることを検査します。試験専用設定でのみconsumerの自動再起動を止め、稼働中のサイトや通常のCompose設定は変更しません。
 
 この受入はRaw保存経路の障害に限ります。書込みRPCそのもの、Raw確定後の障害、実WAN断、外部送信の再開、サイトのストレージの耐久性は証明しません。保存失敗の工程と到達性を結び付けられない場合は成功にしません。

@@ -313,8 +313,13 @@ def run_storage(phase):
         )
         print("DELIVERED")
         return
+    # brokerのhigh watermarkと、既に反映・確認した件数は別物。
+    total, high = {
+        "storage-baseline": (9, 9),
+        "storage-restored": (9, 10),
+        "storage-recovered": (10, 10),
+    }[phase]
     recovered = phase == "storage-recovered"
-    total = 10 if recovered else 9
     products = [PRIOR_PRODUCT]
     if recovered:
         products.append(CONTINUITY["continuity-insert"][2])
@@ -325,7 +330,7 @@ def run_storage(phase):
         continuity=1 if recovered else None,
         snapshots=True,
     )
-    result["broker_next_offset"] = broker_committed(total, high=total)
+    result["broker_next_offset"] = broker_committed(total, high=high)
     print(json.dumps(result))
 
 
@@ -344,6 +349,7 @@ def main():
             "storage-old-cursor",
             "storage-publish",
             "storage-baseline",
+            "storage-restored",
             "storage-recovered",
         ],
     )
