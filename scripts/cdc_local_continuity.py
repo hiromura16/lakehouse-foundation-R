@@ -80,8 +80,9 @@ def config_boundary(model, project):
         )
 
 
-def runtime_boundary(docker, compose, project):
+def runtime_boundary(docker, compose, project, *, inactive=frozenset()):
     """実行された全コンテナ・networkの所有と非公開を照合する。"""
+    require(inactive <= {"storage", "native-cdc"})
     ids = {}
     attached = {}
     network_ids = {}
@@ -120,6 +121,12 @@ def runtime_boundary(docker, compose, project):
                 and value["State"]["ExitCode"] == 0
             )
             require(mapped in (set(), expected))
+        elif service in inactive:
+            require(
+                value["State"]["Running"] is False
+                and value["State"]["Status"] == "exited"
+                and mapped in (set(), expected)
+            )
         else:
             require(value["State"]["Running"] is True and mapped == expected)
             for key in nets:
@@ -159,7 +166,11 @@ def runtime_boundary(docker, compose, project):
         require(labels.get("com.docker.compose.project") == project)
         require(labels.get("com.docker.compose.network") == key)
         observed = set(value["Containers"])
-        stopped = {ids["catalog-migrate"]} if key == "catalog_db" else set()
+        stopped = {
+            ids[service]
+            for service in inactive | {"catalog-migrate"}
+            if key in NETWORKS[service]
+        }
         require(members <= observed <= members | stopped)
     return ids, network_ids
 
@@ -212,7 +223,7 @@ def verify_closed_workload(compose, checkpoint, body):
         previous = (raw, release)
 
 
-def exercise(stage):
+def exercise(stage, *, fixture=None, overlay=None):
     """別枠の合成資源で、閉域起動とbroker/consumer再開だけを観測する。"""
     project = f"foundation-r-cdc-local-ci-{secrets.token_hex(8)}"
     site = stage / "site.env"
@@ -227,7 +238,7 @@ def exercise(stage):
     }
     run([sys.executable, str(FIXTURES / "prepare_cdc.py"), str(stage)], env)
     base = ["docker", "compose", "-p", project, "--env-file", str(site)]
-    for path in FILES:
+    for path in FILES + ((overlay,) if overlay is not None else ()):
         base.extend(("-f", str(path)))
 
     def docker(*args, timeout=45):
@@ -256,6 +267,8 @@ def exercise(stage):
             compose("config", "--no-env-resolution", "--format", "json")
         )
         config_boundary(model, project)
+        if fixture is not None:
+            require(model["services"]["native-cdc"]["restart"] == "no")
         no_prior_resources(model, project, docker)
         phase = "PREPARE_IMAGES"
         compose(
@@ -303,43 +316,53 @@ def exercise(stage):
         phase = "LIVE_BOUNDARY_BEFORE"
         before = runtime_boundary(docker, compose, project)
         body = (FIXTURES / "cdc_acceptance.py").read_text(encoding="utf-8")
-        phase = "SYNTHETIC_WORKLOAD_BEFORE"
-        for action in ("first", "delete"):
+        if fixture is not None:
+            phase = "OWNED_STORAGE_FAILURE_AND_RECOVERY"
+            fixture(docker, compose, project, before, checkpoint, body)
+        else:
+            phase = "SYNTHETIC_WORKLOAD_BEFORE"
+            for action in ("first", "delete"):
+                compose(
+                    "exec",
+                    "-T",
+                    "lakehouse",
+                    "python",
+                    "-",
+                    action,
+                    timeout=110,
+                    input_text=body,
+                )
+            checkpoint(7)
+            phase = "CACHED_BROKER_AND_CONSUMER_RESUME"
+            compose("stop", "native-cdc", "test-broker", timeout=70)
+            checkpoint(7)
+            for service in ("test-broker", "native-cdc"):
+                compose(
+                    "up",
+                    "-d",
+                    "--no-deps",
+                    *cached,
+                    *wait,
+                    service,
+                    timeout=175,
+                )
+            phase = "LIVE_BOUNDARY_AFTER"
+            require(runtime_boundary(docker, compose, project) == before)
+            phase = "SYNTHETIC_WORKLOAD_AFTER"
             compose(
                 "exec",
                 "-T",
                 "lakehouse",
                 "python",
                 "-",
-                action,
+                "resume",
                 timeout=110,
                 input_text=body,
             )
-        checkpoint(7)
-        phase = "CACHED_BROKER_AND_CONSUMER_RESUME"
-        compose("stop", "native-cdc", "test-broker", timeout=70)
-        checkpoint(7)
-        for service in ("test-broker", "native-cdc"):
-            compose(
-                "up", "-d", "--no-deps", *cached, *wait, service, timeout=175
-            )
-        phase = "LIVE_BOUNDARY_AFTER"
-        require(runtime_boundary(docker, compose, project) == before)
-        phase = "SYNTHETIC_WORKLOAD_AFTER"
-        compose(
-            "exec",
-            "-T",
-            "lakehouse",
-            "python",
-            "-",
-            "resume",
-            timeout=110,
-            input_text=body,
-        )
-        checkpoint(8)
-        phase = "CLOSED_WORKLOAD_AND_CURSORS"
-        verify_closed_workload(compose, checkpoint, body)
-        require(runtime_boundary(docker, compose, project) == before)
+            checkpoint(8)
+            phase = "CLOSED_WORKLOAD_AND_CURSORS"
+            verify_closed_workload(compose, checkpoint, body)
+            require(runtime_boundary(docker, compose, project) == before)
     except (
         AcceptanceError,
         OSError,
@@ -368,18 +391,23 @@ def exercise(stage):
                 failed = True
     if failed:
         return 1
-    print("PASS: closed CDC resume, INSERT/UPDATE/DELETE and cursor parity")
+    if fixture is None:
+        print(
+            "PASS: closed CDC resume, INSERT/UPDATE/DELETE and cursor parity"
+        )
+    else:
+        print("PASS: closed CDC storage failure and exact recovery")
     return 0
 
 
-def main():
+def main(*, fixture=None, overlay=None):
     """他の環境ではDockerに触れず終了する。"""
     try:
         parent = check_runner(os.environ)
         with tempfile.TemporaryDirectory(
             prefix="r-cdc-ci-", dir=parent
         ) as stage:
-            return exercise(Path(stage))
+            return exercise(Path(stage), fixture=fixture, overlay=overlay)
     except (
         AcceptanceError,
         OSError,

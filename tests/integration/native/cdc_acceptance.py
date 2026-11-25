@@ -97,7 +97,7 @@ def event(table, operation, sequence, row, *, previous=None):
     )
 
 
-def publish(groups, *, previous=None):
+def publish(groups, *, previous=None, expected_delivery=None):
     """テスト用DockerのDNS名へイベントを発行し、配信確認を検査する。"""
     producer = Producer(
         {
@@ -107,11 +107,16 @@ def publish(groups, *, previous=None):
         }
     )
     errors = []
+    deliveries = []
 
-    def delivered(error, _):
+    def delivered(error, message):
         """イベントの原値を表示せず、配信の失敗を記録する。"""
         if error:
             errors.append(error)
+        elif expected_delivery is not None:
+            deliveries.append(
+                (message.topic(), message.partition(), message.offset())
+            )
 
     for table, key, events in groups:
         for operation, sequence, row in events:
@@ -123,11 +128,17 @@ def publish(groups, *, previous=None):
                 else None,
                 on_delivery=delivered,
             )
-    if producer.flush(15) or errors:
+    if (
+        producer.flush(15)
+        or errors
+        or (expected_delivery is not None and deliveries != expected_delivery)
+    ):
         raise RuntimeError("試験用ブローカーへの送信に失敗しました。")
 
 
-def check(core, expected_count, expected_product, *, continuity=None):
+def check(
+    core, expected_count, expected_product, *, continuity=None, snapshots=False
+):
     """整合した世代の公開を待ち、変更しないRawと照合する。"""
     catalog = core.catalog()
     for _ in range(90):
@@ -165,6 +176,7 @@ def check(core, expected_count, expected_product, *, continuity=None):
                 assert all(type(row["value_is_null"]) is bool for row in raw)
                 if continuity is not None:
                     verify_continuity_raw(raw, live, continuity)
+                if snapshots or continuity is not None:
                     raw_snapshot = engine.current_id(raw_table)
                     assert type(raw_snapshot) is int and raw_snapshot > 0
                     return {
@@ -235,7 +247,7 @@ def verify_continuity_raw(raw, live, sequence):
     )
 
 
-def broker_committed(expected):
+def broker_committed(expected, *, high=None):
     """購読・commitを行わず、同じ合成groupの次の位置を照会する。"""
     consumer = Consumer(
         {
@@ -253,6 +265,10 @@ def broker_committed(expected):
                 cursor = observed[0].offset
                 assert cursor <= expected
                 if cursor == expected:
+                    if high is not None:
+                        assert consumer.get_watermark_offsets(
+                            partitions[0], timeout=3, cached=False
+                        ) == (0, high)
                     return cursor
             time.sleep(1)
     finally:
@@ -282,6 +298,42 @@ def run_continuity(phase):
     print(json.dumps(result))
 
 
+def run_storage(phase):
+    """閉域S3試験で使用する合成イベントと読み取り専用の観測。"""
+    if phase == "storage-old-cursor":
+        print(json.dumps({"broker_next_offset": broker_committed(9, high=10)}))
+        return
+    if phase == "storage-publish":
+        label = CONTINUITY["continuity-insert"][2]
+        point = {**DATA, "product_id": CONTINUITY_ID, "product_name": label}
+        topic = f"{TOPIC_PREFIX}.erp_products"
+        publish(
+            [("erp_products", "product_id", [("c", 10, point)])],
+            expected_delivery=[(topic, 0, 9)],
+        )
+        print("DELIVERED")
+        return
+    # brokerのhigh watermarkと、既に反映・確認した件数は別物。
+    total, high = {
+        "storage-baseline": (9, 9),
+        "storage-restored": (9, 10),
+        "storage-recovered": (10, 10),
+    }[phase]
+    recovered = phase == "storage-recovered"
+    products = [PRIOR_PRODUCT]
+    if recovered:
+        products.append(CONTINUITY["continuity-insert"][2])
+    result = check(
+        api.core_module(),
+        total,
+        products,
+        continuity=1 if recovered else None,
+        snapshots=True,
+    )
+    result["broker_next_offset"] = broker_committed(total, high=high)
+    print(json.dumps(result))
+
+
 def main():
     """合成試験の1段階を実行し、期待するRaw・Silverの結果を待つ。"""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -294,9 +346,17 @@ def main():
             "business",
             *CONTINUITY,
             CONFIRM_PHASE,
+            "storage-old-cursor",
+            "storage-publish",
+            "storage-baseline",
+            "storage-restored",
+            "storage-recovered",
         ],
     )
     args = parser.parse_args()
+    if args.phase.startswith("storage-"):
+        run_storage(args.phase)
+        return
     if args.phase in (*CONTINUITY, CONFIRM_PHASE):
         run_continuity(args.phase)
         return
