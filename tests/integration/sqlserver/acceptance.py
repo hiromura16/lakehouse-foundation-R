@@ -13,6 +13,7 @@ from secrets import token_hex
 from unittest.mock import patch
 
 import pymssql
+from writer_acceptance import verify_fixed_writer
 
 ROOT = Path(__file__).resolve().parents[3]
 EXTRACT = ROOT / "scripts/extract-sqlserver.py"
@@ -288,6 +289,7 @@ def verify(stage, port):
             f"ALTER DATABASE [{DATABASE}] SET ALLOW_SNAPSHOT_ISOLATION OFF"
         )
     assert_rejection(launch_args("disabled"), "同時点読取が無効でした。")
+    verify_fixed_writer(connect, admin)
     print(
         "六表の同一時点・並行更新、型、完了印、TLSと権限の拒否を照合しました。"
     )
