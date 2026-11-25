@@ -64,6 +64,9 @@ openssl x509 -req -in "$stage/server.csr" -CA "$stage/ca.pem" \
 {
   printf 'MSSQL_SA_PASSWORD=Aa9!%s\n' "$(openssl rand -hex 24)"
   printf 'MSSQL_PID=Developer\nMSSQL_MEMORY_LIMIT_MB=2048\n'
+  if [[ "$mode" == cdc-contract ]]; then
+    printf 'MSSQL_AGENT_ENABLED=true\n'
+  fi
 } > "$stage/fixture.env"
 cat > "$stage/mssql.conf" <<'CONFIG'
 [network]

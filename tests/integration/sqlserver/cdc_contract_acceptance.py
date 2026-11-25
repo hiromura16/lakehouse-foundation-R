@@ -48,6 +48,27 @@ PUBLIC_CONTRACT_ERRORS = {
 }
 
 
+def numeric_code(value):
+    """SQLエラーで出力可能なのは固定範囲内の整数だけ。"""
+    return type(value) is int and 0 <= value <= 999999
+
+
+class CaptureNotReady(AssertionError):
+    """DB名・ジョブ名・LSNを出さず、診断を定型化する。"""
+
+    def __init__(self, scanner_error=None):
+        super().__init__()
+        self.scanner_error = scanner_error
+
+
+class AgentNotReady(AssertionError):
+    """Agentの新規セッション未確認と、限定したTLSシグナルを区別する。"""
+
+    def __init__(self, tls_observation):
+        super().__init__()
+        self.tls_observation = tls_observation
+
+
 @contextmanager
 def connect(settings, *, transactional=False):
     """読み取り側の既存一時CA設定で、合成ループバックだけに接続する。"""
@@ -120,7 +141,7 @@ def safe_failure(error):
     """診断は固定の種類・範囲内のエラー番号だけ。SQL例外本文は返さない。"""
     if isinstance(error, pymssql.Error):
         code = error.args[0] if error.args else None
-        if type(code) is int and 0 <= code <= 999999:
+        if numeric_code(code):
             return f"SQL_DRIVER_{code}"
         return "SQL_DRIVER_FAILURE"
     if isinstance(error, CONTRACT.ContractError):
@@ -128,6 +149,16 @@ def safe_failure(error):
         return (
             reason if reason in PUBLIC_CONTRACT_ERRORS else "CONTRACT_FAILURE"
         )
+    if isinstance(error, AgentNotReady):
+        if error.tls_observation is True:
+            return "AGENT_TLS_CERTIFICATE_ERROR"
+        if error.tls_observation is False:
+            return "AGENT_SESSION_MISSING_NO_CERTIFICATE_ERROR"
+        return "AGENT_SESSION_MISSING_LOG_UNAVAILABLE"
+    if isinstance(error, CaptureNotReady):
+        if numeric_code(error.scanner_error):
+            return f"CDC_SCAN_ERROR_{error.scanner_error}"
+        return "NO_INITIALIZED_LSN_NO_SCAN_ERROR"
     if isinstance(error, AssertionError):
         return "ASSERTION_FAILED"
     return "UNEXPECTED_FAILURE"
@@ -215,6 +246,87 @@ def seed_sibling(settings):
     execute(settings, "INSERT dbo.fixture_sibling VALUES (1,N'既存番兵')")
 
 
+def agent_certificate_error(settings):
+    """fixtureのAgentログから証明書失敗の有無だけを読み、本文は秘匿する。"""
+    try:
+        rows = execute(settings, "EXEC sys.sp_readerrorlog 0,2,N'certificate'")
+    except pymssql.Error:
+        return None
+    phrases = (
+        "certificate verify failed",
+        "certificate chain was issued by an authority that is not trusted",
+        "unable to get local issuer certificate",
+        "self-signed certificate",
+        "hostname mismatch",
+    )
+    return any(
+        isinstance(row[-1], str)
+        and any(phrase in row[-1].casefold() for phrase in phrases)
+        for row in rows
+        if row
+    )
+
+
+def wait_for_agent_session(settings):
+    """新規コンテナのAgentが現在のmsdbセッションを記録するまで待つ。"""
+    deadline = monotonic() + 30
+    while monotonic() < deadline:
+        ((session_id,),) = execute(
+            settings, "SELECT MAX(session_id) FROM msdb.dbo.syssessions"
+        )
+        if type(session_id) is int and session_id > 0:
+            return
+        sleep(1)
+    raise AgentNotReady(agent_certificate_error(settings))
+
+
+def capture_job_active(settings, job_id):
+    """対象DB・既知の捕捉ジョブ・現在のAgentセッションだけを観測する。"""
+    rows = execute(
+        settings,
+        "SELECT j.enabled,CASE WHEN a.start_execution_date IS NOT NULL "
+        "AND a.stop_execution_date IS NULL THEN 1 ELSE 0 END "
+        "FROM msdb.dbo.cdc_jobs c JOIN msdb.dbo.sysjobs j "
+        "ON c.job_id=j.job_id "
+        "LEFT JOIN msdb.dbo.sysjobactivity a ON a.job_id=j.job_id "
+        "AND a.session_id=(SELECT MAX(session_id) FROM msdb.dbo.syssessions) "
+        "WHERE c.database_id=DB_ID() AND c.job_type=N'capture' "
+        "AND j.job_id=CONVERT(uniqueidentifier,%s)",
+        (str(job_id),),
+    )
+    assert len(rows) == 1 and rows[0][0] == 1
+    return rows[0][1] == 1
+
+
+def ensure_fixture_capture_started(settings, job_id, owned_database_guid):
+    """隔離DBに生成した既知の捕捉ジョブだけを必要時に一度起動する。"""
+    assert settings["SOURCE_SQLSERVER_HOST"] == "localhost"
+    expected = settings["SOURCE_SQLSERVER_DATABASE"]
+    assert expected in {DATABASE, COLLISION_DB}
+    assert execute(settings, "SELECT DB_NAME()") == [(expected,)]
+    assert database_guid(settings) == owned_database_guid
+    deadline = monotonic() + 5
+    while monotonic() < deadline:
+        if capture_job_active(settings, job_id):
+            return
+        sleep(1)
+    try:
+        execute(settings, "EXEC sys.sp_cdc_start_job @job_type=N'capture'")
+    except pymssql.Error as error:
+        # 競合による二重起動は、対象ジョブが稼働中と読めた場合だけ許容。
+        if error.args[:1] != (22022,) or not capture_job_active(
+            settings, job_id
+        ):
+            raise
+        return
+    deadline = monotonic() + 15
+    while monotonic() < deadline:
+        if capture_job_active(settings, job_id):
+            return
+        sleep(1)
+    raise AssertionError
+
+
 def wait_for_live_sibling(settings):
     """共有captureの実在だけでなく、初期化済みの開始位置を待つ。"""
     deadline = monotonic() + 90
@@ -229,7 +341,12 @@ def wait_for_live_sibling(settings):
         if len(rows) == 1 and rows[0][0] not in (None, EMPTY_LSN):
             return
         sleep(1)
-    raise AssertionError("Incumbent capture was not initialized")
+    errors = execute(
+        settings,
+        "SELECT TOP (1) error_number FROM sys.dm_cdc_errors "
+        "ORDER BY entry_time DESC",
+    )
+    raise CaptureNotReady(errors[0][0] if len(errors) == 1 else None)
 
 
 def sibling_state(settings):
@@ -491,10 +608,17 @@ def verify(stage, port):
         )
         ensure_absent(admin)
 
-        phase = "CDC_SHARED_ANCHOR_PREPARED"
+        phase = "CDC_FIXTURE_AGENT_SESSION"
+        wait_for_agent_session(master)
+        phase = "CDC_SHARED_ANCHOR_CREATE"
         seed_sibling(admin)
-        wait_for_live_sibling(admin)
+        phase = "CDC_CAPTURE_AND_CLEANUP_JOBS"
         initial_jobs = jobs(admin)
+        phase = "CDC_CAPTURE_JOB_ACTIVITY"
+        ensure_fixture_capture_started(admin, initial_jobs["capture"][0], guid)
+        phase = "CDC_SIBLING_CAPTURE_LSN"
+        wait_for_live_sibling(admin)
+        phase = "CDC_SIBLING_BASELINE"
         initial_sibling = sibling_state(admin)
         initial_options = database_baseline(admin)
 
@@ -604,10 +728,18 @@ def verify(stage, port):
 
         phase = "CDC_UNOWNED_COLLISION_PRESERVED"
         execute(master, f"CREATE DATABASE [{COLLISION_DB}]")
+        collision_guid = database_guid(collision)
         execute(collision, "EXEC sys.sp_cdc_enable_db")
         seed_sibling(collision)
-        wait_for_live_sibling(collision)
+        phase = "CDC_COLLISION_JOBS"
         collision_jobs = jobs(collision)
+        phase = "CDC_COLLISION_JOB_ACTIVITY"
+        ensure_fixture_capture_started(
+            collision, collision_jobs["capture"][0], collision_guid
+        )
+        phase = "CDC_COLLISION_CAPTURE_LSN"
+        wait_for_live_sibling(collision)
+        phase = "CDC_COLLISION_NAMESPACE"
         collision_sibling = sibling_state(collision)
         execute(
             collision, f"CREATE SCHEMA [{CONTRACT.SCHEMA}] AUTHORIZATION dbo"
@@ -622,7 +754,7 @@ def verify(stage, port):
         require_contract_denial(
             collision,
             COLLISION_DB,
-            database_guid(collision),
+            collision_guid,
             installation,
             "NAMESPACE_COLLISION",
         )
