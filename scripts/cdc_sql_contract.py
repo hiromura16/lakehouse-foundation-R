@@ -200,23 +200,33 @@ def jobs(cursor):
 
 def incumbents(cursor):
     """別系統の実在・有効・初期化済みcaptureを共有ジョブの前提にする。"""
+    # SQL Server 2022の有効captureでNULLを観測した。NULL単独では
+    # 稼働の証拠にせず、追跡済み実表・変更表・LSNの全条件を要求する。
     rows = query(
         cursor,
         "SELECT x.source_object_id,x.object_id,x.capture_instance,"
-        "x.create_date "
+        "x.create_date,src.schema_id,src.name,ct.name "
         "FROM cdc.change_tables x WITH (HOLDLOCK) "
         "JOIN sys.tables src ON src.object_id=x.source_object_id "
         "JOIN sys.tables ct ON ct.object_id=x.object_id "
         "WHERE src.is_tracked_by_cdc=1 AND ct.schema_id=SCHEMA_ID(N'cdc') "
-        "AND x.has_drop_pending=0 AND x.start_lsn IS NOT NULL "
+        "AND ct.name COLLATE Latin1_General_100_BIN2="
+        "(x.capture_instance+N'_CT') COLLATE Latin1_General_100_BIN2 "
+        "AND (x.has_drop_pending=0 OR x.has_drop_pending IS NULL) "
+        "AND DATALENGTH(x.start_lsn)=10 "
         "AND x.start_lsn<>0x00000000000000000000 "
+        "AND x.start_lsn=sys.fn_cdc_get_min_lsn(x.capture_instance) "
         "AND src.schema_id<>ISNULL(SCHEMA_ID(%s),-1) "
         "AND x.capture_instance COLLATE Latin1_General_100_CI_AI "
         "NOT LIKE N'foundation[_]r[_]demo[_]%%' ORDER BY x.source_object_id,"
         "x.object_id",
         (SCHEMA,),
     )
-    if not rows:
+    if (
+        not rows
+        or len({row[1] for row in rows}) != len(rows)
+        or len({row[2] for row in rows}) != len(rows)
+    ):
         raise ContractError("LIVE_INCUMBENT_CAPTURE_REQUIRED")
     return rows
 
@@ -242,7 +252,8 @@ def namespace(cursor):
     captures = query(
         cursor,
         "SELECT x.source_object_id,x.object_id,x.capture_instance,x.role_name,"
-        "x.index_name,x.supports_net_changes,x.has_drop_pending,x.create_date "
+        "x.index_name,x.supports_net_changes,COALESCE(x.has_drop_pending,0),"
+        "x.create_date "
         "FROM cdc.change_tables x LEFT JOIN sys.objects o "
         "ON o.object_id=x.source_object_id "
         "WHERE o.schema_id=SCHEMA_ID(%s) OR "
@@ -319,6 +330,16 @@ def inspect_table(cursor, table, object_id, columns):
     )
     if key != ((pk_name(table), columns[0].name, 1, 1, 0, 0),):
         raise ContractError("TABLE_KEY_MISMATCH")
+
+
+def owned_capture_matches(row, expected_source, table):
+    """所有済みcaptureはLSN未初期化でも構成の一致が必要。"""
+    return row[0] == expected_source and row[3:7] == (
+        READER_ROLE,
+        pk_name(table),
+        0,
+        0,
+    )
 
 
 def inspect(cursor, installation_id):
@@ -412,12 +433,7 @@ def inspect(cursor, installation_id):
     for table, columns in TABLES.items():
         capture = capture_name(table)
         row = by_name[capture]
-        if row[0] != expected_objects[table] or row[3:7] != (
-            READER_ROLE,
-            pk_name(table),
-            0,
-            0,
-        ):
+        if not owned_capture_matches(row, expected_objects[table], table):
             raise ContractError("CAPTURE_IDENTITY_MISMATCH")
         actual_columns = query(
             cursor,

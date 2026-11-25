@@ -193,8 +193,10 @@ class ContractTests(unittest.TestCase):
                 "JOIN sys.tables src",
                 "JOIN sys.tables ct",
                 "src.is_tracked_by_cdc=1",
-                "x.has_drop_pending=0",
-                "x.start_lsn IS NOT NULL",
+                "(x.has_drop_pending=0 OR x.has_drop_pending IS NULL)",
+                "DATALENGTH(x.start_lsn)=10",
+                "ct.name COLLATE Latin1_General_100_BIN2",
+                "x.start_lsn=sys.fn_cdc_get_min_lsn(x.capture_instance)",
                 "x.start_lsn<>0x00000000000000000000",
                 "src.schema_id<>",
                 "NOT LIKE",
@@ -224,6 +226,42 @@ class ContractTests(unittest.TestCase):
                     apply=True,
                 )
         connection.commit.assert_not_called()
+
+    def test_owned_only_normalizes_null_drop_and_rejects_positive(self):
+        cursor = Mock()
+        with patch.object(SQL, "query", return_value=()) as call:
+            SQL.namespace(cursor)
+        sku = call.call_args_list[2].args[1]
+        self.assertIn("COALESCE(x.has_drop_pending,0)", sku)
+        expected = (
+            42,
+            96,
+            SQL.capture_name("products"),
+            SQL.READER_ROLE,
+            SQL.pk_name("products"),
+            0,
+            0,
+            "fixture-date",
+        )
+        self.assertTrue(SQL.owned_capture_matches(expected, 42, "products"))
+        self.assertFalse(SQL.owned_capture_matches(expected, 43, "products"))
+        self.assertFalse(
+            SQL.owned_capture_matches(
+                (*expected[:6], 1, *expected[7:]), 42, "products"
+            )
+        )
+
+    def test_incumbent_rejects_duplicate_ct_or_capture_identity(self):
+        one = (1, 2, "first", "stamp", 6, "source", "ct")
+        for rows in ((), (one, one), (one, (4, 2, "second"))):
+            with (
+                self.subTest(count=len(rows)),
+                patch.object(SQL, "query", return_value=rows),
+                self.assertRaisesRegex(
+                    SQL.ContractError, "LIVE_INCUMBENT_CAPTURE_REQUIRED"
+                ),
+            ):
+                SQL.incumbents(Mock())
 
     def test_cli_uses_explicit_identity_and_redacts_native_errors(self):
         source = Mock()

@@ -413,13 +413,21 @@ def sibling_probe_summary(probe):
     )
 
 
+def sibling_probe_ready(probe):
+    """物理照合・実LSN・番兵を伴う場合だけ、未記録のdropを許容する。"""
+    return probe in (
+        (1, 1, 1, 0, 1, 1, 1, True),
+        (1, 1, 1, None, 1, 1, 1, True),
+    )
+
+
 def wait_for_live_sibling(settings):
     """最大90秒で、元表・変更表・有効LSNと実際の番兵を確認する。"""
     deadline = monotonic() + 90
     probe = ()
     while monotonic() < deadline:
         probe = sibling_probe(settings)
-        if probe == (1, 1, 1, 0, 1, 1, 1, True):
+        if sibling_probe_ready(probe):
             return
         sleep(1)
     errors = execute(
