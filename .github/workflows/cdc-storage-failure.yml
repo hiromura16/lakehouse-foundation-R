@@ -1,0 +1,36 @@
+name: 閉域CDCのストレージ障害と復旧
+
+on:  # yamllint disable-line rule:truthy
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/cdc-storage-failure.yml
+      - compose.yaml
+      - compose.cdc.yaml
+      - native/**
+      - infra/cdc/**
+      - tests/integration/native/compose.broker.yaml
+      - tests/integration/native/compose.cdc-continuity.yaml
+      - tests/integration/native/compose.cdc-storage-failure.yaml
+      - tests/integration/native/cdc_acceptance.py
+      - tests/integration/native/cdc_checkpoint.py
+      - tests/integration/native/prepare_cdc.py
+      - tests/test_cdc_storage_failure.py
+      - scripts/cdc_local_continuity.py
+      - scripts/cdc_storage_failure.py
+      - scripts/influx_local_acceptance.py
+
+permissions:
+  contents: read
+
+jobs:
+  storage-failure-recovery:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: S3障害時の確定位置と同一資源からの復旧
+        run: python3 -m scripts.cdc_storage_failure

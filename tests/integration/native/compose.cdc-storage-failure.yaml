@@ -1,0 +1,4 @@
+# 使い捨て閉域CIで、consumerの異常終了を自動再試行で隠さない。
+services:
+  native-cdc:
+    restart: "no"
