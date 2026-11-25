@@ -1,0 +1,46 @@
+name: 閉域CDCのconsumer単独停止と再開
+
+on:  # yamllint disable-line rule:truthy
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/cdc-consumer-pause.yml
+      - .dockerignore
+      - compose.yaml
+      - compose.cdc.yaml
+      - contracts/native/**
+      - medallion/**
+      - native/**
+      - infra/cdc/**
+      - infra/proxy/**
+      - tests/integration/native/compose.broker.yaml
+      - tests/integration/native/compose.cdc-continuity.yaml
+      - tests/integration/native/compose.cdc-storage-failure.yaml
+      - tests/integration/native/cdc_acceptance.py
+      - tests/integration/native/cdc_checkpoint.py
+      - tests/integration/native/prepare_cdc.py
+      - tests/test_cdc_consumer_pause.py
+      - scripts/cdc_consumer_pause.py
+      - scripts/cdc_local_continuity.py
+      - scripts/cdc_storage_failure.py
+      - scripts/influx_local_acceptance.py
+      - scripts/raw_file_input.py
+      - scripts/landing_contract.py
+      - scripts/generate-demo.py
+      - scripts/source_scenarios.py
+      - scripts/sql_batch_worker.py
+
+permissions:
+  contents: read
+
+jobs:
+  consumer-pause-recovery:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: consumerのみの停止中の入力と同じ資源での正確な再開
+        run: python3 -m scripts.cdc_consumer_pause
