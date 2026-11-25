@@ -361,7 +361,7 @@ class OutboxTest(unittest.TestCase):
         ):
             with self.subTest(index=index):
                 temp = self.root / f"readback-{index}"
-                temp.mkdir()
+                temp.mkdir(mode=0o700)
                 queue = outbox.Outbox(
                     temp / "outbox.sqlite", clock=lambda: self.now
                 )
