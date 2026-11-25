@@ -68,10 +68,19 @@ CONTINUITY_ID = "CDC-CONTINUITY"
 PRIOR_PRODUCT = "Reinserted after restart"
 CONTINUITY = {
     "continuity-insert": ("c", 10, "Continuity initial", 10),
-    "continuity-update": ("u", 11, "Continuity updated", 11),
-    "continuity-delete": ("d", 12, "Continuity updated", 12),
+    "continuity-update": ("u", 12, "Continuity updated", 11),
+    "continuity-delete": ("d", 14, "Late update after delete", 12),
 }
 CONFIRM_PHASE = "continuity-confirm"
+ORDER_LATE = "continuity-late-update"
+ORDER_DUPLICATE = "continuity-duplicate"
+ORDER_CONFIRM = "continuity-order-confirm"
+ORDERING = (ORDER_LATE, ORDER_DUPLICATE, ORDER_CONFIRM)
+PRODUCTS_TOPIC = f"{TOPIC_PREFIX}.erp_products"
+LATE_OFFSET, DUPLICATE_OFFSET = 12, 13
+LATE_SERIAL = 13
+RESUME_SERIAL = 5
+RESUME_OFFSET = 8
 
 
 def event(table, operation, sequence, row, *, previous=None):
@@ -148,6 +157,7 @@ def check(
     continuity=None,
     snapshots=False,
     note_stage=ignore_stage,
+    ordering=False,
 ):
     """整合した世代の公開を待ち、変更しないRawと照合する。"""
     note_stage("CATALOG")
@@ -192,7 +202,18 @@ def check(
                 assert deleted == ([6] if expected_count >= 8 else [])
                 assert all(type(row["value_is_null"]) is bool for row in raw)
                 if continuity is not None:
-                    verify_continuity_raw(raw, live, continuity)
+                    prior = (
+                        [
+                            row
+                            for row in raw
+                            if int(row["offset"]) < LATE_OFFSET
+                        ]
+                        if ordering
+                        else raw
+                    )
+                    verify_continuity_raw(prior, live, continuity)
+                if ordering:
+                    verify_ordering_raw(raw, expected_count)
                 if snapshots or continuity is not None:
                     note_stage("SNAPSHOT_SHAPE")
                     raw_snapshot = engine.current_id(raw_table)
@@ -248,7 +269,8 @@ def verify_continuity_raw(raw, live, sequence):
         )
         assert envelope["op"] == operation
         assert envelope["source"]["event_serial_no"] == serial
-        assert envelope["before"] == previous
+        before = late_images()[1] if operation == "d" else previous
+        assert envelope["before"] == before
         after = (
             None
             if operation == "d"
@@ -377,6 +399,85 @@ def run_storage(phase):
         raise SystemExit(1) from None
 
 
+def late_images():
+    """版13は版14の削除より前で、版12の更新と別のイベント。"""
+    base = {**DATA, "product_id": CONTINUITY_ID}
+    before = {**base, "product_name": CONTINUITY["continuity-update"][2]}
+    after = {**base, "product_name": CONTINUITY["continuity-delete"][2]}
+    return before, after
+
+
+def resume_row():
+    """削除順序試験と独立した、既存商品の再INSERTをそのまま再利用。"""
+    return {**DATA, "product_name": PRIOR_PRODUCT}
+
+
+def verify_ordering_raw(raw, total):
+    """Kafka上の配送と上流の論理イベントを混同せず、両方を照合する。"""
+    by_offset = {int(row["offset"]): row for row in raw}
+    assert len(by_offset) == len(raw) == total
+
+    def delivery(offset, target, payload):
+        """異なる配送位置と、非NULLの元のキー・本文を照合する。"""
+        row = by_offset[offset]
+        assert row["topic"] == PRODUCTS_TOPIC and row["partition"] == "0"
+        assert row["event_id"] == json.dumps(
+            [PRODUCTS_TOPIC, 0, offset], separators=(",", ":")
+        )
+        assert json.loads(row["key_json"]) == {"product_id": target}
+        assert row["value_is_null"] is False
+        assert row["envelope_json"] == payload
+
+    before, after = late_images()
+    assert before != after
+    delivery(
+        LATE_OFFSET,
+        CONTINUITY_ID,
+        event("erp_products", "u", LATE_SERIAL, after, previous=before),
+    )
+    if total == DUPLICATE_OFFSET + 1:
+        # 同一の上流操作・LSN・シリアル・本文を、異なるKafka配送で保持。
+        payload = event("erp_products", "c", RESUME_SERIAL, resume_row())
+        for offset in (RESUME_OFFSET, DUPLICATE_OFFSET):
+            delivery(offset, DATA["product_id"], payload)
+
+
+def run_ordering(phase):
+    """発行後はbrokerの確認を待ってから確定済み世代を読み取る。"""
+    offset = LATE_OFFSET
+    if phase == ORDER_LATE:
+        before, after = late_images()
+        publish(
+            [("erp_products", "product_id", [("u", LATE_SERIAL, after)])],
+            previous=before,
+            expected_delivery=[(PRODUCTS_TOPIC, 0, offset)],
+        )
+    else:
+        offset = DUPLICATE_OFFSET
+        if phase == ORDER_DUPLICATE:
+            publish(
+                [
+                    (
+                        "erp_products",
+                        "product_id",
+                        [("c", RESUME_SERIAL, resume_row())],
+                    )
+                ],
+                expected_delivery=[(PRODUCTS_TOPIC, 0, offset)],
+            )
+    expected = offset + 1
+    cursor = broker_committed(expected, high=expected)
+    result = check(
+        api.core_module(),
+        expected,
+        [PRIOR_PRODUCT],
+        continuity=3,
+        ordering=True,
+    )
+    result["broker_next_offset"] = cursor
+    print(json.dumps(result))
+
+
 def main():
     """合成試験の1段階を実行し、期待するRaw・Silverの結果を待つ。"""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -389,6 +490,7 @@ def main():
             "business",
             *CONTINUITY,
             CONFIRM_PHASE,
+            *ORDERING,
             "storage-old-cursor",
             "storage-publish",
             "storage-baseline",
@@ -397,6 +499,9 @@ def main():
         ],
     )
     args = parser.parse_args()
+    if args.phase in ORDERING:
+        run_ordering(args.phase)
+        return
     if args.phase.startswith("storage-"):
         run_storage(args.phase)
         return
@@ -435,7 +540,7 @@ def main():
             [],
         ),
         "resume": (
-            [("c", 5, {**DATA, "product_name": "Reinserted after restart"})],
+            [("c", RESUME_SERIAL, resume_row())],
             9,
             ["Reinserted after restart"],
         ),

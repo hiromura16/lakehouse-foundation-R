@@ -4,9 +4,11 @@ import json
 import os
 import re
 import secrets
+import sqlite3
 import subprocess
 import sys
 import tempfile
+from contextlib import closing
 from pathlib import Path
 
 from native.setup import initialize
@@ -208,23 +210,52 @@ def observe_workload(compose, checkpoint, body, phase, offset):
     return observation["raw_snapshot_id"], observation["release_snapshot_id"]
 
 
-def verify_closed_workload(compose, checkpoint, body):
+def ordering_state(path):
+    """使い捨てSQLiteから合成2キーの版・内容・由来だけを読み取る。"""
+    with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True)) as db:
+        rows = db.execute(
+            "SELECT row_key, version, row_json, source_hash, ingested_at "
+            "FROM current_rows WHERE table_name = ? AND row_key IN (?, ?)",
+            ("erp_products", "CDC-CONTINUITY", "CDC-P1"),
+        ).fetchall()
+    result = {row[0]: row[1:] for row in rows}
+    require(set(result) == {"CDC-CONTINUITY", "CDC-P1"})
+    deleted = result["CDC-CONTINUITY"]
+    live = result["CDC-P1"]
+    require(
+        json.loads(deleted[0]) == [1, 1, 1, 1, 1, 1, 14, 14]
+        and deleted[1] is None
+        and json.loads(live[0]) == [1, 1, 1, 1, 1, 1, 5, 5]
+        and json.loads(live[1])["product_name"] == "Reinserted after restart"
+    )
+    return result
+
+
+def verify_closed_workload(compose, checkpoint, body, read_current):
     """同じ閉域のまま確定を個別に待ち、最後は読取だけで照合する。"""
     previous = None
+    ordering_baseline = None
     for phase, offset in (
         ("continuity-insert", 9),
         ("continuity-update", 10),
         ("continuity-delete", 11),
         ("continuity-confirm", 11),
+        ("continuity-late-update", 12),
+        ("continuity-duplicate", 13),
+        ("continuity-order-confirm", 13),
     ):
         raw, release = observe_workload(
             compose, checkpoint, body, phase, offset
         )
-        if phase == "continuity-confirm":
+        if phase in {"continuity-confirm", "continuity-order-confirm"}:
             require(previous == (raw, release))
         elif previous is not None:
             require(raw != previous[0] and release != previous[1])
         previous = (raw, release)
+        if phase == "continuity-confirm":
+            ordering_baseline = read_current()
+        elif offset >= 12:
+            require(read_current() == ordering_baseline)
 
 
 def exercise(stage, *, fixture=None, overlay=None, fixture_name="STORAGE"):
@@ -365,7 +396,12 @@ def exercise(stage, *, fixture=None, overlay=None, fixture_name="STORAGE"):
             )
             checkpoint(8)
             phase = "CLOSED_WORKLOAD_AND_CURSORS"
-            verify_closed_workload(compose, checkpoint, body)
+            verify_closed_workload(
+                compose,
+                checkpoint,
+                body,
+                lambda: ordering_state(stage / "state/state.sqlite3"),
+            )
             require(runtime_boundary(docker, compose, project) == before)
     except (
         AcceptanceError,
@@ -375,6 +411,7 @@ def exercise(stage, *, fixture=None, overlay=None, fixture_name="STORAGE"):
         TypeError,
         AttributeError,
         subprocess.SubprocessError,
+        sqlite3.Error,
     ):
         print(f"FAIL: {phase}", file=sys.stderr)
         failed = True
@@ -397,7 +434,7 @@ def exercise(stage, *, fixture=None, overlay=None, fixture_name="STORAGE"):
         return 1
     if fixture is None:
         print(
-            "PASS: closed CDC resume, INSERT/UPDATE/DELETE and cursor parity"
+            "PASS: closed CDC resume, I/U/D, late UPDATE, duplicate, cursors"
         )
     else:
         print(
