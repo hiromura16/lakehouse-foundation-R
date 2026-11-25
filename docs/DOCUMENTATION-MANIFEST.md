@@ -78,6 +78,7 @@
 | [Foundation Rのゼロトラスト・Dokploy・WAN断耐性の差分レビュー](<reviews/zero-trust-dokploy-gap-analysis.md>) | 追跡済み構成を棚卸しし、オンプレの自律運転を守る設計と段階的な受入条件を決める。 | Dokployの配備モードや人アクセス、WAN断耐性の変更を設計・レビューするとき。 | active |
 | [宣言台帳: Compose資源・イメージ・供給元](<reviews/zero-trust-dokploy-inventory.md>) | 追跡済みComposeの資源、上限と外部供給の前提を確認する。 | Foundation Rの配備とアクセス分離を設計・レビューするとき。 | active |
 | [脅威と受入試験の対応表](<reviews/zero-trust-dokploy-threat-test.md>) | 障害・認証・データ保全上の脅威から合格証拠までを追跡する。 | Foundation Rの配備とアクセス分離を設計・レビューするとき。 | active |
+| [WAN断の継続・容量・再送設計](<reviews/zero-trust-dokploy-wan-recovery.md>) | WAN断中のローカル処理、容量の仮定、復旧時の再送と検証を設計する。 | Foundation Rの配備とアクセス分離を設計・レビューするとき。 | active |
 
 ## 読者から探す
 
@@ -136,6 +137,7 @@
 | [Foundation Rのゼロトラスト・Dokploy・WAN断耐性の差分レビュー](<reviews/zero-trust-dokploy-gap-analysis.md>) | 追跡済み構成を棚卸しし、オンプレの自律運転を守る設計と段階的な受入条件を決める。 |
 | [宣言台帳: Compose資源・イメージ・供給元](<reviews/zero-trust-dokploy-inventory.md>) | 追跡済みComposeの資源、上限と外部供給の前提を確認する。 |
 | [脅威と受入試験の対応表](<reviews/zero-trust-dokploy-threat-test.md>) | 障害・認証・データ保全上の脅威から合格証拠までを追跡する。 |
+| [WAN断の継続・容量・再送設計](<reviews/zero-trust-dokploy-wan-recovery.md>) | WAN断中のローカル処理、容量の仮定、復旧時の再送と検証を設計する。 |
 | [日次生産Goldをmarimoで再現する](<../examples/marimo/README.md>) | 承認済みのGoldを別環境で確認し、工場別の日次生産と歩留まりを再集計します。 |
 | [Rillで工場別の日次生産を探索する](<../examples/rill/README.md>) | 承認した日次生産Goldから、工場と期間を切り替えてKPIを確認します。 |
 
@@ -163,6 +165,7 @@
 | [Foundation Rのゼロトラスト・Dokploy・WAN断耐性の差分レビュー](<reviews/zero-trust-dokploy-gap-analysis.md>) | 追跡済み構成を棚卸しし、オンプレの自律運転を守る設計と段階的な受入条件を決める。 |
 | [宣言台帳: Compose資源・イメージ・供給元](<reviews/zero-trust-dokploy-inventory.md>) | 追跡済みComposeの資源、上限と外部供給の前提を確認する。 |
 | [脅威と受入試験の対応表](<reviews/zero-trust-dokploy-threat-test.md>) | 障害・認証・データ保全上の脅威から合格証拠までを追跡する。 |
+| [WAN断の継続・容量・再送設計](<reviews/zero-trust-dokploy-wan-recovery.md>) | WAN断中のローカル処理、容量の仮定、復旧時の再送と検証を設計する。 |
 
 ### 開発・設計担当
 
@@ -177,6 +180,7 @@
 | [Foundation Rのゼロトラスト・Dokploy・WAN断耐性の差分レビュー](<reviews/zero-trust-dokploy-gap-analysis.md>) | 追跡済み構成を棚卸しし、オンプレの自律運転を守る設計と段階的な受入条件を決める。 |
 | [宣言台帳: Compose資源・イメージ・供給元](<reviews/zero-trust-dokploy-inventory.md>) | 追跡済みComposeの資源、上限と外部供給の前提を確認する。 |
 | [脅威と受入試験の対応表](<reviews/zero-trust-dokploy-threat-test.md>) | 障害・認証・データ保全上の脅威から合格証拠までを追跡する。 |
+| [WAN断の継続・容量・再送設計](<reviews/zero-trust-dokploy-wan-recovery.md>) | WAN断中のローカル処理、容量の仮定、復旧時の再送と検証を設計する。 |
 
 ## 文書を追加・変更するとき
 

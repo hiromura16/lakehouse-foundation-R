@@ -20,8 +20,8 @@
 
 1. `core-local` を他のモードに先行させる。起動・liveness/readinessはローカル依存だけ。外部到達異常は別の `cloud-degraded` 指標とする。WAN断中の再起動は実機で必要イメージ・ローカルDNS・証明書・brokerの継続を確認して判断する。
 2. Dokployの対象Composeアプリを通常配備の正本とし、Gitの追跡済みComposeから明示的なmode合成と事前計画を作る。ルートを合成ComposeラベルとDomainsの両方に持たない。既存分割と整合するため **Dokploy Domains** を第一候補にし、対象版のPreviewで必要なら別案を再決定する。
-3. 人向けは別ホスト名単位の Access + Tunnel + Traefik + アプリRBAC。配置前に保護と許可集団を確認し、VM/別hostname/別entrypointへの迂回を否定する。業務継続のローカル入口と緊急管理者break-glassは独立させる。
-4. 既存Gold pull、承認済みGold pushと、人向けアクセスで、資格、接続、ポリシー、監査、health、配備を分ける。将来のローカル配送台帳／再送は別PRにし、既存R2 CLIを自動配送とみなさない。
+3. 人向けは独立した `zero-trust-access` とし、別ホスト名単位の Access + Tunnel + Traefik + アプリRBAC。配置前に保護と許可集団を確認し、VM/別hostname/別entrypointへの迂回を否定する。業務継続のローカル入口と緊急管理者break-glassは独立させる。
+4. 既存Gold pull、承認済みGold pushと、人向けアクセスで、資格、接続、ポリシー、監査、health、配備を分ける。将来のローカル配送台帳／再送は別PRにし、既存R2 CLIを自動配送とみなさない。外部配信quotaとcore予約、物理ディスクの空きを別判定し、外部Gold失敗だけでローカル取込を止めない。[WAN設計](zero-trust-dokploy-wan-recovery.md)に暫定容量と判定条件を記録する。
 5. 通常採用、任意サービス、評価候補を区別する。ストレージやbrokerを同じデータに対する二重writerにしない。[宣言台帳](zero-trust-dokploy-inventory.md)の未設定上限は実測値や予算に読み替えない。
 
 ## 採らない構成と理由
@@ -37,6 +37,6 @@
 
 ## 決定の前提・撤回
 
-必要な合意は、対象ドメインと管理者、IdPの認証・グループ・device posture、ローカル名解決と業務権限、外部送信のデータ承認、容量・保持・復旧目標、Dokploy対象版と旧PoC資源の割当。具体値は非公開の作業票にだけ保存する。対象版や関係者、別冊WAN要件の閾値は未確認。
+必要な合意は、対象ドメインと管理者、IdPの認証・グループ・device posture、ローカル名解決と業務権限、外部送信のデータ承認、容量・保持・復旧目標、Dokploy対象版と旧PoC資源の割当。具体値は非公開の作業票にだけ保存する。対象版、実機負荷・空き、関係者、確定した容量・復旧閾値は未確認。
 
 配備境界を導入する場合は既存のルート・設定・volumeを保持し、新規hostnameのrouteだけを無効化できる状態から始める。変更を戻しても送信待ちの永続状態、バックアップ、既存PoCのtopic・offset・volumeを捨てない。合格条件は[脅威・試験表](zero-trust-dokploy-threat-test.md)で追跡する。

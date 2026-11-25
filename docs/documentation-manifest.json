@@ -516,6 +516,25 @@
         "docs/native/ACCEPTANCE.md"
       ],
       "status": "active"
+    },
+    {
+      "path": "docs/reviews/zero-trust-dokploy-wan-recovery.md",
+      "title": "WAN断の継続・容量・再送設計",
+      "purpose": "WAN断中のローカル処理、容量の仮定、復旧時の再送と検証を設計する。",
+      "audience": [
+        "基盤構築担当",
+        "開発・設計担当",
+        "運用担当"
+      ],
+      "when_to_use": "Foundation Rの配備とアクセス分離を設計・レビューするとき。",
+      "category": "06 開発・レビュー",
+      "prerequisites": [
+        "docs/reviews/zero-trust-dokploy-gap-analysis.md"
+      ],
+      "next": [
+        "docs/reviews/zero-trust-dokploy-threat-test.md"
+      ],
+      "status": "active"
     }
   ]
 }

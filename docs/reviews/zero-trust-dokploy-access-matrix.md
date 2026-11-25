@@ -27,7 +27,7 @@
 | OpenObserve | private運用グループ | ローカル監視・探索のみ | app RBAC、取り込み用資格と閲覧・管理を分離 |
 | InfluxDB Explorer | private運用グループ | ローカル運用入口 | ExplorerのセッションとInfluxDB API tokenを分ける。DB APIはUIと一緒に公開しない |
 | Lakekeeper UI | private、限定管理・閲覧 | 限定的な診断と承認済み管理のみ | 現状の専用閲覧境界を保つ。カタログREST、管理API、広い内部ネットを公開しない |
-| Dokploy / SSH / PostgreSQL・SeaweedFS管理 / backup | 閲覧入口とは別の運用管理経路 | break-glassを別管理。鍵と権限・承認記録を保持 | 一般利用者不可、操作記録と閉鎖・失効を確認。公開host portへの切替はしない |
+| Dokploy / SSH / PostgreSQL・SeaweedFS管理 / backup | 閲覧入口とは別の運用管理経路 | 事前承認した管理経路。緊急SSH break-glassは時限・個別承認・監査を適用。 | 一般利用者不可、操作記録と閉鎖・失効を確認。公開host portへの切替はしない |
 | Prometheus、worker、内部read-api、S3/Kafka・MQTT | ルート公開しない。必要な設備契約は別 | 専用ネットワークの機械・内部監視だけ | networkもportも最小化。Traefik用共有ネットに直結しない |
 | 承認済みGold連携 | 人向けとは別の機械認証／R2専用資格 | coreを継続。外部送信は隔離された配送状態に記録 | 人用cookie/グループの転用不可。許可する世代・列・行・宛先・保持の承認が必要 |
 
