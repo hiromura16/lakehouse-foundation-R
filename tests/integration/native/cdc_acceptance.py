@@ -10,6 +10,7 @@ import errno
 import json
 import re
 import time
+from decimal import Decimal
 from hashlib import sha256
 
 from confluent_kafka import Consumer, Producer, TopicPartition
@@ -110,7 +111,25 @@ def event(table, operation, sequence, row, *, previous=None):
 
 
 def publish(groups, *, previous=None, expected_delivery=None):
-    """テスト用DockerのDNS名へイベントを発行し、配信確認を検査する。"""
+    """既存の合成イベントを固定トピック向けに組み立てる。"""
+    publish_messages(
+        (
+            (
+                f"{TOPIC_PREFIX}.{table}",
+                json.dumps({key: row[key]}),
+                event(table, operation, sequence, row, previous=previous)
+                if operation
+                else None,
+            )
+            for table, key, events in groups
+            for operation, sequence, row in events
+        ),
+        expected_delivery,
+    )
+
+
+def publish_messages(messages, expected_delivery):
+    """閉域fixtureのDocker DNSでのみ配信位置を照合する。"""
     producer = Producer(
         {
             "bootstrap.servers": "test-broker:9092",
@@ -130,16 +149,9 @@ def publish(groups, *, previous=None, expected_delivery=None):
                 (message.topic(), message.partition(), message.offset())
             )
 
-    for table, key, events in groups:
-        for operation, sequence, row in events:
-            producer.produce(
-                f"{TOPIC_PREFIX}.{table}",
-                key=json.dumps({key: row[key]}),
-                value=event(table, operation, sequence, row, previous=previous)
-                if operation
-                else None,
-                on_delivery=delivered,
-            )
+    for topic, key, payload in messages:
+        assert topic.startswith(TOPIC_PREFIX + ".")
+        producer.produce(topic, key=key, value=payload, on_delivery=delivered)
     if (
         producer.flush(15)
         or errors
@@ -544,6 +556,153 @@ def run_ordering(phase):
     print(json.dumps(result))
 
 
+POISON_PHASES = (
+    "poison-baseline",
+    "poison-typed",
+    "poison-followup",
+    "poison-confirm",
+    "poison-malformed-publish",
+    "poison-malformed-observe",
+)
+POISON_KEYS = (
+    "CDC-TYPE-HEALTHY",
+    "CDC-TYPE-INVALID",
+    "CDC-TYPE-FOLLOWUP",
+    "CDC-JSON-MALFORMED",
+)
+
+
+def poison_messages():
+    """UTF-8の型不正とJSON文法不正を、別々の固定キーで作る。"""
+    rows = [
+        {**DATA, "product_id": key, "product_name": label}
+        for key, label in zip(
+            POISON_KEYS[:3],
+            ("Healthy product", "Typed poison", "Followup"),
+            strict=True,
+        )
+    ]
+    rows[1]["standard_cycle_seconds"] = "not-a-decimal"
+    return [
+        (key, event("erp_products", "c", i + 1, row))
+        for i, (key, row) in enumerate(zip(POISON_KEYS[:3], rows, strict=True))
+    ] + [(POISON_KEYS[3], "{")]
+
+
+def verify_poison_rows(raw, live, rejected, count):
+    """配送原本、型不正隔離1件、全正常行の値と由来を厳密に照合する。"""
+    messages = poison_messages()
+    assert len(raw) == count
+    offsets = {row["offset"]: row for row in raw}
+    assert set(offsets) == {str(i) for i in range(count)}
+    for offset, (key, payload) in enumerate(messages[:count]):
+        row = offsets[str(offset)]
+        assert row["topic"] == PRODUCTS_TOPIC and row["partition"] == "0"
+        assert row["event_id"] == json.dumps(
+            [PRODUCTS_TOPIC, 0, offset], separators=(",", ":")
+        )
+        assert json.loads(row["key_json"]) == {"product_id": key}
+        assert row["envelope_json"] == payload
+        assert row["key_is_null"] is False and row["value_is_null"] is False
+    expected_live = (0, 2) if count >= 3 else (0,)
+    assert sorted(row["product_id"] for row in live) == sorted(
+        POISON_KEYS[i] for i in expected_live
+    )
+    by_id = {row["product_id"]: row for row in live}
+    for index in expected_live:
+        key, payload = messages[index]
+        expected = json.loads(payload)["after"]
+        row = by_id[key]
+        assert all(
+            row[field] == expected[field]
+            for field in (
+                "product_id",
+                "product_name",
+                "product_family",
+                "unit",
+            )
+        )
+        assert Decimal(str(row["standard_cycle_seconds"])) == Decimal(
+            expected["standard_cycle_seconds"]
+        )
+        assert row["_source_hash"] == sha256(payload.encode()).hexdigest()
+    if count == 1:
+        assert rejected == []
+    else:
+        assert len(rejected) == 1
+        row = rejected[0]
+        key, payload = messages[1]
+        assert row["product_id"] == key
+        assert row["validation_reason"] == "invalid_type"
+        assert row["_source_hash"] == sha256(payload.encode()).hexdigest()
+        assert (
+            json.loads(row["raw_record_json"])["standard_cycle_seconds"]
+            == "not-a-decimal"
+        )
+
+
+def run_poison(phase):
+    """broker確定を先に待ち、同じ世代のRawと派生状態を確認する。"""
+    publish_at = {
+        "poison-baseline": 0,
+        "poison-typed": 1,
+        "poison-followup": 2,
+        "poison-malformed-publish": 3,
+    }
+    if phase in publish_at:
+        offset = publish_at[phase]
+        key, payload = poison_messages()[offset]
+        publish_messages(
+            [(PRODUCTS_TOPIC, json.dumps({"product_id": key}), payload)],
+            [(PRODUCTS_TOPIC, 0, offset)],
+        )
+        if phase == "poison-malformed-publish":
+            print("DELIVERED")
+            return
+    count = {
+        "poison-baseline": 1,
+        "poison-typed": 2,
+        "poison-followup": 3,
+        "poison-confirm": 3,
+        "poison-malformed-observe": 4,
+    }[phase]
+    acknowledged = min(count, 3)
+    cursor = broker_committed(acknowledged, high=count)
+    core = api.core_module()
+    catalog = core.catalog()
+    raw_table = catalog.load_table("cdc_events.events")
+    raw = raw_table.scan().to_arrow().to_pylist()
+    release = engine.latest_release(core, catalog, "cdc_")
+    assert release
+    live, rejected = [
+        engine.bounded_scan(
+            catalog.load_table(f"cdc_{name}"), release["outputs"][name]
+        ).to_pylist()
+        for name in ("silver.erp_products", "quarantine.erp_products")
+    ]
+    verify_poison_rows(raw, live, rejected, count)
+    print(
+        json.dumps(
+            {
+                "raw_snapshot_id": engine.current_id(raw_table),
+                "release_snapshot_id": release["release_snapshot_id"],
+                "broker_next_offset": cursor,
+                "healthy_digest": sha256(
+                    json.dumps(
+                        next(
+                            row
+                            for row in live
+                            if row["product_id"] == POISON_KEYS[0]
+                        ),
+                        default=str,
+                        sort_keys=True,
+                    ).encode()
+                ).hexdigest(),
+            }
+        )
+    )
+
+
 def main():
     """合成試験の1段階を実行し、期待するRaw・Silverの結果を待つ。"""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -557,6 +716,7 @@ def main():
             *CONTINUITY,
             CONFIRM_PHASE,
             *ORDERING,
+            *POISON_PHASES,
             "storage-old-cursor",
             "storage-raw-proof",
             "storage-publish",
@@ -574,6 +734,9 @@ def main():
         return
     if args.raw_snapshot is not None:
         parser.error("Raw snapshot is only accepted for the Raw proof")
+    if args.phase in POISON_PHASES:
+        run_poison(args.phase)
+        return
     if args.phase in ORDERING:
         run_ordering(args.phase)
         return
