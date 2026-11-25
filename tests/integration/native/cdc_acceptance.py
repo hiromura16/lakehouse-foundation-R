@@ -136,19 +136,33 @@ def publish(groups, *, previous=None, expected_delivery=None):
         raise RuntimeError("試験用ブローカーへの送信に失敗しました。")
 
 
+def ignore_stage(_name):
+    """通常の試験では診断用ステージを記録しない。"""
+
+
 def check(
-    core, expected_count, expected_product, *, continuity=None, snapshots=False
+    core,
+    expected_count,
+    expected_product,
+    *,
+    continuity=None,
+    snapshots=False,
+    note_stage=ignore_stage,
 ):
     """整合した世代の公開を待ち、変更しないRawと照合する。"""
+    note_stage("CATALOG")
     catalog = core.catalog()
     for _ in range(90):
+        note_stage("RAW_READ")
         if not catalog.table_exists("cdc_events.events"):
             time.sleep(1)
             continue
         raw_table = catalog.load_table("cdc_events.events")
         raw = raw_table.scan().to_arrow().to_pylist()
+        note_stage("RELEASE_READ")
         release = engine.latest_release(core, catalog, "cdc_")
         if len(raw) >= expected_count and release:
+            note_stage("SILVER_READ")
             names = ("silver.erp_products", "quarantine.erp_products")
             live, rejected = [
                 engine.bounded_scan(
@@ -159,10 +173,13 @@ def check(
             ]
             product = sorted(row["product_name"] for row in live)
             reasons = [row["validation_reason"] for row in rejected]
+            note_stage("SILVER_CONTENT")
             if product == sorted(expected_product) and reasons == [
                 "invalid_type"
             ]:
+                note_stage("RAW_COUNT")
                 assert len(raw) == expected_count
+                note_stage("RAW_CONTENT")
                 assert len({row["event_id"] for row in raw}) == expected_count
                 offsets = sorted(int(row["offset"]) for row in raw)
                 assert offsets == list(range(expected_count))
@@ -177,6 +194,7 @@ def check(
                 if continuity is not None:
                     verify_continuity_raw(raw, live, continuity)
                 if snapshots or continuity is not None:
+                    note_stage("SNAPSHOT_SHAPE")
                     raw_snapshot = engine.current_id(raw_table)
                     assert type(raw_snapshot) is int and raw_snapshot > 0
                     return {
@@ -196,6 +214,10 @@ def check(
                     )
                 )
                 return
+        else:
+            note_stage(
+                "RAW_COUNT" if len(raw) < expected_count else "RELEASE_MISSING"
+            )
         time.sleep(1)
     raise AssertionError("期待したCDCの世代が公開されませんでした。")
 
@@ -247,8 +269,9 @@ def verify_continuity_raw(raw, live, sequence):
     )
 
 
-def broker_committed(expected, *, high=None):
+def broker_committed(expected, *, high=None, note_stage=ignore_stage):
     """購読・commitを行わず、同じ合成groupの次の位置を照会する。"""
+    note_stage("BROKER_COMMITTED")
     consumer = Consumer(
         {
             "bootstrap.servers": "test-broker:9092",
@@ -266,6 +289,7 @@ def broker_committed(expected, *, high=None):
                 assert cursor <= expected
                 if cursor == expected:
                     if high is not None:
+                        note_stage("BROKER_WATERMARK")
                         assert consumer.get_watermark_offsets(
                             partitions[0], timeout=3, cached=False
                         ) == (0, high)
@@ -323,15 +347,34 @@ def run_storage(phase):
     products = [PRIOR_PRODUCT]
     if recovered:
         products.append(CONTINUITY["continuity-insert"][2])
-    result = check(
-        api.core_module(),
-        total,
-        products,
-        continuity=1 if recovered else None,
-        snapshots=True,
-    )
-    result["broker_next_offset"] = broker_committed(total, high=high)
-    print(json.dumps(result))
+    stage = "OBSERVATION"
+
+    def note_stage(value):
+        """対象の読み取り工程だけを保持し、実値は保存しない。"""
+        nonlocal stage
+        stage = value
+
+    diagnosed = phase == "storage-restored"
+    options = {"note_stage": note_stage} if diagnosed else {}
+    try:
+        result = check(
+            api.core_module(),
+            total,
+            products,
+            continuity=1 if recovered else None,
+            snapshots=True,
+            **options,
+        )
+        result["broker_next_offset"] = broker_committed(
+            total, high=high, **options
+        )
+        print(json.dumps(result))
+    except Exception:
+        if not diagnosed:
+            raise
+        # hostへは実値・例外・tracebackではなく固定工程だけ返す。
+        print(f"CDC_RESTORE_{stage}", flush=True)
+        raise SystemExit(1) from None
 
 
 def main():
