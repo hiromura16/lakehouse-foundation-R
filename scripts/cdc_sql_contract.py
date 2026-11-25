@@ -332,6 +332,29 @@ def inspect_table(cursor, table, object_id, columns):
         raise ContractError("TABLE_KEY_MISMATCH")
 
 
+def catalog_type(value):
+    """sys.objects.typeの固定長CHAR(2)の右側の空白だけを除く。"""
+    return value.rstrip(" ") if isinstance(value, str) else None
+
+
+def check_table_identity(
+    kind, owner, temporal, memory, external, tracked, *, marker
+):
+    """実体の種別・所有・通常表の制約・CDC追跡を独立に検査する。"""
+    if catalog_type(kind) != "U":
+        raise ContractError("TABLE_OBJECT_TYPE_MISMATCH")
+    if owner != 1:
+        raise ContractError("TABLE_OWNER_MISMATCH")
+    if temporal != 0:
+        raise ContractError("TABLE_TEMPORAL_MISMATCH")
+    if memory != 0:
+        raise ContractError("TABLE_MEMORY_MODE_MISMATCH")
+    if external != 0:
+        raise ContractError("TABLE_EXTERNAL_MODE_MISMATCH")
+    if tracked != int(not marker):
+        raise ContractError("TABLE_TRACKING_MISMATCH")
+
+
 def owned_capture_matches(row, expected_source, table):
     """所有済みcaptureはLSN未初期化でも構成の一致が必要。"""
     return row[0] == expected_source and row[3:7] == (
@@ -382,15 +405,15 @@ def inspect(cursor, installation_id):
         external,
         tracked,
     ) in owned:
-        if (kind, owner, temporal, memory, external, tracked) != (
-            "U",
-            1,
-            0,
-            0,
-            0,
-            int(name != MARKER),
-        ):
-            raise ContractError("TABLE_IDENTITY_MISMATCH")
+        check_table_identity(
+            kind,
+            owner,
+            temporal,
+            memory,
+            external,
+            tracked,
+            marker=name == MARKER,
+        )
         inspect_table(cursor, name, object_id, expected[name])
     unexpected = query(
         cursor,
@@ -427,7 +450,7 @@ def inspect(cursor, installation_id):
     expected_artifact_names = set()
     functions = set()
     indexed_artifacts = {
-        name: (object_id, kind, definition)
+        name: (object_id, catalog_type(kind), definition)
         for object_id, name, kind, _, definition in artifacts
     }
     for table, columns in TABLES.items():

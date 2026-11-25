@@ -263,6 +263,43 @@ class ContractTests(unittest.TestCase):
             ):
                 SQL.incumbents(Mock())
 
+    def test_catalog_object_type_strips_only_fixed_width_padding(self):
+        for wire, result in (
+            ("U", "U"),
+            ("U ", "U"),
+            ("IF", "IF"),
+            (" U", " U"),
+            ("U\t", "U\t"),
+            (None, None),
+        ):
+            with self.subTest(wire=wire):
+                self.assertEqual(SQL.catalog_type(wire), result)
+
+    def test_table_identity_retains_all_independent_checks(self):
+        valid = ("U ", 1, 0, 0, 0, 1)
+        SQL.check_table_identity(*valid, marker=False)
+        SQL.check_table_identity(*valid[:-1], 0, marker=True)
+        reasons = (
+            ("IF", "TABLE_OBJECT_TYPE_MISMATCH"),
+            (0, "TABLE_OWNER_MISMATCH"),
+            (2, "TABLE_TEMPORAL_MISMATCH"),
+            (1, "TABLE_MEMORY_MODE_MISMATCH"),
+            (1, "TABLE_EXTERNAL_MODE_MISMATCH"),
+            (0, "TABLE_TRACKING_MISMATCH"),
+        )
+        for index, (change, reason) in enumerate(reasons):
+            fields = list(valid)
+            fields[index] = change
+            with (
+                self.subTest(reason=reason),
+                self.assertRaisesRegex(SQL.ContractError, reason),
+            ):
+                SQL.check_table_identity(*fields, marker=False)
+        with self.assertRaisesRegex(
+            SQL.ContractError, "TABLE_TRACKING_MISMATCH"
+        ):
+            SQL.check_table_identity(*valid, marker=True)
+
     def test_cli_uses_explicit_identity_and_redacts_native_errors(self):
         source = Mock()
         source.tls_configuration.return_value = nullcontext()
