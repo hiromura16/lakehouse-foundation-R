@@ -38,9 +38,9 @@ for kind in kafka connect; do
     exit 1
   fi
   config=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["config"])' "$out/$kind.json")
-  identified=$(docker --context default image inspect "$tag" --format '{{.Id}}')
-  if [[ "$identified" != "$config" || ! "$config" =~ ^sha256:[0-9a-f]{64}$ ]]; then
-    printf 'STAGE3_LOADED_CONFIG_MISMATCH=%s\n' "$kind" >&2
+  manifest=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["manifest"])' "$out/$kind.json")
+  if ! python3 scripts/cdc_stage3_images.py inspect-local "$tag" --manifest "$manifest"; then
+    printf 'STAGE3_LOADED_MANIFEST_MISMATCH=%s\n' "$kind" >&2
     exit 1
   fi
   # 出力は上流由来バイトのハッシュだけ。tagはこのrunnerだけの参照。

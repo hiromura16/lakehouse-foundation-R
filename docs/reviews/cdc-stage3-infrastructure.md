@@ -61,7 +61,10 @@ configは必ず1 partition。schema historyも1 partitionで `delete` のみ、
 「そのconfig」の四つを区別し、ビルドした実行イメージも同様に識別します。
 保存したOCI tarのSHA-256はこれらとは別です。tarに含まれるlayerと
 configもすべて読んで照合し、最終的に使い捨て環境で読み込んだ
-runtime config IDと実ユーザー・JVMを照合します。metadata確認のみを
+linux/amd64 manifestと実ユーザー・JVMを照合します。Dockerのcontainerd
+では対象platformのIdはmanifest digestであり、config digestではありません。
+OCI検証でmanifestからconfigとlayerのバイトを別途追跡し、起動後に
+コンテナ自身が選んだplatform manifestも再照合します。metadata確認のみを
 Docker実行、あるいは空の環境からの復旧の証拠と見なしません。
 
 承認済みの実行イメージは、入力のdigest/JVM/作成方法/出力manifest/
@@ -94,7 +97,7 @@ SQLユーザー・パスワードとtruststoreのパスワードは、テンプ�
   オペレーターが照合済みtarを隔離daemonへ読み込み、承認済みconfigの全64桁を
   含む `foundation-r-cdc-stage3-kafka:oci-<config>` と
   `foundation-r-cdc-stage3-connect:oci-<config>` に命名したうえで
-  `verify-local` で別名の実IDを照合します。検証する操作ごとに双方の
+  `verify-local` で別名のLinux/amd64 manifestを照合します。検証する操作ごとに双方の
   アーカイブ検査を繰り返します。不一致への自動fallbackはありません。
 * 意図的に新規構築する場合だけ `topics --initialize` と
   `register --initialize` を段階ごとに用います。初回の検査用変更データと

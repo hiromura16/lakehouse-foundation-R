@@ -18,7 +18,13 @@ from pathlib import Path
 from tarfile import TarError
 
 from cdc_sql_contract import SCHEMA, TABLES
-from cdc_stage3_images import ImageError, verify_archive
+from cdc_stage3_images import (
+    ImageError,
+    inspect_command,
+    require_manifest_descriptor,
+    verify_archive,
+    verify_engine_inspection,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 PROJECT = "foundation-r-cdc-stage3"
@@ -300,7 +306,10 @@ def archive_selection(path):
             ),
             "OCI_ARCHIVE_NOT_VERIFIED",
         )
-        selected[role.upper() + "_IMAGE"] = record["config"]
+        selected[role.upper() + "_IMAGE"] = {
+            "config": record["config"],
+            "manifest": record["manifest"],
+        }
     return selected
 
 
@@ -310,24 +319,30 @@ def image_selection(values, environment, *, offline=None):
     for key in IMAGE_KEYS:
         label = key.removesuffix("_IMAGE").lower()
         reference = values[key]
-        digest_key = ENV_PREFIX + key.removesuffix("_IMAGE") + "_CI_IMAGE_ID"
-        ci_id = environment.get(digest_key)
+        prefix = ENV_PREFIX + key.removesuffix("_IMAGE") + "_CI_IMAGE_"
+        ci_config = environment.get(prefix + "CONFIG")
+        ci_manifest = environment.get(prefix + "MANIFEST")
         if offline is not None:
-            insist(not ci_id, "OCI_AND_CI_MODE_CONFLICT")
+            insist(not (ci_config or ci_manifest), "OCI_AND_CI_MODE_CONFLICT")
             approved = offline[key]
+            config = approved["config"]
             insist(
-                reference == f"{PREFIX}-{label}:oci-{approved[7:]}",
+                reference == f"{PREFIX}-{label}:oci-{config[7:]}",
                 "APPROVED_OCI_TAG_MISMATCH",
             )
             selected[key] = approved
-        elif ci_id:
+        elif ci_config or ci_manifest:
             insist(hosted_fixture(environment), "CI_IMAGE_FORBIDDEN")
             insist(
-                re.fullmatch(DIGEST, ci_id)
-                and reference == f"{PREFIX}-{label}:ci-{ci_id[7:23]}",
-                "CI_IMAGE_ID_MISMATCH",
+                ci_config
+                and ci_manifest
+                and re.fullmatch(DIGEST, ci_config)
+                and re.fullmatch(DIGEST, ci_manifest)
+                and ci_config != ci_manifest
+                and reference == f"{PREFIX}-{label}:ci-{ci_config[7:23]}",
+                "CI_IMAGE_PROOF_MISMATCH",
             )
-            selected[key] = ci_id
+            selected[key] = {"config": ci_config, "manifest": ci_manifest}
         else:
             insist(
                 re.fullmatch(REFERENCE, reference),
@@ -407,24 +422,17 @@ class Runtime:
         ]
 
     def preflight_local(self):
-        """OCIのconfigと手元の別名が一致しなければ起動しない。"""
+        """OCIでconfigと結び付けたmanifestだけを起動前に許す。"""
         for key, expected in self.images.items():
             insist(expected is not None, "APPROVED_OCI_RECEIPT_REQUIRED")
             code, raw, _ = call(
-                [
-                    *self.docker,
-                    "image",
-                    "inspect",
-                    "--format",
-                    "{{.Id}}",
-                    self.values[key],
-                ],
-                self.environment,
+                inspect_command(self.values[key]), self.environment
             )
-            insist(
-                code == 0 and raw.strip() == expected,
-                "LOADED_OCI_IMAGE_MISMATCH",
-            )
+            insist(code == 0, "LOADED_OCI_IMAGE_MISMATCH")
+            try:
+                verify_engine_inspection(raw, expected["manifest"])
+            except (ImageError, ValueError) as error:
+                raise StageError("LOADED_OCI_IMAGE_MISMATCH") from error
 
     def container(self, service, key, networks):
         """画像ID、稼動状態、所有ラベルと意図せぬ公開を全て検証する。"""
@@ -442,6 +450,7 @@ class Runtime:
             '.Config.Labels "com.docker.compose.service"',
             ".Config.Image",
             ".Image",
+            ".ImageManifestDescriptor",
             ".HostConfig.PortBindings",
             ".NetworkSettings.Networks",
             ".HostConfig.Privileged",
@@ -474,6 +483,7 @@ class Runtime:
             label,
             image,
             image_id,
+            image_manifest,
             ports,
             joined,
             privileged,
@@ -491,9 +501,16 @@ class Runtime:
             "CONTAINER_BOUNDARY_MISMATCH",
         )
         check_mounts(service, mounts, self.values)
-        ci_id = self.images[key]
-        if ci_id:
-            insist(image_id == ci_id, "RUNNING_LOCAL_IMAGE_MISMATCH")
+        local = self.images[key]
+        if local:
+            # Docker .Image can denote a stored target, not the platform
+            # manifest and never the OCI config digest for this engine.
+            try:
+                require_manifest_descriptor(
+                    image_manifest, local["manifest"], platform_required=True
+                )
+            except (ImageError, ValueError) as error:
+                raise StageError("RUNNING_LOCAL_MANIFEST_MISMATCH") from error
         else:
             code, digests, _ = call(
                 [

@@ -197,5 +197,50 @@ class ArchiveTest(unittest.TestCase):
                 images.verify_archive(path, actual, lock["manifest"])
 
 
+class EngineModelTests(unittest.TestCase):
+    """コンテナdとOCIの異なる識別子を混同しない。"""
+
+    def test_linux_amd64_platform_manifest_matches_exact_archive_manifest(
+        self,
+    ):
+        """選択manifestだけをIdとして受け入れ、configやindexは拒否する。"""
+        manifest = images.digest(b"fixture manifest")
+        config = images.digest(b"fixture config")
+        descriptor = {
+            "mediaType": images.OCI_MANIFEST,
+            "digest": manifest,
+            "platform": {"os": "linux", "architecture": "amd64"},
+        }
+
+        def fields(desc, ident=manifest, arch="amd64"):
+            """Docker --formatのJSON 4列を作る。"""
+            return "\n".join(
+                json.dumps(x) for x in (desc, ident, "linux", arch)
+            ).encode()
+
+        images.verify_engine_inspection(fields(descriptor), manifest)
+        images.require_manifest_descriptor(
+            descriptor, manifest, platform_required=True
+        )
+        for value in (
+            fields(None),
+            fields(descriptor, ident=config),
+            fields(descriptor, arch="arm64"),
+            fields(descriptor | {"digest": config}),
+            fields(descriptor | {"mediaType": images.OCI_INDEX}),
+        ):
+            with self.assertRaises(images.ImageError):
+                images.verify_engine_inspection(value, manifest)
+        missing = {
+            key: val for key, val in descriptor.items() if key != "platform"
+        }
+        with self.assertRaisesRegex(
+            images.ImageError, "ENGINE_MANIFEST_PLATFORM_UNVERIFIED"
+        ):
+            images.require_manifest_descriptor(
+                missing, manifest, platform_required=True
+            )
+
+
 if __name__ == "__main__":
     unittest.main()

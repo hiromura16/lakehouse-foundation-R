@@ -110,19 +110,24 @@ def image_tag(kind, evidence):
     return f"foundation-r-stage3-{kind}:ci-{evidence['config'][7:23]}"
 
 
-def image_id(ref):
-    """ローカルに存在するイメージのconfig IDを読む。"""
-    return (
-        command((*DOCKER, "image", "inspect", ref, "--format", "{{.Id}}"))
-        .decode()
-        .strip()
+def verified_loaded_image(ref, evidence):
+    """検証済みarchiveが結ぶmanifestを、指定CPUのローカル像と照合。"""
+    command(
+        (
+            sys.executable,
+            "scripts/cdc_stage3_images.py",
+            "inspect-local",
+            ref,
+            "--manifest",
+            evidence["manifest"],
+        )
     )
 
 
 def verify_images(found):
-    """読み込んだ実イメージとアーカイブのconfigを照合する。"""
+    """検証済みOCIのmanifestを別名から読み出せることを確認。"""
     for kind, evidence in found.items():
-        check(image_id(image_tag(kind, evidence)) == evidence["config"])
+        verified_loaded_image(image_tag(kind, evidence), evidence)
 
 
 def restore_images(directory, found):
@@ -130,10 +135,18 @@ def restore_images(directory, found):
     for kind, evidence in found.items():
         tag = image_tag(kind, evidence)
         original = f"foundation-r-stage3-{kind}:archive"
-        check(image_id(tag) == image_id(original) == evidence["config"])
+        verified_loaded_image(tag, evidence)
+        verified_loaded_image(original, evidence)
         command((*DOCKER, "image", "rm", tag, original))
         result = subprocess.run(
-            (*DOCKER, "image", "inspect", evidence["config"]),
+            (
+                *DOCKER,
+                "image",
+                "inspect",
+                "--platform",
+                "linux/amd64",
+                evidence["manifest"],
+            ),
             capture_output=True,
             timeout=15,
             check=False,
@@ -156,7 +169,7 @@ def restore_images(directory, found):
             seconds=150,
         )
         command((*DOCKER, "image", "load", "--input", str(oci)), seconds=180)
-        check(image_id(original) == evidence["config"])
+        verified_loaded_image(original, evidence)
         command((*DOCKER, "image", "tag", original, tag))
     verify_images(found)
 
@@ -347,8 +360,11 @@ class Runtime:
         self.oci_receipt = None
         self.site = site
         self.cli_env = os.environ | {
-            "CDC_STAGE3_KAFKA_CI_IMAGE_ID": found["kafka"]["config"],
-            "CDC_STAGE3_CONNECT_CI_IMAGE_ID": found["connect"]["config"],
+            f"CDC_STAGE3_{kind.upper()}_CI_IMAGE_{item.upper()}": evidence[
+                item
+            ]
+            for kind, evidence in found.items()
+            for item in ("config", "manifest")
         }
         self.network = PROJECT + "_sql_egress"
         self.attached = False

@@ -11,6 +11,7 @@ from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import cdc_stage3 as stage  # noqa: E402
+from cdc_stage3_images import OCI_MANIFEST  # noqa: E402
 
 
 def synthetic_value():
@@ -79,8 +80,10 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(
             stage.image_selection(values, {}), dict.fromkeys(stage.IMAGE_KEYS)
         )
-        ci_key = "CDC_STAGE3_KAFKA_CI_IMAGE_ID"
+        ci_key = "CDC_STAGE3_KAFKA_CI_IMAGE_CONFIG"
+        manifest_key = "CDC_STAGE3_KAFKA_CI_IMAGE_MANIFEST"
         config_id = "sha256:" + "a" * 64
+        manifest = "sha256:" + "b" * 64
         values["KAFKA_IMAGE"] = f"{stage.PREFIX}-kafka:ci-" + "a" * 16
         with self.assertRaisesRegex(stage.StageError, "IMAGE_NOT_IMMUTABLE"):
             stage.image_selection(values, {})
@@ -88,6 +91,7 @@ class ContractTests(unittest.TestCase):
             stage.image_selection(values, {ci_key: config_id})
         environment = {
             ci_key: config_id,
+            manifest_key: manifest,
             "GITHUB_ACTIONS": "true",
             "RUNNER_ENVIRONMENT": "github-hosted",
             "RUNNER_OS": "Linux",
@@ -96,8 +100,21 @@ class ContractTests(unittest.TestCase):
         }
         self.assertEqual(
             stage.image_selection(values, environment)["KAFKA_IMAGE"],
-            config_id,
+            {"manifest": manifest, "config": config_id},
         )
+        no_manifest = {
+            k: v for k, v in environment.items() if k != manifest_key
+        }
+        with self.assertRaisesRegex(
+            stage.StageError, "CI_IMAGE_PROOF_MISMATCH"
+        ):
+            stage.image_selection(values, no_manifest)
+        with self.assertRaisesRegex(
+            stage.StageError, "CI_IMAGE_PROOF_MISMATCH"
+        ):
+            stage.image_selection(
+                values, environment | {manifest_key: config_id}
+            )
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "event.json"
             path.write_text(
@@ -366,7 +383,9 @@ class OperatorProofTests(unittest.TestCase):
         values = synthetic_value()
         for kind in ("kafka", "connect"):
             key = kind.upper() + "_IMAGE"
-            values[key] = f"{stage.PREFIX}-{kind}:oci-{proof[key][7:]}"
+            values[key] = (
+                f"{stage.PREFIX}-{kind}:oci-{proof[key]['config'][7:]}"
+            )
         self.assertEqual(
             stage.image_selection(values, {}, offline=proof), proof
         )
@@ -377,17 +396,115 @@ class OperatorProofTests(unittest.TestCase):
         ):
             stage.image_selection(
                 values,
-                {"CDC_STAGE3_KAFKA_CI_IMAGE_ID": proof["KAFKA_IMAGE"]},
+                {
+                    "CDC_STAGE3_KAFKA_CI_IMAGE_CONFIG": proof["KAFKA_IMAGE"][
+                        "config"
+                    ]
+                },
                 offline=proof,
             )
         runtime = stage.Runtime(Path("/example-only"), values, offline=proof)
+
+        def inspection(name, no_match=False):
+            """コンテナdのIdがconfigと異なることをそのままモデル化。"""
+            item = proof[name]
+            manifest = item["manifest"] if not no_match else item["config"]
+            return (
+                0,
+                "\n".join(
+                    json.dumps(value)
+                    for value in (
+                        {
+                            "mediaType": OCI_MANIFEST,
+                            "digest": manifest,
+                        },
+                        manifest,
+                        "linux",
+                        "amd64",
+                    )
+                ),
+                "",
+            )
+
+        calls = [inspection("KAFKA_IMAGE"), inspection("CONNECT_IMAGE")]
+        with patch.object(stage, "call", side_effect=calls) as inspect:
+            runtime.preflight_local()
+        self.assertEqual(inspect.call_count, 2)
+        self.assertIn("linux/amd64", inspect.call_args.args[0])
         with patch.object(
-            stage, "call", return_value=(0, proof["CONNECT_IMAGE"], "")
+            stage,
+            "call",
+            return_value=inspection("KAFKA_IMAGE", no_match=True),
         ):
             with self.assertRaisesRegex(
                 stage.StageError, "LOADED_OCI_IMAGE_MISMATCH"
             ):
                 runtime.preflight_local()
+
+    def test_running_container_needs_selected_manifest_not_generic_id(self):
+        """コンテナ自身の選択manifestで判定し、.Imageを代用しない。"""
+        selected = "sha256:" + "c" * 64
+        config = "sha256:" + "a" * 64
+        values = synthetic_value()
+        values["KAFKA_IMAGE"] = f"{stage.PREFIX}-kafka:oci-{config[7:]}"
+        local = {
+            "KAFKA_IMAGE": {"config": config, "manifest": selected},
+            "CONNECT_IMAGE": {"config": config, "manifest": selected},
+        }
+        values["CONNECT_IMAGE"] = f"{stage.PREFIX}-connect:oci-{config[7:]}"
+        runtime = stage.Runtime(Path("/example-only"), values, offline=local)
+        descriptor = {
+            "mediaType": OCI_MANIFEST,
+            "digest": selected,
+            "platform": {"os": "linux", "architecture": "amd64"},
+        }
+
+        def observed(image, manifest):
+            """対象ラベルを持つ一コンテナの限定inspect出力。"""
+            return (
+                0,
+                "\n".join(
+                    json.dumps(value)
+                    for value in (
+                        True,
+                        stage.PROJECT,
+                        stage.BROKER,
+                        values["KAFKA_IMAGE"],
+                        image,
+                        manifest,
+                        None,
+                        {stage.PROJECT + "_broker": {}},
+                        False,
+                        [],
+                    )
+                ),
+                "",
+            )
+
+        for image, reported, is_valid in (
+            ("sha256:" + "d" * 64, descriptor, True),
+            (selected, None, False),
+            (selected, descriptor | {"digest": config}, False),
+        ):
+            with (
+                patch.object(stage, "check_mounts"),
+                patch.object(stage, "java_safe", return_value=True),
+                patch.object(runtime, "execute", return_value=(0, "1000", "")),
+                patch.object(
+                    stage,
+                    "call",
+                    side_effect=[(0, "f" * 64, ""), observed(image, reported)],
+                ),
+            ):
+                if is_valid:
+                    runtime.container(stage.BROKER, "KAFKA_IMAGE", {"broker"})
+                else:
+                    with self.assertRaisesRegex(
+                        stage.StageError, "RUNNING_LOCAL_MANIFEST_MISMATCH"
+                    ):
+                        runtime.container(
+                            stage.BROKER, "KAFKA_IMAGE", {"broker"}
+                        )
 
     def test_exact_target_map_and_connect_retention_negative(self):
         """DB省略名・日数を継承したconfig topicは受理しない。"""

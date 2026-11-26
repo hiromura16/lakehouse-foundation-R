@@ -6,6 +6,7 @@ import gzip
 import hashlib
 import json
 import re
+import subprocess
 import sys
 import tarfile
 import zlib
@@ -372,12 +373,66 @@ def verify_archive(
     return expected_sha, ident, config_record["digest"]
 
 
+def inspect_command(reference):
+    """Docker containerdの選択platformとdescriptorだけを取得する。"""
+    return [
+        "docker",
+        "--context",
+        "default",
+        "image",
+        "inspect",
+        "--platform",
+        "linux/amd64",
+        "--format",
+        "\n".join(
+            "{{json ." + field + "}}"
+            for field in ("Descriptor", "Id", "Os", "Architecture")
+        ),
+        reference,
+    ]
+
+
+def require_manifest_descriptor(descriptor, manifest, *, platform_required):
+    """configや曖昧なトップレベルindexを実行manifestとして扱わない。"""
+    checked_digest(manifest)
+    if (
+        not isinstance(descriptor, dict)
+        or descriptor.get("mediaType") != OCI_MANIFEST
+        or descriptor.get("digest") != manifest
+    ):
+        raise ImageError("ENGINE_MANIFEST_MISMATCH")
+    declared = descriptor.get("platform")
+    if declared is not None:
+        platform(declared)
+    elif platform_required:
+        raise ImageError("ENGINE_MANIFEST_PLATFORM_UNVERIFIED")
+
+
+def verify_engine_inspection(raw, manifest):
+    """Mobyの選択platformのinspect出力と、確認済みmanifestを照合する。"""
+    pieces = raw.strip().splitlines()
+    if len(pieces) != 4:
+        raise ImageError("ENGINE_MANIFEST_UNVERIFIED")
+    descriptor, ident, os_name, architecture = (
+        json.loads(
+            line, object_pairs_hook=unique, parse_constant=reject_constant
+        )
+        for line in pieces
+    )
+    require_manifest_descriptor(descriptor, manifest, platform_required=False)
+    if (ident, os_name, architecture) != (manifest, "linux", "amd64"):
+        raise ImageError("ENGINE_IMAGE_ID_OR_PLATFORM_MISMATCH")
+
+
 def main(argv=None):
     """差替え・pull・loadは行わず、固定識別子の検証だけを行う。"""
     cmd = argparse.ArgumentParser(description=__doc__)
     sub = cmd.add_subparsers(dest="method", required=True)
     sub.add_parser("registry")
     sub.add_parser("builder-ref")
+    local = sub.add_parser("inspect-local")
+    local.add_argument("reference")
+    local.add_argument("--manifest", required=True)
     arc = sub.add_parser("archive")
     info = sub.add_parser("archive-info")
     for parse in (arc, info):
@@ -402,6 +457,16 @@ def main(argv=None):
         elif args.method == "builder-ref":
             row = source_lock()["builder"]
             print(f"{docker_name(row)}:{row['tag']}@{row['manifest']}")
+        elif args.method == "inspect-local":
+            result = subprocess.run(
+                inspect_command(args.reference),
+                capture_output=True,
+                timeout=15,
+                check=False,
+            )
+            if result.returncode:
+                raise ImageError("ENGINE_MANIFEST_UNVERIFIED")
+            verify_engine_inspection(result.stdout, args.manifest)
         else:
             archive, manifest, config = verify_archive(
                 args.path,
@@ -433,6 +498,7 @@ def main(argv=None):
         TypeError,
         RecursionError,
         tarfile.TarError,
+        subprocess.TimeoutExpired,
         zlib.error,
     ):
         print("ERROR: IMAGE_VERIFICATION_FAILED", file=sys.stderr)
