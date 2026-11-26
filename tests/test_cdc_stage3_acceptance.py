@@ -157,3 +157,39 @@ class HostedEvidenceTest(unittest.TestCase):
             self.assertFalse(
                 accepts(host, db, stage3=stage3, stage_two_targets=stage2)
             )
+
+    def test_snapshot_diagnostics_do_not_forward_trace_or_unknown_values(self):
+        """認証情報風のtraceも固定分類にし、任意の状態語を公開しない。"""
+        private_sample = "not-for-output synthetic field"
+        raw = {
+            "connector": {"state": private_sample},
+            "tasks": [
+                {
+                    "state": "FAILED",
+                    "trace": "The SELECT permission was denied "
+                    + private_sample,
+                }
+            ],
+        }
+        state = evidence.worker_receipt(raw)
+        self.assertEqual(state, ("UNKNOWN", "FAILED", "SQL_PERMISSION"))
+        self.assertNotIn(private_sample, " ".join(state))
+        self.assertEqual(
+            evidence.worker_receipt(
+                {"connector": {"state": "RUNNING"}, "tasks": []}
+            ),
+            ("RUNNING", "UNKNOWN", "NOT_REPORTED"),
+        )
+        self.assertEqual(evidence.high_receipt(0), "EMPTY")
+        self.assertEqual(evidence.high_receipt(7), "PRESENT")
+        self.assertEqual(evidence.high_receipt(None), "UNKNOWN")
+        self.assertEqual(
+            evidence.console_receipt(
+                b"TimeoutException " + private_sample.encode()
+            ),
+            "CDC_READ_TIMEOUT_AFTER_HIGH",
+        )
+        self.assertEqual(
+            evidence.console_receipt(b"unrecognized option"),
+            "CDC_READ_CLI_OPTION_REJECTED",
+        )

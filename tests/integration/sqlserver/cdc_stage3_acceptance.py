@@ -35,11 +35,14 @@ from cdc_stage3_evidence import (
     FixtureError,
     assert_events,
     check,
+    console_receipt,
     decode_events,
+    high_receipt,
     patched_runtime,
     persisted,
     poll,
     prepare_and_start_worker,
+    worker_receipt,
 )
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -56,7 +59,7 @@ HISTORY = PROJECT + "-schema-history"
 PRODUCTS = f"{PROJECT}.{DATABASE}.{CONTRACT.SCHEMA}.products"
 
 
-def command(args, *, seconds=25):
+def command(args, *, seconds=25, classify=None):
     """成功したコマンドのstdoutのみ利用し、生のエラーは表示しない。"""
     result = subprocess.run(  # noqa: S603
         args,
@@ -67,7 +70,9 @@ def command(args, *, seconds=25):
         env=os.environ.copy(),
     )
     if result.returncode:
-        raise FixtureError("COMMAND_FAILED")
+        raise FixtureError(
+            classify(result.stderr) if classify else "COMMAND_FAILED"
+        )
     return result.stdout
 
 
@@ -257,6 +262,17 @@ def prepare_sql(directory, port):
             f"INSERT {target} ({names}) VALUES ({placeholders})",
             arguments,
         )
+    stage("SQL_LIMITED_READER_READBACK_SIX")
+    for table, columns in CONTRACT.TABLES.items():
+        target = f"[{CONTRACT.SCHEMA}].[{table}]"
+        field = columns[0].name
+        rows = execute(
+            reader,
+            f"SELECT COUNT_BIG(*) FROM {target} WHERE [{field}]=%s",
+            (FIXTURE_IDS[0],),
+        )
+        if rows != [(1,)]:
+            raise FixtureError("SQL_LIMITED_READER_SNAPSHOT_ROW_MISSING")
     return admin, reader, writer, old, original_jobs
 
 
@@ -398,9 +414,11 @@ class Runtime:
             "stage3",
         )
 
-    def compose(self, *args, seconds=60):
+    def compose(self, *args, seconds=60, classify=None):
         """公開しないstdout経由でComposeの結果を検査する。"""
-        return command((*self.stack, *args), seconds=seconds)
+        return command(
+            (*self.stack, *args), seconds=seconds, classify=classify
+        )
 
     def contract(self, action, *, expect=None, seconds=150):
         """本体入口を通り、機密無しの固定拒否だけを証拠にする。"""
@@ -597,7 +615,14 @@ class Runtime:
 
     def rest(self, resource):
         """固定されたループバックの読み取り専用RESTへ問い合わせる。"""
-        check(resource in ("/", f"/connectors/{CONNECTOR}/offsets"))
+        check(
+            resource
+            in (
+                "/",
+                f"/connectors/{CONNECTOR}/offsets",
+                f"/connectors/{CONNECTOR}/status",
+            )
+        )
         return json.loads(
             self.compose(
                 "exec",
@@ -617,7 +642,7 @@ class Runtime:
     def high(self, topic):
         """専用の一partitionに限り、brokerの実終端を求める。"""
         check(
-            topic == HISTORY
+            topic in {HISTORY, PROJECT + "-connect-config"}
             or topic
             in {
                 f"{PROJECT}.{DATABASE}.{SCHEMA}.{table}"
@@ -694,9 +719,16 @@ class Runtime:
         """各物理topicの実recordが正準六表のDB/スキーマ/表/キーと一致。"""
         for table, columns in CONTRACT.TABLES.items():
             topic = f"{PROJECT}.{DATABASE}.{SCHEMA}.{table}"
-            count = poll(
-                lambda: self.high(topic), lambda number: number > 0, seconds=90
-            )
+            try:
+                count = poll(
+                    lambda: self.high(topic),
+                    lambda number: number > 0,
+                    seconds=90,
+                )
+            except FixtureError as error:
+                if str(error) == "OBSERVATION_TIMEOUT":
+                    raise FixtureError("SNAPSHOT_BROKER_TOPIC_EMPTY") from None
+                raise
             check(count == 1)
             key, sep, body = self.read_data(topic, 1).strip().partition(b"\t")
             check(sep == b"\t")
@@ -745,6 +777,7 @@ class Runtime:
             "print.key=true",
             "--formatter-property",
             "print.value=true",
+            classify=console_receipt,
         )
 
     def offsets(self):
@@ -807,6 +840,62 @@ class Runtime:
             f"MEMORY={raw[0]} CPU_NANO={raw[1]}",
             flush=True,
         )
+
+
+def observation(probe):
+    """診断失敗で元の不合格を隠さず、例外本文は使用しない。"""
+    try:
+        return probe()
+    except Exception:
+        return None
+
+
+def metadata_receipt(reader):
+    """既存限定readerの読取可否を固定文字にする。GRANTは実行しない。"""
+    markers = []
+    for table in ("change_tables", "captured_columns", "lsn_time_mapping"):
+        try:
+            execute(reader, f"SELECT TOP (0) * FROM [cdc].[{table}]")
+        except pymssql.Error as error:
+            markers.append(
+                "DENIED" if error.args[:1] == (229,) else "SQL_ERROR"
+            )
+        else:
+            markers.append("READABLE")
+    return markers
+
+
+def snapshot_receipt(runtime, reader):
+    """六表の存在や実効状態を、名前・値・traceなしで記録する。"""
+    highs = []
+    for table in CONTRACT.TABLES:
+        topic = f"{PROJECT}.{DATABASE}.{SCHEMA}.{table}"
+        high = observation(lambda: runtime.high(topic))
+        highs.append(high_receipt(high))
+    history = high_receipt(observation(lambda: runtime.high(HISTORY)))
+    offsets = observation(runtime.offsets)
+    offset_state = (
+        high_receipt(len(offsets)) if isinstance(offsets, list) else "UNKNOWN"
+    )
+    status = observation(
+        lambda: runtime.rest(f"/connectors/{CONNECTOR}/status")
+    )
+    connector, task, cause = worker_receipt(status)
+    reader_receipt = observation(lambda: metadata_receipt(reader))
+    summary = {
+        "six_tables_in_contract_order": highs,
+        "schema_history": history,
+        "connect_config_topic": high_receipt(
+            observation(lambda: runtime.high(PROJECT + "-connect-config"))
+        ),
+        "offset": offset_state,
+        "connector": connector,
+        "task": task,
+        "reported_fault": cause,
+        "reader_catalog_change_captured_time": reader_receipt
+        or ["UNKNOWN"] * 3,
+    }
+    print("STAGE3_SNAPSHOT_RECEIPT=" + json.dumps(summary), flush=True)
 
 
 def verify(stage_dir, port, site, directory):
@@ -940,6 +1029,8 @@ def verify(stage_dir, port, site, directory):
     except Exception:
         failed = True
         print(f"STAGE3_FAILED_PHASE={phase}", file=sys.stderr)
+        if phase == "SNAPSHOT":
+            observation(lambda: snapshot_receipt(runtime, reader))
         raise
     finally:
         try:

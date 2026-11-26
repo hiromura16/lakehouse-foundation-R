@@ -136,3 +136,76 @@ def approved_capture_fixture(host, database, *, stage3, stage_two_targets):
     if host != "localhost":
         return False
     return database == DATABASE if stage3 else database in stage_two_targets
+
+
+def worker_receipt(content):
+    """RESTの状態と障害の大分類だけを公開し、エラー本文を返さない。"""
+    allowed = {
+        "RUNNING",
+        "FAILED",
+        "UNASSIGNED",
+        "RESTARTING",
+        "PAUSED",
+        "STOPPED",
+    }
+    if not isinstance(content, dict):
+        return "UNKNOWN", "UNKNOWN", "UNKNOWN"
+    connector = content.get("connector")
+    tasks = content.get("tasks")
+    task = tasks[0] if isinstance(tasks, list) and len(tasks) == 1 else None
+    connector_state = (
+        connector.get("state") if isinstance(connector, dict) else None
+    )
+    task_state = task.get("state") if isinstance(task, dict) else None
+    trace = task.get("trace") if isinstance(task, dict) else None
+    if not isinstance(trace, str):
+        trace = ""
+    text = trace.casefold()
+    if (
+        "select permission was denied" in text
+        or "execute permission was denied" in text
+    ):
+        cause = "SQL_PERMISSION"
+    elif "certificate" in text and ("tls" in text or "ssl" in text):
+        cause = "SQL_OR_BROKER_TLS"
+    elif "authorizationexception" in text:
+        cause = "KAFKA_AUTHORIZATION"
+    elif "unknowntopicorpartitionexception" in text:
+        cause = "KAFKA_TOPIC_UNAVAILABLE"
+    elif "sqlserverexception" in text:
+        cause = "SQL_DRIVER"
+    elif text:
+        cause = "OTHER"
+    else:
+        cause = "NOT_REPORTED"
+    return (
+        connector_state
+        if isinstance(connector_state, str) and connector_state in allowed
+        else "UNKNOWN",
+        task_state
+        if isinstance(task_state, str) and task_state in allowed
+        else "UNKNOWN",
+        cause,
+    )
+
+
+def high_receipt(value):
+    """topic名と具体offsetを出さず、観測値があるかを固定文字にする。"""
+    if type(value) is int and value >= 0:
+        return "PRESENT" if value else "EMPTY"
+    return "UNKNOWN"
+
+
+def console_receipt(stderr):
+    """raw stderrを公開せず、直接partition読み取りの失敗を分類する。"""
+    text = stderr.lower()
+    if b"timeoutexception" in text or b"timed out" in text:
+        return "CDC_READ_TIMEOUT_AFTER_HIGH"
+    if (
+        b"unrecognized option" in text
+        or b"unrecognizedoptionexception" in text
+    ):
+        return "CDC_READ_CLI_OPTION_REJECTED"
+    if b"authorizationexception" in text:
+        return "CDC_READ_AUTHORIZATION_FAILED"
+    return "CDC_READ_COMMAND_FAILED"
