@@ -195,33 +195,47 @@ def prepare_sql(directory, port):
         except pymssql.Error:
             return []
 
+    stage("SQL_LOOPBACK_TLS")
     poll(probe_sql, lambda rows: rows == [(1,)], seconds=90)
+    stage("SQL_SERVER_VERSION")
     check(
         execute(
             master, "SELECT CONVERT(int,SERVERPROPERTY('ProductMajorVersion'))"
         )
         == [(EXPECTED_MAJOR,)]
     )
+    stage("SQL_CREATE_OWN_FIXTURE")
     execute(master, f"CREATE DATABASE [{DATABASE}]")
     admin = database_settings(master, DATABASE)
     guid = database_guid(admin)
+    stage("SQL_ENABLE_FIXTURE_CDC")
     execute(admin, "EXEC sys.sp_cdc_enable_db")
+    stage("SQL_AGENT_SESSION")
     wait_for_agent_session(master)
+    stage("SQL_SYNTHETIC_SIBLING_AND_JOBS")
     seed_sibling(admin)
     original_jobs = jobs(admin)
-    ensure_fixture_capture_started(admin, original_jobs["capture"][0], guid)
+    stage("SQL_OWN_CAPTURE_JOB")
+    ensure_fixture_capture_started(
+        admin, original_jobs["capture"][0], guid, stage3=True
+    )
+    stage("SQL_SIBLING_CAPTURE_SENTINEL")
     wait_for_live_sibling(admin)
     old = sibling_state(admin)
     installation = token_hex(16)
+    stage("SQL_FIXED_CONTRACT_CREATE")
     check(
         configure(admin, DATABASE, guid, installation, apply=True) == "CREATED"
     )
+    stage("SQL_FIXED_CONTRACT_VERIFY")
     check(
         configure(admin, DATABASE, guid, installation, apply=False)
         == "VERIFIED"
     )
+    stage("SQL_LIMITED_FIXTURE_ACCOUNTS")
     reader, writer = put_accounts(master, admin)
     check(reader["SOURCE_SQLSERVER_USER"] == READER)
+    stage("SQL_INSERT_SIX_SYNTHETIC_ROWS")
     for table, columns in CONTRACT.TABLES.items():
         target = f"[{CONTRACT.SCHEMA}].[{table}]"
         names = ",".join(f"[{column.name}]" for column in columns)
@@ -796,9 +810,12 @@ def verify(stage_dir, port, site, directory):
     """同じ専用stateと合成SQLを使い、実変更が復旧後も届くことを確認する。"""
     stage("SQL2022_CONTRACT")
     admin, reader, writer, sibling, capture_jobs = prepare_sql(stage_dir, port)
+    stage("ARCHIVE_EXPECTED_EVIDENCE")
     found = archives(directory)
     verify_images(found)
+    stage("PRIVATE_RUNTIME_CONFIG")
     runtime = Runtime(create_env(stage_dir, reader, found), site, found)
+    stage("CLEAN_DEDICATED_COMPOSE")
     check(not runtime.compose("ps", "--all", "-q").strip())
     for noun in ("volume", "network"):
         old = command(

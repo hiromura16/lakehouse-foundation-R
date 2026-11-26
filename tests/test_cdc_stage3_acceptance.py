@@ -127,3 +127,33 @@ class HostedEvidenceTest(unittest.TestCase):
                 calls.append, denied, calls.append, "stage3-connect"
             )
         self.assertEqual(calls, [])
+
+    def test_stage_specific_capture_job_destination_is_still_exact(self):
+        """段階3が段階2や他のDB・ホストのジョブを起動可能にしない。"""
+        stage2 = {"FixtureCdcContract", "FixtureCdcCollision"}
+        accepts = evidence.approved_capture_fixture
+        for db in stage2:
+            self.assertTrue(
+                accepts(
+                    "localhost", db, stage3=False, stage_two_targets=stage2
+                )
+            )
+            self.assertFalse(
+                accepts("localhost", db, stage3=True, stage_two_targets=stage2)
+            )
+        self.assertTrue(
+            accepts(
+                "localhost",
+                evidence.DATABASE,
+                stage3=True,
+                stage_two_targets=stage2,
+            )
+        )
+        for host, db, stage3 in (
+            ("localhost", evidence.DATABASE, False),
+            ("localhost", "DifferentSynthetic", True),
+            ("sql.example.invalid", evidence.DATABASE, True),
+        ):
+            self.assertFalse(
+                accepts(host, db, stage3=stage3, stage_two_targets=stage2)
+            )

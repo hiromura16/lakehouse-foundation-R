@@ -129,3 +129,10 @@ def prepare_and_start_worker(compose, preflight, attach, service):
     compose("up", "--no-start", "--no-deps", "--pull", "never", service)
     attach()
     compose("start", service)
+
+
+def approved_capture_fixture(host, database, *, stage3, stage_two_targets):
+    """対象はloopbackの明示した試験段階の合成DBだけ。"""
+    if host != "localhost":
+        return False
+    return database == DATABASE if stage3 else database in stage_two_targets
