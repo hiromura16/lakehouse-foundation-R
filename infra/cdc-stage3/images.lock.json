@@ -1,0 +1,42 @@
+{
+  "kafka": {
+    "index": "sha256:852a0d49fc4e656b022e7f23785411802c9a088c78a7c5e39f33969de9c227a7",
+    "manifest": "sha256:8f325fc00143fed78eabe00b033a86747078bb06edc21345d06651f77ae44f30",
+    "config": "sha256:5f903e08de3eaa781db23c1ca43c274b50accc969f8b46effe5da0c7be73a968",
+    "tag": "4.3.2",
+    "registry": "registry-1.docker.io",
+    "repository": "apache/kafka"
+  },
+  "connect": {
+    "index": "sha256:e7fe7826d3ee71965603106a02f6c605c1d6fde058c76856c1d33dd3b40f9897",
+    "manifest": "sha256:b8662c7172417e8217f6627a5bc42a47afd6688f801a98e89683da63a2e2c604",
+    "config": "sha256:f549e9b0dd7e3bf19310fe1888f4c6ee0c6ff7eb729ffd6357a1e35ce4c0e8bf",
+    "tag": "3.7.1.Final",
+    "registry": "quay.io",
+    "repository": "debezium/connect"
+  },
+  "jre_alpine": {
+    "index": "sha256:5d7689f47d670aca766b9503a70bccc2d73b4eb9221ae8f714ae958313c4ce70",
+    "manifest": "sha256:c788d7d9ddc1cf0cf38a1735e14792eb2ff4dc6886e9658771095b7e36a69523",
+    "config": "sha256:5649cf3d873b6600b777ddff8a1a89cffbfa19755e5334bfb61136e8ec7a59a9",
+    "tag": "21.0.13.1_2-jre-alpine",
+    "registry": "registry-1.docker.io",
+    "repository": "library/eclipse-temurin"
+  },
+  "jre_ubi": {
+    "index": "sha256:e964f2fe934c406fa0a3c73111617d3d65c85aef8c744e49b7e9b206389a8cb2",
+    "manifest": "sha256:d143795277f77ebba5315b1a2d896fca4527bb9971ddd80db0e85ddf162b6999",
+    "config": "sha256:65c7504679e327db5a86b0b26e4336ebddcd9f5f96183bd2585121354e4ee674",
+    "tag": "21.0.13.1_2-jre-ubi9-minimal",
+    "registry": "registry-1.docker.io",
+    "repository": "library/eclipse-temurin"
+  },
+  "builder": {
+    "index": "sha256:0039c1d47e8748b5afea56f4e85f14febaf34452bd99d9552d2daa82262b5cc5",
+    "manifest": "sha256:e5d9d1763945ca186d48cbf5b0ff3e062eb917fb8a80da6da87144edb7320a90",
+    "config": "sha256:e03746490b6176560985509bae72c2b9476bf98f499dace50bc8515d212190c3",
+    "tag": "v0.29.0",
+    "registry": "registry-1.docker.io",
+    "repository": "moby/buildkit"
+  }
+}

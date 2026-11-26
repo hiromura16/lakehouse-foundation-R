@@ -14,8 +14,9 @@
 > **文書一覧:** [目的・読者から探す文書マニフェスト](<../DOCUMENTATION-MANIFEST.md>)
 <!-- doc-purpose:end -->
 
-SQLの専用契約だけを段階2で実装します。Broker、Connect、Coreとの連結・配置は
-引き続き**未実装**です。以下の名前は設計を検証するための合成例です。
+SQLの専用契約を段階2で実装します。独立BrokerとConnectの段階3の構成・
+実SQLの隔離受入は[段階3の設計と配布物](cdc-stage3-infrastructure.md)を参照してください。
+Coreの連結・実サイトの配置はここでは扱いません。以下は設計用の合成例です。
 
 ## 現行の証拠と不足
 

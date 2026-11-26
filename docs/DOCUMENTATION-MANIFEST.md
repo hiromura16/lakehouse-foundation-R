@@ -79,6 +79,7 @@
 | [ADR: Foundation Rに閉じたCDC取り込みを追加する](<reviews/cdc-self-contained-adr.md>) | 内包CDCを任意構成として追加する理由、代案、取り消し条件を整理する。 | 追加構成の採否と責務を設計するとき。 | reference |
 | [Foundation R内包CDCの現状と設計差分](<reviews/cdc-self-contained-design.md>) | 現行の証拠と未実装範囲を区別し、追加する契約と配置を確認する。 | SQL、topic、配備の後続差分を作る前。 | reference |
 | [内包CDCの権限境界と否定試験](<reviews/cdc-self-contained-threat-model.md>) | SQLとKafkaを主体別に許可し、異なる権限と入力を否定試験で検証する。 | 権限や公開境界を設計・レビューするとき。 | reference |
+| [Foundation R 段階3: 隔離CDCインフラ](<reviews/cdc-stage3-infrastructure.md>) | Kafka、Connect、実行イメージの検証と復旧の境界を整理する。 | 段階3の隔離環境と配布物をレビューするとき。 | reference |
 | [アクセス行列: 通常利用・ローカル業務継続・緊急管理](<reviews/zero-trust-dokploy-access-matrix.md>) | アプリ別の認証、認可、ネットワーク、障害時の境界を定める。 | Foundation Rの配備とアクセス分離を設計・レビューするとき。 | active |
 | [ADR: ローカル優先と配備・アクセス境界の分離](<reviews/zero-trust-dokploy-adr.md>) | ローカル優先の設計選択、代案、および取り消せる条件を記録する。 | Foundation Rの配備とアクセス分離を設計・レビューするとき。 | active |
 | [Foundation Rのゼロトラスト・Dokploy・WAN断耐性の差分レビュー](<reviews/zero-trust-dokploy-gap-analysis.md>) | 追跡済み構成を棚卸しし、オンプレの自律運転を守る設計と段階的な受入条件を決める。 | Dokployの配備モードや人アクセス、WAN断耐性の変更を設計・レビューするとき。 | active |
@@ -145,6 +146,7 @@
 | [ADR: Foundation Rに閉じたCDC取り込みを追加する](<reviews/cdc-self-contained-adr.md>) | 内包CDCを任意構成として追加する理由、代案、取り消し条件を整理する。 |
 | [Foundation R内包CDCの現状と設計差分](<reviews/cdc-self-contained-design.md>) | 現行の証拠と未実装範囲を区別し、追加する契約と配置を確認する。 |
 | [内包CDCの権限境界と否定試験](<reviews/cdc-self-contained-threat-model.md>) | SQLとKafkaを主体別に許可し、異なる権限と入力を否定試験で検証する。 |
+| [Foundation R 段階3: 隔離CDCインフラ](<reviews/cdc-stage3-infrastructure.md>) | Kafka、Connect、実行イメージの検証と復旧の境界を整理する。 |
 | [アクセス行列: 通常利用・ローカル業務継続・緊急管理](<reviews/zero-trust-dokploy-access-matrix.md>) | アプリ別の認証、認可、ネットワーク、障害時の境界を定める。 |
 | [ADR: ローカル優先と配備・アクセス境界の分離](<reviews/zero-trust-dokploy-adr.md>) | ローカル優先の設計選択、代案、および取り消せる条件を記録する。 |
 | [Foundation Rのゼロトラスト・Dokploy・WAN断耐性の差分レビュー](<reviews/zero-trust-dokploy-gap-analysis.md>) | 追跡済み構成を棚卸しし、オンプレの自律運転を守る設計と段階的な受入条件を決める。 |
@@ -178,6 +180,7 @@
 | [ADR: Foundation Rに閉じたCDC取り込みを追加する](<reviews/cdc-self-contained-adr.md>) | 内包CDCを任意構成として追加する理由、代案、取り消し条件を整理する。 |
 | [Foundation R内包CDCの現状と設計差分](<reviews/cdc-self-contained-design.md>) | 現行の証拠と未実装範囲を区別し、追加する契約と配置を確認する。 |
 | [内包CDCの権限境界と否定試験](<reviews/cdc-self-contained-threat-model.md>) | SQLとKafkaを主体別に許可し、異なる権限と入力を否定試験で検証する。 |
+| [Foundation R 段階3: 隔離CDCインフラ](<reviews/cdc-stage3-infrastructure.md>) | Kafka、Connect、実行イメージの検証と復旧の境界を整理する。 |
 | [アクセス行列: 通常利用・ローカル業務継続・緊急管理](<reviews/zero-trust-dokploy-access-matrix.md>) | アプリ別の認証、認可、ネットワーク、障害時の境界を定める。 |
 | [ADR: ローカル優先と配備・アクセス境界の分離](<reviews/zero-trust-dokploy-adr.md>) | ローカル優先の設計選択、代案、および取り消せる条件を記録する。 |
 | [Foundation Rのゼロトラスト・Dokploy・WAN断耐性の差分レビュー](<reviews/zero-trust-dokploy-gap-analysis.md>) | 追跡済み構成を棚卸しし、オンプレの自律運転を守る設計と段階的な受入条件を決める。 |
@@ -198,6 +201,7 @@
 | [ADR: Foundation Rに閉じたCDC取り込みを追加する](<reviews/cdc-self-contained-adr.md>) | 内包CDCを任意構成として追加する理由、代案、取り消し条件を整理する。 |
 | [Foundation R内包CDCの現状と設計差分](<reviews/cdc-self-contained-design.md>) | 現行の証拠と未実装範囲を区別し、追加する契約と配置を確認する。 |
 | [内包CDCの権限境界と否定試験](<reviews/cdc-self-contained-threat-model.md>) | SQLとKafkaを主体別に許可し、異なる権限と入力を否定試験で検証する。 |
+| [Foundation R 段階3: 隔離CDCインフラ](<reviews/cdc-stage3-infrastructure.md>) | Kafka、Connect、実行イメージの検証と復旧の境界を整理する。 |
 | [アクセス行列: 通常利用・ローカル業務継続・緊急管理](<reviews/zero-trust-dokploy-access-matrix.md>) | アプリ別の認証、認可、ネットワーク、障害時の境界を定める。 |
 | [ADR: ローカル優先と配備・アクセス境界の分離](<reviews/zero-trust-dokploy-adr.md>) | ローカル優先の設計選択、代案、および取り消せる条件を記録する。 |
 | [Foundation Rのゼロトラスト・Dokploy・WAN断耐性の差分レビュー](<reviews/zero-trust-dokploy-gap-analysis.md>) | 追跡済み構成を棚卸しし、オンプレの自律運転を守る設計と段階的な受入条件を決める。 |

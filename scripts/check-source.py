@@ -489,10 +489,72 @@ def example_ip_text(name, text):
     return "".join(masked)
 
 
+def stage3_jvm_ip_text(name, text):
+    """Temurin公表値の固定Java構文だけをIPv4候補から除く。"""
+    patched = r"21\.0\.13\.1"
+    stock = r"21\.0\.12\.1"
+    docker = {
+        "infra/cdc-stage3/kafka.Dockerfile": (
+            "alpine",
+            "c788d7d9ddc1cf0cf38a1735e14792eb2ff4dc6886e9658771095b7e36a69523",
+            r"ENV JAVA_VERSION=jdk-{java}\+2 JAVA_TOOL_OPTIONS=-Xshare:off",
+        ),
+        "infra/cdc-stage3/connect.Dockerfile": (
+            "ubi9-minimal",
+            "d143795277f77ebba5315b1a2d896fca4527bb9971ddd80db0e85ddf162b6999",
+            r"ENV JAVA_HOME=/opt/stage3-java JAVA_VERSION=jdk-{java}\+2 "
+            r"PATH=/opt/stage3-java/bin:\$\{PATH\}",
+        ),
+    }
+    allowed = {
+        "infra/cdc-stage3/images.lock.json": (
+            r'^    "tag": "({java})_2-jre-(?:alpine|ubi9-minimal)",$',
+        ),
+        "scripts/cdc_stage3_images.py": (
+            r'^        "({java})_2-jre-(?:alpine|ubi9-minimal)",$',
+        ),
+        "docs/reviews/cdc-stage3-infrastructure.md": (
+            r"^  brokerとConnectの\*\*実際に起動した\*\*JVMそれぞれで"
+            r"Java ({java})\+2以上の$",
+        ),
+        "tests/test_cdc_stage3.py": (
+            r'^            \("({java})", "[12]", (?:False|True)\),$',
+            r'^            \("(' + stock + r')", "2", False\),$',
+        ),
+        "tests/test_cdc_stage3_acceptance.py": (
+            r'^        self\.assert(?:False|True)\(check\("({java})'
+            r'\+(?:1-LTS|2-ea|2-LTS)"\)\)$',
+        ),
+    }
+    if name in docker:
+        os_name, digest, env = docker[name]
+        patterns = (
+            r"^FROM eclipse-temurin:({java})_2-jre-"
+            + os_name
+            + "@sha256:"
+            + digest
+            + " AS jre$",
+            "^" + env.replace("{java}", "({java})") + "$",
+        )
+    else:
+        patterns = allowed.get(name, ())
+    # 最初のcaptureだけをマスクする。行の別の文字と全ての他検査はそのまま。
+    masked = list(text)
+    for rule in patterns:
+        for match in re.finditer(
+            rule.replace("{java}", patched), text, re.MULTILINE
+        ):
+            start, end = match.span(1)
+            masked[start:end] = " " * (end - start)
+    return "".join(masked)
+
+
 def scan_text(name, text, terms, secrets):
     """該当したポリシーを、ソース行や値を表示せずに報告する。"""
     findings = []
-    ip_lines = example_ip_text(name, svg_ip_text(name, text)).splitlines()
+    ip_lines = stage3_jvm_ip_text(
+        name, example_ip_text(name, svg_ip_text(name, text))
+    ).splitlines()
     for number, line in enumerate(text.splitlines(), 1):
         for rule, expression in RULES.items():
             if expression.search(line):

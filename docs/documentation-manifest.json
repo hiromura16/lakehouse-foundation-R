@@ -614,6 +614,25 @@
       "status": "reference"
     },
     {
+      "path": "docs/reviews/cdc-stage3-infrastructure.md",
+      "title": "Foundation R 段階3: 隔離CDCインフラ",
+      "purpose": "Kafka、Connect、実行イメージの検証と復旧の境界を整理する。",
+      "audience": [
+        "基盤構築担当",
+        "開発・設計担当",
+        "運用担当"
+      ],
+      "when_to_use": "段階3の隔離環境と配布物をレビューするとき。",
+      "category": "06 開発・レビュー",
+      "prerequisites": [
+        "docs/reviews/cdc-self-contained-design.md"
+      ],
+      "next": [
+        "docs/reviews/cdc-self-contained-acceptance.md"
+      ],
+      "status": "reference"
+    },
+    {
       "path": "docs/reviews/cdc-self-contained-threat-model.md",
       "title": "内包CDCの権限境界と否定試験",
       "purpose": "SQLとKafkaを主体別に許可し、異なる権限と入力を否定試験で検証する。",

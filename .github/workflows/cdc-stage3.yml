@@ -1,0 +1,47 @@
+name: 段階3 KafkaとConnectの隔離受入
+
+on:  # yamllint disable-line rule:truthy
+  push:
+    paths: &stage3_paths
+      - .github/workflows/cdc-stage3.yml
+      - compose.cdc-stage3.yaml
+      - infra/cdc-stage3/**
+      - scripts/cdc_stage3*.py
+      - scripts/cdc_sql_contract.py
+      - tests/test_cdc_stage3*.py
+      - tests/integration/sqlserver/**
+  pull_request:
+    paths: *stage3_paths
+
+permissions:
+  contents: read
+
+jobs:
+  isolated:
+    if: >-
+      github.repository == 'hiromura16/lakehouse-foundation-R' &&
+      (github.event_name != 'pull_request' ||
+       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-26.04
+    timeout-minutes: 27
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+        with:
+          version: '0.13.7'
+          checksum: c5221ff41b7892bfc223543883600125f6a47fe845093e0f5bdff4f359196d83
+          enable-cache: false
+      - name: 不変入力、OCIアーカイブと実JVMを確認
+        shell: bash
+        run: bash tests/integration/sqlserver/cdc_stage3_images.sh
+      - name: 実SQLのsnapshotと変更、再起動後の復帰を確認
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          runner="$RUNNER_TEMP/stage3-sql-driver"
+          uv venv --python 3.14 "$runner"
+          uv pip sync --python "$runner/bin/python" --require-hashes --only-binary :all: \
+            tests/integration/sqlserver/requirements.lock
+          bash tests/integration/sqlserver/run.sh --cdc-stage3 "$runner/bin/python"

@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# 使い捨てrunnerのみに実行イメージを組み立てて保存・照合する。
+set -Eeuo pipefail
+umask 077
+repository="${GITHUB_REPOSITORY:-}"
+if [[ "${GITHUB_ACTIONS:-}" != true || "${RUNNER_ENVIRONMENT:-}" != github-hosted ||
+  "${RUNNER_OS:-}" != Linux || "${repository,,}" != hiromura16/lakehouse-foundation-r ||
+  "$(uname -m)" != x86_64 ]]; then
+  printf '%s\n' 'STAGE3_HOSTED_AMD64_ONLY' >&2
+  exit 1
+fi
+
+out=$(mktemp -d "${RUNNER_TEMP:?}/stage3-oci.XXXXXX")
+printf 'STAGE3_ARCHIVES_DIR=%s\n' "$out" >> "${GITHUB_ENV:?}"
+python3 scripts/cdc_stage3_images.py registry
+builder="foundation-r-stage3-$(openssl rand -hex 8)"
+builder_image=$(python3 scripts/cdc_stage3_images.py builder-ref)
+docker --context default buildx create --name "$builder" --driver docker-container \
+  --driver-opt "image=$builder_image" >/dev/null
+trap 'docker --context default buildx rm "$builder" >/dev/null' EXIT
+for kind in kafka connect; do
+  # 入力はそれぞれのDockerfileが固定。push / registry loginを使わない。
+  tag="foundation-r-stage3-$kind:archive"
+  archive="$out/$kind.tar"
+  if ! docker --context default buildx build --builder "$builder" --platform linux/amd64 \
+    --provenance=false --sbom=false --no-cache --pull \
+    --output "type=oci,compression=gzip,name=$tag,dest=$archive" \
+    --file "infra/cdc-stage3/$kind.Dockerfile" infra/cdc-stage3 > "$out/build.log" 2>&1; then
+    printf 'STAGE3_BUILD_FAIL=%s\n' "$kind" >&2
+    exit 1
+  fi
+  rm -- "$out/build.log"
+  hash=$(sha256sum -- "$archive")
+  python3 scripts/cdc_stage3_images.py archive-info "$archive" --sha256 "${hash%% *}" \
+    > "$out/$kind.json"
+  if ! docker --context default image load --input "$archive" >/dev/null 2>&1; then
+    printf '%s\n' 'STAGE3_OCI_LOAD_FAILED_CONTAINERD_REQUIRED' >&2
+    exit 1
+  fi
+  config=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["config"])' "$out/$kind.json")
+  identified=$(docker --context default image inspect "$tag" --format '{{.Id}}')
+  if [[ "$identified" != "$config" || ! "$config" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+    printf 'STAGE3_LOADED_CONFIG_MISMATCH=%s\n' "$kind" >&2
+    exit 1
+  fi
+  # 出力は上流由来バイトのハッシュだけ。tagはこのrunnerだけの参照。
+  printf 'STAGE3_ARCHIVE_%s=' "$kind"
+  cat -- "$out/$kind.json"
+  suffix="${config#sha256:}"
+  docker --context default image tag "$tag" "foundation-r-stage3-$kind:ci-${suffix:0:16}"
+done
