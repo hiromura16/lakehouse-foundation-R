@@ -6,6 +6,12 @@ from time import monotonic, sleep
 
 DATABASE = "FixtureStageThree"
 SCHEMA = "foundation_r_demo"
+CDC_CATALOGS = ("change_tables", "captured_columns", "lsn_time_mapping")
+SQL_FIXTURE_IMAGE = (
+    "mcr.microsoft.com/mssql/server@sha256:"
+    "4525e3efac9f3e241cb003bb2ff2a82818b502f37e12049d788b1a9fa7e13b7f"
+)
+SQL_CATALOG_FIXTURE_READER = "fixture_cdc_reader"
 FIXTURE_IDS = (
     "Stage3Snapshot",
     "Stage3Stream",
@@ -209,3 +215,24 @@ def console_receipt(stderr):
     if b"authorizationexception" in text:
         return "CDC_READ_AUTHORIZATION_FAILED"
     return "CDC_READ_COMMAND_FAILED"
+
+
+def allows_catalog_fixture(container_evidence, binding, site, port):
+    """所有ラベル・固定像・loopbackのlistenerが同じ隔離実体か照合。"""
+    return (
+        re.fullmatch(r"foundation-r-sqlserver-[0-9a-f]{16}", site) is not None
+        and port.isdecimal()
+        and 0 < int(port) <= 65535
+        and container_evidence == [True, SQL_FIXTURE_IMAGE, site]
+        and container_evidence[0] is True
+        and binding == "127.0.0.1:" + port
+    )
+
+
+def catalog_fixture_grants():
+    """当合成readerに必要な2つの正準object-level SELECTだけを返す。"""
+    return tuple(
+        f"GRANT SELECT ON OBJECT::[cdc].[{table}] "
+        f"TO [{SQL_CATALOG_FIXTURE_READER}]"
+        for table in CDC_CATALOGS[:2]
+    )

@@ -14,13 +14,16 @@ from cdc_contract_acceptance import (
     CONTRACT,
     EXPECTED_MAJOR,
     READER,
+    SIBLING,
     configure,
     database_guid,
     database_settings,
     ensure_fixture_capture_started,
     execute,
     jobs,
+    lsn_range,
     put_accounts,
+    require_sql_denial,
     safe_failure,
     seed_sibling,
     sibling_state,
@@ -29,11 +32,15 @@ from cdc_contract_acceptance import (
     wait_for_live_sibling,
 )
 from cdc_stage3_evidence import (
+    CDC_CATALOGS,
     DATABASE,
     FIXTURE_IDS,
     SCHEMA,
+    SQL_CATALOG_FIXTURE_READER,
     FixtureError,
+    allows_catalog_fixture,
     assert_events,
+    catalog_fixture_grants,
     check,
     console_receipt,
     decode_events,
@@ -47,6 +54,7 @@ from cdc_stage3_evidence import (
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts"))
+from cdc_stage3 import hosted_fixture  # noqa: E402
 from cdc_stage3_images import STAGE3_NAMESPACE, local_tag  # noqa: E402
 
 PROJECT = STAGE3_NAMESPACE
@@ -82,14 +90,8 @@ def stage(name):
 
 
 def hosted():
-    """会社や自宅のdaemonを利用する前に拒否する。"""
-    if not (
-        os.environ.get("GITHUB_ACTIONS") == "true"
-        and os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted"
-        and os.environ.get("RUNNER_OS") == "Linux"
-        and os.environ.get("GITHUB_REPOSITORY", "").casefold()
-        == "hiromura16/lakehouse-foundation-r"
-    ):
+    """同repoのhosted Push/PR以外には、SQLに接続する前に拒否する。"""
+    if not hosted_fixture(os.environ):
         raise FixtureError("STAGE3_HOSTED_ONLY")
 
 
@@ -182,6 +184,104 @@ def restore_images(directory, found):
     verify_images(found)
 
 
+def require_sql_fixture(site, port):
+    """runnerの所有する固定SQLコンテナだけを接続前に受け入れる。"""
+    output = command(
+        (
+            *DOCKER,
+            "inspect",
+            "--type",
+            "container",
+            "--format",
+            "{{json .State.Running}}\n{{json .Config.Image}}\n"
+            "{{json (index .Config.Labels "
+            '"io.foundation-r.stage3.sql-fixture")}}',
+            site,
+        )
+    )
+    fields = [json.loads(item) for item in output.splitlines()]
+    binding = command((*DOCKER, "port", site, "1433/tcp")).decode().strip()
+    if not allows_catalog_fixture(fields, binding, site, port):
+        raise FixtureError("SQL_FIXTURE_OWNERSHIP_UNVERIFIED")
+
+
+def grant_fixture_catalog(admin, reader, guid):
+    """使い捨てDBでのみ、専用readerの2つのメタデータ読み取りを許す。"""
+    if (
+        admin["SOURCE_SQLSERVER_HOST"] != "localhost"
+        or admin["SOURCE_SQLSERVER_DATABASE"] != DATABASE
+        or reader["SOURCE_SQLSERVER_DATABASE"] != DATABASE
+        or reader["SOURCE_SQLSERVER_USER"] != READER
+        or READER != SQL_CATALOG_FIXTURE_READER
+        or database_guid(admin) != guid
+        or execute(admin, "SELECT DB_NAME()") != [(DATABASE,)]
+        or execute(reader, "SELECT DB_NAME(),USER_NAME()")
+        != [(DATABASE, READER)]
+    ):
+        raise FixtureError("SQL_CATALOG_FIXTURE_SCOPE_UNVERIFIED")
+    if metadata_receipt(reader) != ["DENIED", "DENIED", "READABLE"]:
+        raise FixtureError("SQL_CATALOG_BASELINE_CHANGED")
+    for statement in catalog_fixture_grants():
+        execute(admin, statement)
+    observed = execute(
+        admin,
+        "SELECT OBJECT_SCHEMA_NAME(major_id),OBJECT_NAME(major_id),"
+        "class,minor_id,state,permission_name FROM sys.database_permissions "
+        "WHERE grantee_principal_id=DATABASE_PRINCIPAL_ID(%s)",
+        (READER,),
+    )
+    expected = {
+        ("cdc", table, 1, 0, "G", "SELECT") for table in CDC_CATALOGS[:2]
+    }
+    if len(observed) != 2 or set(observed) != expected:
+        raise FixtureError("SQL_CATALOG_FIXTURE_ACL_MISMATCH")
+    if metadata_receipt(reader) != ["READABLE"] * len(CDC_CATALOGS):
+        raise FixtureError("SQL_CATALOG_FIXTURE_SELECT_UNVERIFIED")
+
+
+def require_reader_write_and_sibling_denial(admin, reader):
+    """カタログが見えても別表と変更内容・固定六表のDMLには届かない。"""
+    require_sql_denial(
+        reader, "SELECT TOP (0) * FROM dbo.fixture_sibling", {229}
+    )
+    require_sql_denial(
+        reader, f"SELECT TOP (0) * FROM [cdc].[{SIBLING}_CT]", {229}
+    )
+    sibling_bounds = lsn_range(admin, SIBLING)
+    require_sql_denial(
+        reader,
+        f"SELECT id FROM [cdc].[fn_cdc_get_all_changes_{SIBLING}]"
+        "(%s,%s,N'all')",
+        {229},
+        sibling_bounds,
+    )
+    roles = execute(
+        reader,
+        "SELECT IS_SRVROLEMEMBER(N'sysadmin'),IS_MEMBER(N'db_owner'),"
+        "IS_MEMBER(N'db_datareader'),IS_MEMBER(N'db_datawriter')",
+    )
+    check(roles == [(0, 0, 0, 0)])
+    for table in CONTRACT.TABLES:
+        target = f"{CONTRACT.SCHEMA}.{table}"
+        check(
+            execute(
+                reader,
+                "SELECT HAS_PERMS_BY_NAME(%s,N'OBJECT',N'INSERT'),"
+                "HAS_PERMS_BY_NAME(%s,N'OBJECT',N'UPDATE'),"
+                "HAS_PERMS_BY_NAME(%s,N'OBJECT',N'DELETE')",
+                (target, target, target),
+            )
+            == [(0, 0, 0)]
+        )
+    products = f"[{CONTRACT.SCHEMA}].[products]"
+    for statement in (
+        f"INSERT {products} (product_id) SELECT N'synthetic' WHERE 1=0",
+        f"UPDATE {products} SET product_name=NULL WHERE 1=0",
+        f"DELETE FROM {products} WHERE 1=0",
+    ):
+        require_sql_denial(reader, statement, {229})
+
+
 def prepare_sql(directory, port):
     """段階2のDBA入口と、別系統の番兵を同じ一時SQLだけで利用する。"""
     master = {
@@ -243,6 +343,14 @@ def prepare_sql(directory, port):
     stage("SQL_LIMITED_FIXTURE_ACCOUNTS")
     reader, writer = put_accounts(master, admin)
     check(reader["SOURCE_SQLSERVER_USER"] == READER)
+    stage("SQL_ISOLATED_CATALOG_SELECT")
+    grant_fixture_catalog(admin, reader, guid)
+    stage("SQL_CATALOG_DML_AND_SIBLING_DENIAL")
+    require_reader_write_and_sibling_denial(admin, reader)
+    check(
+        configure(admin, DATABASE, guid, installation, apply=False)
+        == "VERIFIED"
+    )
     stage("SQL_INSERT_SIX_SYNTHETIC_ROWS")
     for table, columns in CONTRACT.TABLES.items():
         target = f"[{CONTRACT.SCHEMA}].[{table}]"
@@ -853,7 +961,7 @@ def observation(probe):
 def metadata_receipt(reader):
     """既存限定readerの読取可否を固定文字にする。GRANTは実行しない。"""
     markers = []
-    for table in ("change_tables", "captured_columns", "lsn_time_mapping"):
+    for table in CDC_CATALOGS:
         try:
             execute(reader, f"SELECT TOP (0) * FROM [cdc].[{table}]")
         except pymssql.Error as error:
@@ -1054,6 +1162,8 @@ def main():
         and bool(re.fullmatch(r"foundation-r-sqlserver-[0-9a-f]{16}", site))
     )
     check(SCHEMA == CONTRACT.SCHEMA)
+    stage("SQL_OWNED_HOSTED_CONTAINER")
+    require_sql_fixture(site, port)
     verify(directory, port, site, Path(os.environ["STAGE3_ARCHIVES_DIR"]))
 
 

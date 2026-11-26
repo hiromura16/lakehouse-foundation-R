@@ -98,7 +98,11 @@ chmod 0444 "$stage/mssql.conf"
    install -m 0400 -o mssql /incoming.pem /fixture-tls/server.pem'
 
 # MicrosoftのDeveloper版を閉じた合成試験に使う。通常の配備には含めない。
-"${dock[@]}" run -d --pull never --init --name "$site" \
+fixture_labels=()
+if [[ "$mode" == cdc-stage3 ]]; then
+  fixture_labels+=(--label "io.foundation-r.stage3.sql-fixture=$site")
+fi
+"${dock[@]}" run -d --pull never --init --name "$site" "${fixture_labels[@]}" \
   --publish 127.0.0.1::1433 --memory 3g --cpus 2 \
   --env-file "$stage/fixture.env" --env ACCEPT_EULA=Y \
   --mount "type=bind,src=$stage/mssql.conf,dst=/var/opt/mssql/mssql.conf,readonly" \

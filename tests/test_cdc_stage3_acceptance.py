@@ -193,3 +193,30 @@ class HostedEvidenceTest(unittest.TestCase):
             evidence.console_receipt(b"unrecognized option"),
             "CDC_READ_CLI_OPTION_REJECTED",
         )
+
+    def test_synthetic_catalog_acl_is_exact_and_owned_fixture_only(self):
+        """2種類の定数SQLと、同じloopbackの所有ラベルだけを受理。"""
+        site = "foundation-r-sqlserver-" + "a" * 16
+        port = "14333"
+        binding = "127.0.0.1:" + port
+        image = evidence.SQL_FIXTURE_IMAGE
+        good = [True, image, site]
+        check = evidence.allows_catalog_fixture
+        self.assertTrue(check(good, binding, site, port))
+        for other, endpoint in (
+            ([False, image, site], binding),
+            ([True, image, "old-site"], binding),
+            ([True, "some-other-image", site], binding),
+            (good, "127.0.0.1:1433"),
+            (good, ""),
+        ):
+            self.assertFalse(check(other, endpoint, site, port))
+        self.assertEqual(
+            evidence.catalog_fixture_grants(),
+            (
+                "GRANT SELECT ON OBJECT::[cdc].[change_tables] "
+                "TO [fixture_cdc_reader]",
+                "GRANT SELECT ON OBJECT::[cdc].[captured_columns] "
+                "TO [fixture_cdc_reader]",
+            ),
+        )

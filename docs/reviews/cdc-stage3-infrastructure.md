@@ -119,6 +119,11 @@ SQLユーザー・パスワードとtruststoreのパスワードは、テンプ�
 
 1. 使い捨てSQL Serverで段階2の既存コードを使用。専用schemaと六つの捕捉
    を確認し、生成した試験アカウントと一時CAを使う。
+   同一リポジトリのhosted CIの合成DBだけで、専用readerに必要な二つのCDC
+   カタログのobject-level SELECTを与える試験を行います。付与前後の有効権限、
+   既存ロール契約、別表・別捕捉の生データとDML拒否を照合します。カタログの
+   メタデータ可視性とデータ本体の可視性は別です。この試験は共有DBへの権限付与
+   や実サイトの権限設計を認めるものではありません。
 2. 実brokerのtopic契約と実Connect workerの版、SQL Server plugin、
    Connectorとtask双方のRUNNINGを確認する。同一登録は無変更、未知設定は停止。
 3. 対象の六表に合成行を一件ずつ入れ、六つの実topicごとにキー、全列、
