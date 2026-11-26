@@ -240,3 +240,55 @@ class HostedEvidenceTest(unittest.TestCase):
         self.assertFalse(match([connect], [*scoped, connect, extra], scoped))
         wrong_target = evidence.exact_fixture_catalog_acl((24, 32))
         self.assertFalse(match([connect], [*wrong_target, connect], scoped))
+
+    def test_stream_diagnostics_distinguish_count_order_value_and_lsn(self):
+        """同じ合否を維持し、件数、順序、内容、確定位置を分類する。"""
+        expected = [
+            ("Stage3Stream", "d", "original", None),
+            ("Stage3Stream", "t", None, None),
+        ]
+        cursor = "0001:0002:0003"
+        observed = [(*expected[0], cursor), (*expected[1], None)]
+        runtime = Mock()
+        runtime.high_products.return_value = len(expected)
+        runtime.events.return_value = observed
+        self.assertEqual(evidence.assert_events(runtime, expected), cursor)
+        for records, label in (
+            ([*observed, observed[-1]], "CDC_EVENT_COUNT_MISMATCH"),
+            (list(reversed(observed)), "CDC_EVENT_OPERATION_ORDER_MISMATCH"),
+            (
+                [(expected[0][0], "d", "private", None, cursor), observed[1]],
+                "CDC_EVENT_VALUE_MISMATCH",
+            ),
+        ):
+            with self.subTest(label=label):
+                runtime.events.return_value = records
+                with self.assertRaisesRegex(
+                    evidence.FixtureError, f"^{label}$"
+                ):
+                    evidence.assert_events(runtime, expected)
+        with (
+            patch.object(
+                evidence,
+                "poll",
+                side_effect=evidence.FixtureError("OBSERVATION_TIMEOUT"),
+            ),
+            self.assertRaisesRegex(
+                evidence.FixtureError, "^CDC_DURABLE_LSN_TIMEOUT$"
+            ),
+        ):
+            evidence.persisted(runtime, [], commit=cursor)
+
+    def test_malformed_stream_payload_maps_to_fixed_error(self):
+        """壊れたJSON、別source、LSNの機密値をエラーに埋め込まない。"""
+        for payload, label in (
+            (b"extra", "CDC_FORMAT_KEY_VALUE_SEPARATOR"),
+            (b'{"product_id":"Stage3Stream"}\tprivate', "CDC_FORMAT_JSON"),
+            (record(database="Unrelated"), "CDC_FORMAT_SOURCE_SCOPE"),
+            (record(commit=None), "CDC_FORMAT_COMMIT_LSN"),
+        ):
+            with (
+                self.subTest(label=label),
+                self.assertRaisesRegex(evidence.FixtureError, f"^{label}$"),
+            ):
+                evidence.decode_events(payload, 1)

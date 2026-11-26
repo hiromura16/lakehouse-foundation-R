@@ -791,7 +791,7 @@ class Runtime:
         match = re.fullmatch(
             re.escape(topic) + r":0:([0-9]+)\s*", payload.decode()
         )
-        check(match is not None)
+        check(match is not None, "CDC_BROKER_HIGH_OUTPUT_UNVERIFIED")
         return int(match[1])
 
     def state_evidence(self):
@@ -813,10 +813,10 @@ class Runtime:
                 re.escape(topic) + r"\s+TopicId:\s+([A-Za-z0-9_-]{22})(?:\s|$)"
             )
             topics = re.findall(r"\bTopic:\s+" + expected, result)
-            check(len(topics) == 1)
+            check(len(topics) == 1, "CDC_TOPIC_ID_UNVERIFIED")
             ids.extend(topics)
         high = self.high(HISTORY)
-        check(0 < high <= 64)
+        check(0 < high <= 64, "CDC_SCHEMA_HISTORY_HIGH_INVALID")
         records = self.compose(
             "exec",
             "-T",
@@ -835,7 +835,10 @@ class Runtime:
             "--timeout-ms",
             "15000",
         )
-        check(len(records.splitlines()) == high)
+        check(
+            len(records.splitlines()) == high,
+            "CDC_SCHEMA_HISTORY_COUNT_MISMATCH",
+        )
         return tuple(ids), sha256(records).hexdigest()
 
     def high_products(self):
@@ -1087,20 +1090,41 @@ def verify(stage_dir, port, site, directory):
         phase = "STREAM_INSERT_UPDATE_DELETE"
         stage(phase)
         key = FIXTURE_IDS[1]
+        phase = "STREAM_INSERT_SQL"
+        stage(phase)
         product(writer, "insert", key, "stage3 insert")
+        phase = "STREAM_INSERT_KAFKA"
+        stage(phase)
         expected.append((key, "c", None, "stage3 insert"))
         assert_events(runtime, expected)
+        phase = "STREAM_UPDATE_SQL"
+        stage(phase)
         product(writer, "update", key, "stage3 update")
+        phase = "STREAM_UPDATE_KAFKA"
+        stage(phase)
         expected.append((key, "u", "stage3 insert", "stage3 update"))
         assert_events(runtime, expected)
+        phase = "STREAM_DELETE_SQL"
+        stage(phase)
         product(writer, "delete", key)
+        phase = "STREAM_DELETE_AND_TOMBSTONE_KAFKA"
+        stage(phase)
         expected.extend(
             ((key, "d", "stage3 update", None), (key, "t", None, None))
         )
         commit = assert_events(runtime, expected)
+        phase = "STREAM_COMMITTED_SQL_LSN"
+        stage(phase)
         offset = persisted(runtime, initial_offset, commit=commit)
-        check(runtime.high(HISTORY) >= initial_history)
+        phase = "STREAM_SCHEMA_HISTORY_AND_TOPIC_STATE"
+        stage(phase)
+        check(
+            runtime.high(HISTORY) >= initial_history,
+            "CDC_SCHEMA_HISTORY_REGRESSED",
+        )
         history = runtime.state_evidence()
+        phase = "STREAM_SAVE_CONTINUITY"
+        stage(phase)
         runtime.contract("capture-state")
         runtime.contract("check")
 

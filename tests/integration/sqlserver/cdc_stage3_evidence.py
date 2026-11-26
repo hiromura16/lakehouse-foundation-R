@@ -24,10 +24,10 @@ class FixtureError(ValueError):
     """Docker/HTTP/SQLの非公開エラー本文を出力対象から外す。"""
 
 
-def check(condition):
+def check(condition, code="EVIDENCE_MISSING"):
     """想定外の成功・欠落は固定診断で停止する。"""
     if not condition:
-        raise FixtureError("EVIDENCE_MISSING")
+        raise FixtureError(code)
 
 
 def poll(observe, accept, *, seconds):
@@ -54,42 +54,58 @@ def patched_runtime(version):
 def decode_events(payload, count):
     """明示した非Schema JSONとtombstone以外を成功扱いしない。"""
     rows = payload.splitlines()
-    check(len(rows) == count)
+    check(len(rows) == count, "CDC_FORMAT_ROW_COUNT")
     events = []
     for record in rows:
         key, separator, body = record.partition(b"\t")
-        check(separator == b"\t" and bool(key) and bool(body))
-        identity = json.loads(key)
-        check(type(identity) is dict and set(identity) == {"product_id"})
+        check(
+            separator == b"\t" and bool(key) and bool(body),
+            "CDC_FORMAT_KEY_VALUE_SEPARATOR",
+        )
+        identity = cdc_json(key)
+        check(
+            type(identity) is dict and set(identity) == {"product_id"},
+            "CDC_FORMAT_KEY_SHAPE",
+        )
         identifier = identity["product_id"]
-        check(identifier in FIXTURE_IDS)
-        value = json.loads(body)
+        check(identifier in FIXTURE_IDS, "CDC_FORMAT_KEY_UNEXPECTED")
+        value = cdc_json(body)
         if value is None:
             events.append((identifier, "t", None, None, None))
             continue
-        check(type(value) is dict)
-        source = value["source"]
+        check(type(value) is dict, "CDC_FORMAT_ENVELOPE")
+        source = value.get("source")
         check(
-            source["db"] == DATABASE
-            and source["schema"] == SCHEMA
-            and source["table"] == "products"
+            type(source) is dict
+            and source.get("db") == DATABASE
+            and source.get("schema") == SCHEMA
+            and source.get("table") == "products",
+            "CDC_FORMAT_SOURCE_SCOPE",
         )
-        op = value["op"]
-        check(op in ("r", "c", "u", "d"))
+        op = value.get("op")
+        check(op in ("r", "c", "u", "d"), "CDC_FORMAT_OPERATION")
+        check("commit_lsn" in source, "CDC_FORMAT_COMMIT_LSN")
         commit = source["commit_lsn"]
         check(
             (op == "r" and commit is None)
             or (
                 isinstance(commit, str)
                 and bool(re.fullmatch(r"[0-9a-fA-F:]+", commit))
-            )
+            ),
+            "CDC_FORMAT_COMMIT_LSN",
         )
+        check({"before", "after"} <= value.keys(), "CDC_FORMAT_ROW_IMAGES")
         before, after = value["before"], value["after"]
-        check((before is None) == (op in ("r", "c")))
-        check((after is None) == (op == "d"))
+        check((before is None) == (op in ("r", "c")), "CDC_FORMAT_ROW_IMAGES")
+        check((after is None) == (op == "d"), "CDC_FORMAT_ROW_IMAGES")
         for image in (before, after):
             if image is not None:
-                check(image["product_id"] == identifier)
+                check(
+                    type(image) is dict
+                    and image.get("product_id") == identifier,
+                    "CDC_FORMAT_ROW_KEY_MISMATCH",
+                )
+                check("product_name" in image, "CDC_FORMAT_ROW_IMAGES")
         events.append(
             (
                 identifier,
@@ -102,28 +118,54 @@ def decode_events(payload, count):
     return events
 
 
+def cdc_json(raw):
+    """破損JSONの本文を出さず、診断上だけ分ける。"""
+    try:
+        return json.loads(raw)
+    except (UnicodeError, ValueError) as error:
+        raise FixtureError("CDC_FORMAT_JSON") from error
+
+
 def persisted(runtime, previous, *, commit=None):
     """LSNの初期化または進行を証明するまで、再起動しない。"""
-    return poll(
-        runtime.offsets,
-        lambda current: (
-            bool(current)
-            and current != previous
-            and (
-                commit is None or current[0]["offset"]["commit_lsn"] == commit
-            )
-        ),
-        seconds=45,
-    )
+    try:
+        return poll(
+            runtime.offsets,
+            lambda current: (
+                bool(current)
+                and current != previous
+                and (
+                    commit is None
+                    or current[0]["offset"]["commit_lsn"] == commit
+                )
+            ),
+            seconds=45,
+        )
+    except FixtureError as error:
+        if str(error) == "OBSERVATION_TIMEOUT":
+            raise FixtureError("CDC_DURABLE_LSN_TIMEOUT") from None
+        raise
 
 
 def assert_events(runtime, expected):
-    """想定した順序のイベントだけを照合し、余計な再snapshotを拒否する。"""
-    count = poll(
-        runtime.high_products, lambda value: value >= len(expected), seconds=90
-    )
+    """件数・順序・内容を照合し、余計な再snapshotを拒否する。"""
+    try:
+        count = poll(
+            runtime.high_products,
+            lambda value: value >= len(expected),
+            seconds=90,
+        )
+    except FixtureError as error:
+        if str(error) == "OBSERVATION_TIMEOUT":
+            raise FixtureError("CDC_PRODUCT_HIGH_WATERMARK_TIMEOUT") from None
+        raise
     got = runtime.events(count)
-    check([event[:4] for event in got] == expected)
+    check(len(got) == len(expected), "CDC_EVENT_COUNT_MISMATCH")
+    check(
+        [event[1] for event in got] == [event[1] for event in expected],
+        "CDC_EVENT_OPERATION_ORDER_MISMATCH",
+    )
+    check([event[:4] for event in got] == expected, "CDC_EVENT_VALUE_MISMATCH")
     return next(
         (event[4] for event in reversed(got) if event[4] is not None), None
     )
