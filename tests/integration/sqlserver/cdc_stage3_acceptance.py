@@ -43,7 +43,10 @@ from cdc_stage3_evidence import (
 )
 
 ROOT = Path(__file__).resolve().parents[3]
-PROJECT = "foundation-r-cdc-stage3"
+sys.path.insert(0, str(ROOT / "scripts"))
+from cdc_stage3_images import STAGE3_NAMESPACE, local_tag  # noqa: E402
+
+PROJECT = STAGE3_NAMESPACE
 CONNECTOR = PROJECT + "-sqlserver"
 SQL_ALIAS = "stage3-sql"
 BROKER = "stage3-broker"
@@ -107,7 +110,7 @@ def archives(directory):
 
 def image_tag(kind, evidence):
     """この試験でだけ生成するアーカイブ由来のローカル別名。"""
-    return f"foundation-r-stage3-{kind}:ci-{evidence['config'][7:23]}"
+    return local_tag(kind, "ci", evidence["config"])
 
 
 def verified_loaded_image(ref, evidence):
@@ -134,7 +137,7 @@ def restore_images(directory, found):
     """固定された合成タグのみ削除し、元の検証済みtarだけから読み戻す。"""
     for kind, evidence in found.items():
         tag = image_tag(kind, evidence)
-        original = f"foundation-r-stage3-{kind}:archive"
+        original = local_tag(kind, "archive")
         verified_loaded_image(tag, evidence)
         verified_loaded_image(original, evidence)
         command((*DOCKER, "image", "rm", tag, original))
@@ -440,7 +443,7 @@ class Runtime:
         loaded = self.private.read_text().splitlines()
         for kind, record in found.items():
             original = image_tag(kind, record)
-            alias = f"foundation-r-stage3-{kind}:oci-{record['config'][7:]}"
+            alias = local_tag(kind, "oci", record["config"])
             loaded = [
                 line.replace("=" + original, "=" + alias) for line in loaded
             ]
@@ -456,7 +459,7 @@ class Runtime:
     def reject_wrong_offline_image(self, found):
         """別の合成イメージをaliasへ置き、開始前の拒否を実行する。"""
         connect = found["connect"]
-        alias = f"foundation-r-stage3-connect:oci-{connect['config'][7:]}"
+        alias = local_tag("connect", "oci", connect["config"])
         command(
             (
                 *DOCKER,

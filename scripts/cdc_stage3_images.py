@@ -17,6 +17,7 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 ROOT = Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "infra" / "cdc-stage3"
+STAGE3_NAMESPACE = "foundation-r-cdc-stage3"
 DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
 MAX_JSON = 4 * 1024 * 1024
 MAX_ARCHIVE = 8 * 1024**3
@@ -373,6 +374,19 @@ def verify_archive(
     return expected_sha, ident, config_record["digest"]
 
 
+def local_tag(kind, mode, config=None):
+    """同じ固定namespaceをbuild・起動・照合に共用する。"""
+    if kind not in {"kafka", "connect"}:
+        raise ImageError("INVALID_LOCAL_IMAGE_KIND")
+    alias = f"{STAGE3_NAMESPACE}-{kind}"
+    if mode == "archive" and config is None:
+        return alias + ":archive"
+    if mode not in {"ci", "oci"} or config is None:
+        raise ImageError("INVALID_LOCAL_IMAGE_MODE")
+    value = checked_digest(config)[7:]
+    return f"{alias}:{mode}-{value[:16] if mode == 'ci' else value}"
+
+
 def inspect_command(reference):
     """Docker containerdの選択platformとdescriptorだけを取得する。"""
     return [
@@ -430,6 +444,10 @@ def main(argv=None):
     sub = cmd.add_subparsers(dest="method", required=True)
     sub.add_parser("registry")
     sub.add_parser("builder-ref")
+    tag = sub.add_parser("local-tag")
+    tag.add_argument("kind", choices=("kafka", "connect"))
+    tag.add_argument("mode", choices=("archive", "ci", "oci"))
+    tag.add_argument("--config")
     local = sub.add_parser("inspect-local")
     local.add_argument("reference")
     local.add_argument("--manifest", required=True)
@@ -457,6 +475,8 @@ def main(argv=None):
         elif args.method == "builder-ref":
             row = source_lock()["builder"]
             print(f"{docker_name(row)}:{row['tag']}@{row['manifest']}")
+        elif args.method == "local-tag":
+            print(local_tag(args.kind, args.mode, args.config))
         elif args.method == "inspect-local":
             result = subprocess.run(
                 inspect_command(args.reference),

@@ -2,6 +2,7 @@
 
 import io
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -9,9 +10,11 @@ from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+import yaml
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import cdc_stage3 as stage  # noqa: E402
-from cdc_stage3_images import OCI_MANIFEST  # noqa: E402
+from cdc_stage3_images import OCI_MANIFEST, local_tag  # noqa: E402
 
 
 def synthetic_value():
@@ -137,6 +140,89 @@ class ContractTests(unittest.TestCase):
                 stage.StageError, "CI_IMAGE_FORBIDDEN"
             ):
                 stage.image_selection(values, environment)
+
+    def test_image_producer_and_compose_topics_use_runtime_namespace(self):
+        """実CLIの別名とCompose・契約・説明の名前をdaemonなしで照合。"""
+        values = synthetic_value()
+        ci_env = {
+            "GITHUB_ACTIONS": "true",
+            "RUNNER_ENVIRONMENT": "github-hosted",
+            "RUNNER_OS": "Linux",
+            "GITHUB_REPOSITORY": "hiromura16/lakehouse-foundation-r",
+            "GITHUB_EVENT_NAME": "push",
+        }
+        approved = {}
+        docs = (
+            stage.ROOT / "docs/reviews/cdc-stage3-infrastructure.md"
+        ).read_text()
+        for kind, digit in (("kafka", "a"), ("connect", "b")):
+            config = "sha256:" + digit * 64
+            manifest = "sha256:" + "c" * 64
+            key = kind.upper() + "_IMAGE"
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(stage.ROOT / "scripts/cdc_stage3_images.py"),
+                    "local-tag",
+                    kind,
+                    "ci",
+                    "--config",
+                    config,
+                ],
+                text=True,
+                capture_output=True,
+                check=True,
+            )
+            ci_tag = result.stdout.strip()
+            self.assertEqual(ci_tag, local_tag(kind, "ci", config))
+            self.assertIn(
+                f"{local_tag(kind, 'oci', config).rsplit('-', 1)[0]}-<config>",
+                docs,
+            )
+            values[key] = ci_tag
+            ci_env[f"CDC_STAGE3_{kind.upper()}_CI_IMAGE_CONFIG"] = config
+            ci_env[f"CDC_STAGE3_{kind.upper()}_CI_IMAGE_MANIFEST"] = manifest
+            approved[key] = {"config": config, "manifest": manifest}
+        self.assertEqual(stage.image_selection(values, ci_env), approved)
+        obsolete = values | {
+            "KAFKA_IMAGE": values["KAFKA_IMAGE"].replace("-cdc-", "-")
+        }
+        with self.assertRaisesRegex(
+            stage.StageError, "CI_IMAGE_PROOF_MISMATCH"
+        ):
+            stage.image_selection(obsolete, ci_env)
+        config = yaml.safe_load(
+            (stage.ROOT / "compose.cdc-stage3.yaml").read_bytes()
+        )
+        self.assertEqual(config["name"], stage.PROJECT)
+        worker = config["services"][stage.CONNECT]["environment"]
+        self.assertEqual(worker["BOOTSTRAP_SERVERS"], stage.BOOTSTRAP)
+        self.assertEqual(worker["GROUP_ID"], stage.PROJECT + "-connect")
+        topics = stage.topic_contract(values["SQL_DATABASE"])
+        self.assertEqual(
+            {
+                worker[key]
+                for key in (
+                    "CONFIG_STORAGE_TOPIC",
+                    "OFFSET_STORAGE_TOPIC",
+                    "STATUS_STORAGE_TOPIC",
+                )
+            },
+            {key for key in topics if topics[key] == stage.COMPACT},
+        )
+        example = stage.ROOT / "infra/cdc-stage3/site.env.example"
+        settings = {
+            key: val
+            for key, val in (
+                line.split("=", 1)
+                for line in example.read_text().splitlines()
+                if line.startswith(stage.ENV_PREFIX)
+            )
+        }
+        self.assertEqual(
+            settings,
+            {stage.ENV_PREFIX + key: "" for key in stage.REQUIRED_KEYS},
+        )
 
     def test_patch_and_build_threshold(self):
         """実行JVMのmajor・パッチレベルとbuildの境界を確認する。"""

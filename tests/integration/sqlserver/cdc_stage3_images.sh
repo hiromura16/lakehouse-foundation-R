@@ -13,14 +13,14 @@ fi
 out=$(mktemp -d "${RUNNER_TEMP:?}/stage3-oci.XXXXXX")
 printf 'STAGE3_ARCHIVES_DIR=%s\n' "$out" >> "${GITHUB_ENV:?}"
 python3 scripts/cdc_stage3_images.py registry
-builder="foundation-r-stage3-$(openssl rand -hex 8)"
+builder="foundation-r-cdc-stage3-$(openssl rand -hex 8)"
 builder_image=$(python3 scripts/cdc_stage3_images.py builder-ref)
 docker --context default buildx create --name "$builder" --driver docker-container \
   --driver-opt "image=$builder_image" >/dev/null
 trap 'docker --context default buildx rm "$builder" >/dev/null' EXIT
 for kind in kafka connect; do
   # 入力はそれぞれのDockerfileが固定。push / registry loginを使わない。
-  tag="foundation-r-stage3-$kind:archive"
+  tag=$(python3 scripts/cdc_stage3_images.py local-tag "$kind" archive)
   archive="$out/$kind.tar"
   if ! docker --context default buildx build --builder "$builder" --platform linux/amd64 \
     --provenance=false --sbom=false --no-cache --pull \
@@ -46,6 +46,6 @@ for kind in kafka connect; do
   # 出力は上流由来バイトのハッシュだけ。tagはこのrunnerだけの参照。
   printf 'STAGE3_ARCHIVE_%s=' "$kind"
   cat -- "$out/$kind.json"
-  suffix="${config#sha256:}"
-  docker --context default image tag "$tag" "foundation-r-stage3-$kind:ci-${suffix:0:16}"
+  ci_tag=$(python3 scripts/cdc_stage3_images.py local-tag "$kind" ci --config "$config")
+  docker --context default image tag "$tag" "$ci_tag"
 done

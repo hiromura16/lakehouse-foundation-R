@@ -19,15 +19,17 @@ from tarfile import TarError
 
 from cdc_sql_contract import SCHEMA, TABLES
 from cdc_stage3_images import (
+    STAGE3_NAMESPACE,
     ImageError,
     inspect_command,
+    local_tag,
     require_manifest_descriptor,
     verify_archive,
     verify_engine_inspection,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
-PROJECT = "foundation-r-cdc-stage3"
+PROJECT = STAGE3_NAMESPACE
 PREFIX = PROJECT
 BROKER = "stage3-broker"
 CONNECT = "stage3-connect"
@@ -327,7 +329,7 @@ def image_selection(values, environment, *, offline=None):
             approved = offline[key]
             config = approved["config"]
             insist(
-                reference == f"{PREFIX}-{label}:oci-{config[7:]}",
+                reference == local_tag(label, "oci", config),
                 "APPROVED_OCI_TAG_MISMATCH",
             )
             selected[key] = approved
@@ -339,7 +341,7 @@ def image_selection(values, environment, *, offline=None):
                 and re.fullmatch(DIGEST, ci_config)
                 and re.fullmatch(DIGEST, ci_manifest)
                 and ci_config != ci_manifest
-                and reference == f"{PREFIX}-{label}:ci-{ci_config[7:23]}",
+                and reference == local_tag(label, "ci", ci_config),
                 "CI_IMAGE_PROOF_MISMATCH",
             )
             selected[key] = {"config": ci_config, "manifest": ci_manifest}

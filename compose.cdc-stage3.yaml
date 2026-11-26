@@ -50,10 +50,10 @@ services:
     depends_on: [stage3-broker]
     environment:
       BOOTSTRAP_SERVERS: stage3-broker:9092
-      GROUP_ID: foundation-r-stage3-connect
-      CONFIG_STORAGE_TOPIC: foundation-r-stage3-connect-config
-      OFFSET_STORAGE_TOPIC: foundation-r-stage3-connect-offset
-      STATUS_STORAGE_TOPIC: foundation-r-stage3-connect-status
+      GROUP_ID: foundation-r-cdc-stage3-connect
+      CONFIG_STORAGE_TOPIC: foundation-r-cdc-stage3-connect-config
+      OFFSET_STORAGE_TOPIC: foundation-r-cdc-stage3-connect-offset
+      STATUS_STORAGE_TOPIC: foundation-r-cdc-stage3-connect-status
       CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: '1'
       CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: '1'
       CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: '1'
