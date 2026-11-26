@@ -62,6 +62,32 @@ SAIL_EXAMPLE = (
 class PublicationChecks(unittest.TestCase):
     """実際の機密値を含めず、漏えい検出を試す。"""
 
+    def test_stage3_exact_public_jvm_token_is_not_a_global_ip_exception(self):
+        """公開タグ以外・同行に追加した合成IP・異なる配置を検出する。"""
+        name = "infra/cdc-stage3/kafka.Dockerfile"
+        line = (ROOT / name).read_text().splitlines()[1]
+        self.assertTrue(line.startswith("FROM eclipse-temurin:"))
+        self.assertFalse(MODULE.scan_text(name, line, [], []))
+        synthetic_ip = ".".join(("198", "51", "100", "7"))
+        candidates = (
+            (name, line + " #" + synthetic_ip),
+            (name, line + "\n# " + synthetic_ip),
+            (name, line.replace(" AS jre", " AS other")),
+            ("unrelated/Dockerfile", line),
+            (
+                name,
+                line.replace("eclipse-temurin:", "example.invalid/runtime:"),
+            ),
+        )
+        for path, source in candidates:
+            with self.subTest(path=path):
+                self.assertTrue(
+                    any(
+                        item.rule == "concrete-ipv4-address"
+                        for item in MODULE.scan_text(path, source, [], [])
+                    )
+                )
+
     def inspect(self, root, *options):
         """CIと同じ公開CLIを使い、値を含まない診断を取得する。"""
         return subprocess.run(

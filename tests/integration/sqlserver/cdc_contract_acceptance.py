@@ -14,6 +14,7 @@ from unittest.mock import patch
 
 import pymssql
 from acceptance import SOURCE
+from cdc_stage3_evidence import approved_capture_fixture
 
 ROOT = Path(__file__).resolve().parents[3]
 SPEC = importlib.util.spec_from_file_location(
@@ -334,11 +335,17 @@ def capture_job_active(settings, job_id):
     return rows[0][1] == 1
 
 
-def ensure_fixture_capture_started(settings, job_id, owned_database_guid):
-    """隔離DBに生成した既知の捕捉ジョブだけを必要時に一度起動する。"""
-    assert settings["SOURCE_SQLSERVER_HOST"] == "localhost"
+def ensure_fixture_capture_started(
+    settings, job_id, owned_database_guid, *, stage3=False
+):
+    """対象の隔離DBに生成した既知の捕捉ジョブだけを一度起動する。"""
     expected = settings["SOURCE_SQLSERVER_DATABASE"]
-    assert expected in {DATABASE, COLLISION_DB}
+    assert approved_capture_fixture(
+        settings["SOURCE_SQLSERVER_HOST"],
+        expected,
+        stage3=stage3,
+        stage_two_targets={DATABASE, COLLISION_DB},
+    )
     assert execute(settings, "SELECT DB_NAME()") == [(expected,)]
     assert database_guid(settings) == owned_database_guid
     deadline = monotonic() + 5

@@ -11,11 +11,21 @@ mode=source
 if [[ "${1:-}" == --cdc-contract ]]; then
   mode=cdc-contract
   shift
+elif [[ "${1:-}" == --cdc-stage3 ]]; then
+  mode=cdc-stage3
+  shift
+  stage3_repository="${GITHUB_REPOSITORY:-}"
+  if [[ ${#dock[@]} != 1 || "${GITHUB_ACTIONS:-}" != true ||
+    "${RUNNER_ENVIRONMENT:-}" != github-hosted || "${RUNNER_OS:-}" != Linux ||
+    "${stage3_repository,,}" != hiromura16/lakehouse-foundation-r ]]; then
+    printf '%s\n' 'STAGE3_HOSTED_ONLY' >&2
+    exit 1
+  fi
 fi
 check_python="${1:?pymssqlを導入済みのPython実行ファイルを指定してください}"
 fixture=tests/integration/sqlserver
 image=mcr.microsoft.com/mssql/server@sha256:05644dad1266ca3d445d1e8f6d2ebb9a6a03df9a39376e0f7b48917356dca9d9
-if [[ "$mode" == cdc-contract ]]; then
+if [[ "$mode" == cdc-contract || "$mode" == cdc-stage3 ]]; then
   # 独立CDCの対象版は SQL Server 2022 (16.0.4325.4) のみ。
   # MCR 2022-latest の検証済み linux/amd64 manifest。既存source試験は変更しない。
   image=mcr.microsoft.com/mssql/server@sha256:4525e3efac9f3e241cb003bb2ff2a82818b502f37e12049d788b1a9fa7e13b7f
@@ -64,7 +74,7 @@ openssl x509 -req -in "$stage/server.csr" -CA "$stage/ca.pem" \
 {
   printf 'MSSQL_SA_PASSWORD=Aa9!%s\n' "$(openssl rand -hex 24)"
   printf 'MSSQL_PID=Developer\nMSSQL_MEMORY_LIMIT_MB=2048\n'
-  if [[ "$mode" == cdc-contract ]]; then
+  if [[ "$mode" == cdc-contract || "$mode" == cdc-stage3 ]]; then
     printf 'MSSQL_AGENT_ENABLED=true\n'
   fi
 } > "$stage/fixture.env"
@@ -74,7 +84,7 @@ forceencryption = 1
 tlscert = /fixture-tls/server.pem
 tlskey = /fixture-tls/server-key.pem
 CONFIG
-if [[ "$mode" == cdc-contract ]]; then
+if [[ "$mode" == cdc-contract || "$mode" == cdc-stage3 ]]; then
   printf '\n[sqlagent]\nenabled = true\n' >> "$stage/mssql.conf"
 fi
 chmod 0444 "$stage/mssql.conf"
@@ -88,7 +98,11 @@ chmod 0444 "$stage/mssql.conf"
    install -m 0400 -o mssql /incoming.pem /fixture-tls/server.pem'
 
 # MicrosoftのDeveloper版を閉じた合成試験に使う。通常の配備には含めない。
-"${dock[@]}" run -d --pull never --init --name "$site" \
+fixture_labels=()
+if [[ "$mode" == cdc-stage3 ]]; then
+  fixture_labels+=(--label "io.foundation-r.stage3.sql-fixture=$site")
+fi
+"${dock[@]}" run -d --pull never --init --name "$site" "${fixture_labels[@]}" \
   --publish 127.0.0.1::1433 --memory 3g --cpus 2 \
   --env-file "$stage/fixture.env" --env ACCEPT_EULA=Y \
   --mount "type=bind,src=$stage/mssql.conf,dst=/var/opt/mssql/mssql.conf,readonly" \
@@ -98,6 +112,16 @@ binding=$("${dock[@]}" port "$site" 1433)
 if [[ ! "$binding" =~ ^127\.0\.0\.1:([1-9][0-9]*)$ ]]; then
   printf '%s\n' '合成SQL Serverのループバックポートを確認できません。' >&2
   exit 1
+fi
+if [[ "$mode" == cdc-stage3 ]]; then
+  env -i PATH="$PATH" HOME="$stage" \
+    GITHUB_ACTIONS="$GITHUB_ACTIONS" RUNNER_ENVIRONMENT="$RUNNER_ENVIRONMENT" \
+    RUNNER_OS="$RUNNER_OS" GITHUB_REPOSITORY="$GITHUB_REPOSITORY" \
+    GITHUB_EVENT_NAME="$GITHUB_EVENT_NAME" GITHUB_EVENT_PATH="$GITHUB_EVENT_PATH" \
+    STAGE3_ARCHIVES_DIR="${STAGE3_ARCHIVES_DIR:?STAGE3_ARCHIVES_REQUIRED}" \
+    "$check_python" "$fixture/cdc_stage3_acceptance.py" \
+    "$stage" "${BASH_REMATCH[1]}" "$site"
+  exit 0
 fi
 entry=acceptance.py
 if [[ "$mode" == cdc-contract ]]; then
