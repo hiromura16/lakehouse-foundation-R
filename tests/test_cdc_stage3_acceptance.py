@@ -220,3 +220,23 @@ class HostedEvidenceTest(unittest.TestCase):
                 "TO [fixture_cdc_reader]",
             ),
         )
+
+    def test_catalog_acl_requires_exact_delta_and_unchanged_connect(self):
+        """CONNECT以外の基線、既存削除、別objectと追加権限を拒否する。"""
+        connect = (None, None, 0, 0, 0, "G", "CONNECT")
+        extra = (None, None, 0, 0, 0, "G", "CONTROL")
+        scoped = evidence.exact_fixture_catalog_acl((23, 32))
+        match = evidence.fixture_catalog_acl_matches
+        self.assertIsNone(evidence.exact_fixture_catalog_acl((23, 23)))
+        self.assertIsNone(evidence.exact_fixture_catalog_acl((23, None)))
+        self.assertEqual(
+            evidence.fixture_acl_baseline([connect]), "DATABASE_CONNECT"
+        )
+        self.assertEqual(evidence.fixture_acl_baseline([]), "EMPTY")
+        self.assertTrue(match([], [*scoped], scoped))
+        self.assertTrue(match([connect], [*scoped, connect], scoped))
+        self.assertFalse(match([connect], [*scoped], scoped))
+        self.assertFalse(match([extra], [*scoped, extra], scoped))
+        self.assertFalse(match([connect], [*scoped, connect, extra], scoped))
+        wrong_target = evidence.exact_fixture_catalog_acl((24, 32))
+        self.assertFalse(match([connect], [*wrong_target, connect], scoped))

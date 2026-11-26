@@ -44,6 +44,9 @@ from cdc_stage3_evidence import (
     check,
     console_receipt,
     decode_events,
+    exact_fixture_catalog_acl,
+    fixture_acl_baseline,
+    fixture_catalog_acl_matches,
     high_receipt,
     patched_runtime,
     persisted,
@@ -221,20 +224,36 @@ def grant_fixture_catalog(admin, reader, guid):
         raise FixtureError("SQL_CATALOG_FIXTURE_SCOPE_UNVERIFIED")
     if metadata_receipt(reader) != ["DENIED", "DENIED", "READABLE"]:
         raise FixtureError("SQL_CATALOG_BASELINE_CHANGED")
+
+    def reader_acl():
+        """直接DBのCONNECTとobject-levelの付与を区別した固定列。"""
+        return execute(
+            admin,
+            "SELECT CASE WHEN class=1 THEN OBJECT_SCHEMA_NAME(major_id) END,"
+            "CASE WHEN class=1 THEN OBJECT_NAME(major_id) END,"
+            "class,major_id,minor_id,state,permission_name "
+            "FROM sys.database_permissions "
+            "WHERE grantee_principal_id=DATABASE_PRINCIPAL_ID(%s)",
+            (READER,),
+        )
+
+    before = reader_acl()
+    baseline = fixture_acl_baseline(before)
+    if baseline is None:
+        raise FixtureError("SQL_CATALOG_FIXTURE_ACL_BASELINE_UNEXPECTED")
+    print("STAGE3_CATALOG_BASELINE=" + baseline, flush=True)
+    ids = execute(
+        admin,
+        "SELECT OBJECT_ID(N'[cdc].[change_tables]'),"
+        "OBJECT_ID(N'[cdc].[captured_columns]')",
+    )
+    granted = exact_fixture_catalog_acl(ids[0]) if len(ids) == 1 else None
+    if granted is None:
+        raise FixtureError("SQL_CATALOG_FIXTURE_OBJECTS_UNVERIFIED")
     for statement in catalog_fixture_grants():
         execute(admin, statement)
-    observed = execute(
-        admin,
-        "SELECT OBJECT_SCHEMA_NAME(major_id),OBJECT_NAME(major_id),"
-        "class,minor_id,state,permission_name FROM sys.database_permissions "
-        "WHERE grantee_principal_id=DATABASE_PRINCIPAL_ID(%s)",
-        (READER,),
-    )
-    expected = {
-        ("cdc", table, 1, 0, "G", "SELECT") for table in CDC_CATALOGS[:2]
-    }
-    if len(observed) != 2 or set(observed) != expected:
-        raise FixtureError("SQL_CATALOG_FIXTURE_ACL_MISMATCH")
+    if not fixture_catalog_acl_matches(before, reader_acl(), granted):
+        raise FixtureError("SQL_CATALOG_FIXTURE_ACL_DELTA_MISMATCH")
     if metadata_receipt(reader) != ["READABLE"] * len(CDC_CATALOGS):
         raise FixtureError("SQL_CATALOG_FIXTURE_SELECT_UNVERIFIED")
 

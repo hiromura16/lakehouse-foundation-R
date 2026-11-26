@@ -236,3 +236,38 @@ def catalog_fixture_grants():
         f"TO [{SQL_CATALOG_FIXTURE_READER}]"
         for table in CDC_CATALOGS[:2]
     )
+
+
+def fixture_acl_baseline(rows):
+    """直前の許容状態は、接続権のみまたは暗黙接続で直接付与なし。"""
+    connect = (None, None, 0, 0, 0, "G", "CONNECT")
+    if rows == []:
+        return "EMPTY"
+    if rows == [connect]:
+        return "DATABASE_CONNECT"
+    return None
+
+
+def exact_fixture_catalog_acl(object_ids):
+    """このDBで照合した2つの異なるobject IDを固定ACLへ写す。"""
+    if (
+        type(object_ids) is not tuple
+        or len(object_ids) != 2
+        or any(type(item) is not int or item <= 0 for item in object_ids)
+        or len(set(object_ids)) != 2
+    ):
+        return None
+    return {
+        ("cdc", name, 1, oid, 0, "G", "SELECT")
+        for name, oid in zip(CDC_CATALOGS[:2], object_ids, strict=True)
+    }
+
+
+def fixture_catalog_acl_matches(before, after, granted):
+    """許可済みの2 objectだけ追加され、以前の権限が不変か照合。"""
+    return (
+        fixture_acl_baseline(before) is not None
+        and granted is not None
+        and len(after) == len(before) + 2
+        and set(after) == set(before) | granted
+    )
