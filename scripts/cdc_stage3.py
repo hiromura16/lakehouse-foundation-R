@@ -13,7 +13,6 @@ import stat
 import subprocess
 import sys
 import time
-from hashlib import sha256
 from pathlib import Path
 from tarfile import TarError
 
@@ -26,6 +25,12 @@ from cdc_stage3_images import (
     require_manifest_descriptor,
     verify_archive,
     verify_engine_inspection,
+)
+from cdc_stage3_records import (
+    LIMIT,
+    RecordProofError,
+    framed_digest,
+    read_arguments,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -354,13 +359,13 @@ def image_selection(values, environment, *, offline=None):
     return selected
 
 
-def call(args, environment, *, data=None):
+def call(args, environment, *, data=None, raw=False):
     """引数・応答・標準エラーを出さず、出力を内部で比較する。"""
     try:
         completed = subprocess.run(
             args,
             input=data,
-            text=True,
+            text=not raw,
             capture_output=True,
             timeout=30,
             env=environment,
@@ -543,15 +548,16 @@ class Runtime:
         code, output, errors = self.execute(service, ["java", "-version"])
         insist(code == 0 and java_safe(output + errors), "UNPATCHED_JVM")
 
-    def execute(self, service, program, data=None):
+    def execute(self, service, program, data=None, *, raw=False):
         """コマンド文字列のシェル評価なしで専用サービス内だけ実行する。"""
         return call(
             [*self.compose, "exec", "-T", service, *program],
             self.environment,
             data=data,
+            raw=raw,
         )
 
-    def broker(self, command, arguments):
+    def broker(self, command, arguments, *, raw=False):
         """専用KRaftアドレスに固定された管理クライアント。"""
         return self.execute(
             BROKER,
@@ -561,6 +567,7 @@ class Runtime:
                 BOOTSTRAP,
                 *arguments,
             ],
+            raw=raw,
         )
 
     def http(self, path, *, post=None):
@@ -910,43 +917,20 @@ def broker_state(runtime):
         insist(code == 0 and high, "DURABLE_TOPIC_END_UNVERIFIED")
         count = int(high[1])
         insist(
-            count > 0 and (name != "history" or count <= 64),
+            count > 0 and (name != "history" or count <= LIMIT),
             "DURABLE_TOPIC_STATE_EMPTY_OR_EXCEEDS_STAGE3_LIMIT",
         )
-        since = "0" if name == "history" else str(count - 1)
+        first = 0 if name == "history" else count - 1
         rows = count if name == "history" else 1
         code, payload, _ = runtime.broker(
-            "console-consumer",
-            [
-                "--topic",
-                topic,
-                "--partition",
-                "0",
-                "--offset",
-                since,
-                "--max-messages",
-                str(rows),
-                "--timeout-ms",
-                "12000",
-                "--formatter-property",
-                "print.key=true",
-                "--formatter-property",
-                "print.value=true",
-            ],
+            "console-consumer", read_arguments(topic, first, rows), raw=True
         )
-        values = payload.splitlines()
-        insist(
-            code == 0
-            and len(values) == rows
-            and all(
-                row.rsplit("\t", 1)[-1] not in {"null", ""} for row in values
-            ),
-            "DURABLE_TOPIC_CONTENT_UNVERIFIED",
-        )
-        evidence[name] = {
-            "high": count,
-            "sha256": sha256(payload.encode("utf-8")).hexdigest(),
-        }
+        insist(code == 0, "DURABLE_TOPIC_CONTENT_UNVERIFIED")
+        try:
+            digest = framed_digest(payload, first=first, count=rows, kind=name)
+        except RecordProofError as error:
+            raise StageError(str(error)) from None
+        evidence[name] = {"high": count, "sha256": digest}
     return identities, evidence
 
 

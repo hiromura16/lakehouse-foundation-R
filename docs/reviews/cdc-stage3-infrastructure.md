@@ -105,7 +105,10 @@ SQLユーザー・パスワードとtruststoreのパスワードは、テンプ�
   で私有receiptを新規保存します。同じ名前のファイルは上書きしません。
   復旧ではbrokerだけを起動し、`check-broker --state-receipt` で
   同一クラスタと全topic ID、最新の確定offset recordと保持schema historyの
-  完全なハッシュ一致を求めます。Stage 3の試験上限を超える64件超の履歴も
+  完全なハッシュ一致を求めます。schema historyのJSON内にも改行が入るため、
+  行数ではなくKafkaのpartition・物理offsetと専用区切りで完全なrecordを
+  検証し、値は出力せず生バイトだけでハッシュを計算します。
+  Stage 3の試験上限を超える64件超の履歴も
   不完全な読取りで許可せず停止します。Connectを起動するのはこの後です。
   起動後は `check --state-receipt` でRESTの確定LSN、非空で逆行しない
   offsetとschema historyを別途検査します。同じDBの別系統の設定は触りません。

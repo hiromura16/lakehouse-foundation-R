@@ -5,7 +5,6 @@ import os
 import re
 import subprocess
 import sys
-from hashlib import sha256
 from pathlib import Path
 from secrets import token_hex
 
@@ -59,6 +58,12 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts"))
 from cdc_stage3 import hosted_fixture  # noqa: E402
 from cdc_stage3_images import STAGE3_NAMESPACE, local_tag  # noqa: E402
+from cdc_stage3_records import (  # noqa: E402
+    LIMIT,
+    RecordProofError,
+    framed_digest,
+    read_arguments,
+)
 
 PROJECT = STAGE3_NAMESPACE
 CONNECTOR = PROJECT + "-sqlserver"
@@ -816,7 +821,7 @@ class Runtime:
             check(len(topics) == 1, "CDC_TOPIC_ID_UNVERIFIED")
             ids.extend(topics)
         high = self.high(HISTORY)
-        check(0 < high <= 64, "CDC_SCHEMA_HISTORY_HIGH_INVALID")
+        check(0 < high <= LIMIT, "CDC_SCHEMA_HISTORY_HIGH_INVALID")
         records = self.compose(
             "exec",
             "-T",
@@ -824,22 +829,15 @@ class Runtime:
             "/opt/kafka/bin/kafka-console-consumer.sh",
             "--bootstrap-server",
             f"{BROKER}:9092",
-            "--topic",
-            HISTORY,
-            "--partition",
-            "0",
-            "--offset",
-            "earliest",
-            "--max-messages",
-            str(high),
-            "--timeout-ms",
-            "15000",
+            *read_arguments(HISTORY, 0, high),
         )
-        check(
-            len(records.splitlines()) == high,
-            "CDC_SCHEMA_HISTORY_COUNT_MISMATCH",
-        )
-        return tuple(ids), sha256(records).hexdigest()
+        try:
+            digest = framed_digest(
+                records, first=0, count=high, kind="history"
+            )
+        except RecordProofError as error:
+            raise FixtureError(str(error)) from None
+        return tuple(ids), digest
 
     def high_products(self):
         """試験の固定データtopicの終端だけを照会する。"""
