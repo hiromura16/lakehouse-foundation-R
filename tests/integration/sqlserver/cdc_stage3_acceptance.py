@@ -1142,11 +1142,19 @@ def verify(stage_dir, port, site, directory):
                 runtime.offsets() == offset
                 and runtime.state_evidence() == history
             )
+        phase = "RESTART_RESUMED_INSERT_SQL"
+        stage(phase)
         key = FIXTURE_IDS[2]
         product(writer, "insert", key, "stage3 resume")
         expected.append((key, "c", None, "stage3 resume"))
+        phase = "RESTART_RESUMED_INSERT_KAFKA"
+        stage(phase)
         commit = assert_events(runtime, expected)
+        phase = "RESTART_RESUMED_DURABLE_LSN"
+        stage(phase)
         offset = persisted(runtime, offset, commit=commit)
+        phase = "RESTART_SAVE_CONTINUITY"
+        stage(phase)
         check(runtime.state_evidence() == history)
         runtime.state = runtime.private.with_name(
             "stage3-cold-state-receipt.json"

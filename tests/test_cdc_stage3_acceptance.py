@@ -1,8 +1,10 @@
 """段階3 hosted fixtureの観測器を実Docker・実SQLなしで検査する。"""
 
 import importlib.util
+import io
 import json
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -82,7 +84,12 @@ class HostedEvidenceTest(unittest.TestCase):
 
         def try_all(observe, valid, *, seconds):
             """実時間を使わず、同じ順序の証拠を明示して通す。"""
-            self.assertGreater(seconds, 0)
+            self.assertEqual(seconds, 75)
+            self.assertGreater(
+                seconds,
+                evidence.CONNECT_OFFSET_FLUSH_SECONDS
+                + evidence.CONNECT_OFFSET_FLUSH_TIMEOUT_SECONDS,
+            )
             self.assertFalse(valid(observe()))
             self.assertFalse(valid(observe()))
             result = observe()
@@ -94,6 +101,36 @@ class HostedEvidenceTest(unittest.TestCase):
                 runtime, old, commit="0001:0002:0000"
             )
         self.assertEqual(selected, correct)
+
+    def test_durable_timeout_receipts_are_fixed_without_lsn_values(self):
+        """空、未変更、不一致を区別し、どの状態も成功にはしない。"""
+        older = [{"offset": {"commit_lsn": "0001"}}]
+        for current, label in (
+            ([], "ABSENT"),
+            (older, "UNCHANGED"),
+            ([{"offset": {"commit_lsn": "0003"}}], "DIFFERENT_LSN"),
+        ):
+            with self.subTest(label=label):
+                runtime = Mock()
+                runtime.offsets.return_value = current
+                output = io.StringIO()
+
+                def expire(observe, exact, *, seconds):
+                    self.assertEqual(seconds, 75)
+                    self.assertFalse(exact(observe()))
+                    raise evidence.FixtureError("OBSERVATION_TIMEOUT")
+
+                with (
+                    patch.object(evidence, "poll", expire),
+                    redirect_stdout(output),
+                    self.assertRaisesRegex(
+                        evidence.FixtureError, "^CDC_DURABLE_LSN_TIMEOUT$"
+                    ),
+                ):
+                    evidence.persisted(runtime, older, commit="0002")
+                self.assertEqual(
+                    output.getvalue(), f"STAGE3_DURABLE_OFFSET={label}\n"
+                )
 
     def test_before_actual_worker_start_keep_broker_and_fence_state(self):
         """未対応のcreate flagや、preflight前のworker開始を再導入しない。"""

@@ -19,6 +19,13 @@ FIXTURE_IDS = (
     "Stage3Cold",
 )
 
+# Connect 4.3.1の既定flush間隔・上限に短いREST観測余裕を足す。
+CONNECT_OFFSET_FLUSH_SECONDS = 60
+CONNECT_OFFSET_FLUSH_TIMEOUT_SECONDS = 5
+DURABLE_LSN_SECONDS = (
+    CONNECT_OFFSET_FLUSH_SECONDS + CONNECT_OFFSET_FLUSH_TIMEOUT_SECONDS + 10
+)
+
 
 class FixtureError(ValueError):
     """Docker/HTTP/SQLの非公開エラー本文を出力対象から外す。"""
@@ -128,21 +135,28 @@ def cdc_json(raw):
 
 def persisted(runtime, previous, *, commit=None):
     """LSNの初期化または進行を証明するまで、再起動しない。"""
+    receipt = "ABSENT"
+
+    def exact(current):
+        """実際に観測した状態だけを、非公開のLSNを使わず分類する。"""
+        nonlocal receipt
+        if not current:
+            receipt = "ABSENT"
+        elif current == previous:
+            receipt = "UNCHANGED"
+        elif (
+            commit is not None and current[0]["offset"]["commit_lsn"] != commit
+        ):
+            receipt = "DIFFERENT_LSN"
+        else:
+            return True
+        return False
+
     try:
-        return poll(
-            runtime.offsets,
-            lambda current: (
-                bool(current)
-                and current != previous
-                and (
-                    commit is None
-                    or current[0]["offset"]["commit_lsn"] == commit
-                )
-            ),
-            seconds=45,
-        )
+        return poll(runtime.offsets, exact, seconds=DURABLE_LSN_SECONDS)
     except FixtureError as error:
         if str(error) == "OBSERVATION_TIMEOUT":
+            print(f"STAGE3_DURABLE_OFFSET={receipt}", flush=True)
             raise FixtureError("CDC_DURABLE_LSN_TIMEOUT") from None
         raise
 
