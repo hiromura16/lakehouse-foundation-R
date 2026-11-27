@@ -16,11 +16,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
-        with:
-          version: '0.13.7'
-          checksum: c5221ff41b7892bfc223543883600125f6a47fe845093e0f5bdff4f359196d83
-          enable-cache: false
+      - uses: ./.github/actions/setup-pinned-uv
       - name: 固定した業務契約のハッシュを照合
         run: python3 native/check_contracts.py
       - name: 隔離したCompose構成を検査して起動
