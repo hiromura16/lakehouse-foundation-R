@@ -85,7 +85,7 @@
 | `sail` / sail | 2 / 1024 | なし | `loopback ${EVAL_SAIL_PORT}:50051` | なし | ローカル生成 / `build:native/evaluation/sail.Dockerfile` |
 | `broker` / stream | 未設定 / 768 | なし | なし | `broker:/var/lib/redpanda/data` | `docker.redpanda.com/redpandadata/redpanda:v26.3.1@sha256:260532f70fd840bf2159106bd4ef900f199c1f5ca2a23cb362642320513b90f5` |
 | `risingwave` / stream | 2 / 4096 | なし | `loopback ${EVAL_RISINGWAVE_PORT}:4566` | `risingwave:/state` | `risingwavelabs/risingwave:v3.1.2@sha256:7efe24b9006baf4b40cd9623557ebc1c344d3740b81f0b16dac7605aed082d38` |
-| `greptime` / timeseries | 2 / 1024 | なし | `loopback ${EVAL_GREPTIME_PORT}:4000` | `greptime:/greptimedb_data` | `greptime/greptimedb:v1.3.0@sha256:d8a199398da2b105e6cb3a168f249ecbbc078893abff5ea668bd59e05f1027df` |
+| `greptime` / timeseries | 2 / 1024 | なし | `loopback ${EVAL_GREPTIME_PORT}:4000` | `greptime:/greptimedb_data` | `greptime/greptimedb:v1.3.1@sha256:a10181273b9400a30fbad6f5043b3d08e388c7d4ee30a7570e5f0241496e9ee1` |
 | `ballista-scheduler` / distributed | 1 / 512 | なし | なし | なし | `ghcr.io/apache/datafusion-ballista-standalone:55.0.0@sha256:b531543d6933d785a54bd46c174246681adfa12d046e42ae77c831e44d183b66` |
 | `ballista-executor` / distributed | 2 / 1024 | なし | なし | なし | `ghcr.io/apache/datafusion-ballista-standalone:55.0.0@sha256:b531543d6933d785a54bd46c174246681adfa12d046e42ae77c831e44d183b66` |
 | `ballista-check` / distributed-check | 未設定 / 512 | なし | なし | なし | ローカル生成 / `build:native/evaluation/ballista.Dockerfile` |
