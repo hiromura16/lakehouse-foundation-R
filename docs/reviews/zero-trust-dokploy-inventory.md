@@ -85,7 +85,7 @@
 | `sail` / sail | 2 / 1024 | なし | `loopback ${EVAL_SAIL_PORT}:50051` | なし | ローカル生成 / `build:native/evaluation/sail.Dockerfile` |
 | `broker` / stream | 未設定 / 768 | なし | なし | `broker:/var/lib/redpanda/data` | `docker.redpanda.com/redpandadata/redpanda:v26.3.1@sha256:260532f70fd840bf2159106bd4ef900f199c1f5ca2a23cb362642320513b90f5` |
 | `risingwave` / stream | 2 / 4096 | なし | `loopback ${EVAL_RISINGWAVE_PORT}:4566` | `risingwave:/state` | `risingwavelabs/risingwave:v3.1.2@sha256:7efe24b9006baf4b40cd9623557ebc1c344d3740b81f0b16dac7605aed082d38` |
-| `greptime` / timeseries | 2 / 1024 | なし | `loopback ${EVAL_GREPTIME_PORT}:4000` | `greptime:/greptimedb_data` | `greptime/greptimedb:v1.3.0@sha256:d8a199398da2b105e6cb3a168f249ecbbc078893abff5ea668bd59e05f1027df` |
+| `greptime` / timeseries | 2 / 1024 | なし | `loopback ${EVAL_GREPTIME_PORT}:4000` | `greptime:/greptimedb_data` | `greptime/greptimedb:v1.3.1@sha256:a10181273b9400a30fbad6f5043b3d08e388c7d4ee30a7570e5f0241496e9ee1` |
 | `ballista-scheduler` / distributed | 1 / 512 | なし | なし | なし | `ghcr.io/apache/datafusion-ballista-standalone:55.0.0@sha256:b531543d6933d785a54bd46c174246681adfa12d046e42ae77c831e44d183b66` |
 | `ballista-executor` / distributed | 2 / 1024 | なし | なし | なし | `ghcr.io/apache/datafusion-ballista-standalone:55.0.0@sha256:b531543d6933d785a54bd46c174246681adfa12d046e42ae77c831e44d183b66` |
 | `ballista-check` / distributed-check | 未設定 / 512 | なし | なし | なし | ローカル生成 / `build:native/evaluation/ballista.Dockerfile` |
@@ -218,7 +218,7 @@
 - [infra/openobserve/Dockerfile](../../infra/openobserve/Dockerfile): `docker.io/library/busybox:1.37.0-uclibc@sha256:7aa3d3c53cc1ed823c6a5967ebaac87700a5b0766af45ff599dbca3506c8b072`, `${OPENOBSERVE_IMAGE_PATH}:v1.1.2@sha256:4a154849432f75c4fb024de32fe34163c02406c905dab22bf8d213d2e3386392`
 - [native/evaluation/sail.Dockerfile](../../native/evaluation/sail.Dockerfile): `docker.io/library/python:3.14-slim@sha256:ac25e5afbfdb4a94ff99cc24b0345719210133144481480bcba6085efa36a341`, `ghcr.io/astral-sh/uv:0.13.7@sha256:96f40d3904aad8d0bd010539001d36c8e2188b981e1334471a90c4a1d93bb490`
 - [native/evaluation/ballista.Dockerfile](../../native/evaluation/ballista.Dockerfile): `docker.io/library/python:3.14-slim@sha256:ac25e5afbfdb4a94ff99cc24b0345719210133144481480bcba6085efa36a341`, `ghcr.io/astral-sh/uv:0.13.7@sha256:96f40d3904aad8d0bd010539001d36c8e2188b981e1334471a90c4a1d93bb490`
-- [native/evaluation/comet.Dockerfile](../../native/evaluation/comet.Dockerfile): `docker.io/apache/spark:4.1.3@sha256:bf9d035a7c32a8ca46aa58d6348182ffd7d2dff6409206ecfbb3915ff1fef211`
+- [native/evaluation/comet.Dockerfile](../../native/evaluation/comet.Dockerfile): `docker.io/apache/spark:4.2.0-scala2.13-java17-python3-ubuntu@sha256:84a4eedb1abcf36a90808d5a1310e3e910b78c85d85aaa1599e31af5f862ed59`
 
 | 配布物 | 上流の開示・ライセンス（要確認の区分） | 扱い |
 | --- | --- | --- |
