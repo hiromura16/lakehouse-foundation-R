@@ -185,7 +185,7 @@ services:
   influx-explorer:
     networks:
       tools_apps: {}
-    image: docker.io/influxdata/influxdb3-ui:1.11.2@sha256:7bc3e9caf1c2334a301bfc6b08eb6012cb5b33db9f0f0dd8f86d9b3553343e86
+    image: docker.io/influxdata/influxdb3-ui:1.12.0@sha256:01a29e2e547574dbd112412af0ea81992f05457b0ce887d30453606b864d20e4
     command: ["--mode=query"]
     environment:
       SESSION_SECRET_KEY: ${TOOLS_EXPLORER_KEY:?追加ツールの専用設定を生成してください}
