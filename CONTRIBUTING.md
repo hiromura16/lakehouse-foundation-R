@@ -72,13 +72,13 @@ gitleaks dir --redact=100 --no-banner .
 
 ## Renovateによる依存更新
 
-Docker Compose・Dockerfileの外部イメージ、GitHub Actions、`requirements-demo.txt` の更新候補を `renovate.json` で管理します。毎日03:23 JSTを目安に GitHub Actions の **Renovate** が確認し、自動マージは行いません。設定またはワークフローを変更するPRでは、公式バリデーターを同じ固定イメージで実行します。
+このリポジトリにインストールした [Mend RenovateのGitHub App](https://github.com/apps/renovate) が、`main` の `renovate.json` を読み取って更新PRを作ります。対象はDocker Compose・Dockerfileの外部イメージ、GitHub Actions、`requirements-demo.txt` です。自動マージは無効で、更新PRは通常のCIとレビューを経てマージします。
 
-1. GitHubで対象をこのリポジトリに限定した [fine-grained personal access token](https://docs.github.com/ja/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#fine-grained-personal-access-token-の作成) を作成します。リポジトリ権限の **Contents**、**Pull requests**、**Issues**、**Workflows** を Read and write にします。IssuesはDependency Dashboard、WorkflowsはActionの参照先を更新するPRに使います。
-2. リポジトリの **Settings → Secrets and variables → Actions** に、トークンを [リポジトリシークレット](https://docs.github.com/ja/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets#creating-secrets-for-a-repository) `RENOVATE_TOKEN` として登録します。専用トークンを使うと、更新PRも通常のCIで検証できます。未登録時は読み取り専用のドライランで候補をログに出します。
-3. マージ後は **Actions → Renovate → Run workflow** から手動実行できます。初回は `dry_run` を有効のまま実行し、ログを確認します。更新PRの作成を手動で開始する場合は `dry_run` を無効にします。定期実行はリポジトリの既定ブランチで行います。
+GitHub Actionsの **Renovate** は、設定や検証ワークフローの変更時に、固定イメージに含まれる公式バリデーターを実行します。マージ後は **Actions → Renovate → Run workflow** から同じ検証を手動で実行できます。
 
-ハッシュ付きのPythonロックと生成元、CDC Stage 3の検証済みイメージ台帳、バックアップの対応イメージは複数ファイルをまとめて変更するため、更新時に手動で整合を確認します。Pythonコンテナの自動提案は3.14系列です。設定項目の意味は [Renovateの公式リファレンス](https://docs.renovatebot.com/configuration-options/) を参照してください。
+初回の `Configure Renovate` PRは、既定ブランチに設定がない場合にAppが提案します。このリポジトリの設定が `main` に入った後は、その設定で初期化が進みます。依存更新候補はAppが作成するDependency Dashboardでも確認できます。 [Renovateの導入と初期化](https://docs.renovatebot.com/getting-started/installing-onboarding/)
+
+ハッシュ付きのPythonロックと生成元、CDC Stage 3の検証済みイメージ台帳、バックアップの対応イメージは複数ファイルをまとめて変更するため、更新時に手動で整合を確認します。Pythonコンテナの自動提案は3.14系列です。 [Renovateの設定項目](https://docs.renovatebot.com/configuration-options/)
 
 ## 文書と図を更新する
 
