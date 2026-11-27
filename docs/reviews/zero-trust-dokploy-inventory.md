@@ -152,7 +152,7 @@
 | `openobserve` | 未設定 / 2048 | `tools_apps` | `loopback ${TOOLS_OBSERVE_PORT}:5080` | `tools-observe:/data` | ローカル生成 / `build:infra/openobserve/Dockerfile` |
 | `observe-forwarder` / tools-metrics | 未設定 / 256 | `tools_apps`, `metrics_view` | なし | `secret:observe-passcode` | `prom/prometheus:v3.16.0@sha256:89c1a644817e9ad70fa2af76c84898e327c1de7063735f962e8313b1e28672c3` |
 | `influxdb3` | 未設定 / 1536 | `tools_apps` | `loopback ${TOOLS_INFLUX_PORT}:8181` | `tools-influx:/var/lib/influxdb3/data`, `secret:influx-admin` | ローカル生成 / `build:native/tools/influx.Dockerfile` |
-| `influx-explorer` | 未設定 / 512 | `tools_apps` | なし | `tools-explorer:/db` | `docker.io/influxdata/influxdb3-ui:1.11.2@sha256:7bc3e9caf1c2334a301bfc6b08eb6012cb5b33db9f0f0dd8f86d9b3553343e86` |
+| `influx-explorer` | 未設定 / 512 | `tools_apps` | なし | `tools-explorer:/db` | `docker.io/influxdata/influxdb3-ui:1.12.0@sha256:01a29e2e547574dbd112412af0ea81992f05457b0ce887d30453606b864d20e4` |
 | `tools-portal` | 未設定 / 96 | `tools_apps`, `automation_apps` | `loopback ${TOOLS_PORT}:8060`, `loopback ${TOOLS_N8N_PORT}:8061`, `loopback ${TOOLS_EXPLORER_PORT}:8062` | `secret:tools-htpasswd` | `${COMPOSE_PROJECT_NAME}-tools-portal` / `build:native/Dockerfile.configured:tools-portal` |
 | `read-api` | 基底継承 / 基底継承 | `automation_apps` | なし | なし | 基底継承 |
 | `health-relay` | 基底継承 / 基底継承 | `tools_apps`, `automation_apps` | なし | なし | 基底継承 |
