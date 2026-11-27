@@ -32,14 +32,14 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
         with:
-          python-version: '3.12'
+          python-version: '3.15'
       - uses: ./.github/actions/setup-pinned-uv
       - name: 合成環境と共通クライアントを準備
         shell: bash
         run: |
           set -Eeuo pipefail
           docker compose -f compose.evaluation.yaml --profile '*' config --quiet
-          uv venv --python 3.12 "$RUNNER_TEMP/engine-check"
+          uv venv --python "${pythonLocation:?setup-pythonで設定してください}/bin/python" "$RUNNER_TEMP/engine-check"
           uv pip sync --python "$RUNNER_TEMP/engine-check/bin/python" \
             --require-hashes native/evaluation/compute.lock
           docker compose -f compose.evaluation.yaml --profile sail --profile timeseries \
