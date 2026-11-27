@@ -93,6 +93,13 @@ services:
       ZO_COMPACT_DATA_RETENTION_DAYS: '7'
       ZO_TELEMETRY: 'false'
       ZO_USAGE_REPORTING_MODE: local
+      # 1.1.2で読めないstaleness marker付きファイルを生成しない。
+      ZO_METRICS_STALENESS_MARKERS_ENABLED: 'false'
+      # 公開共有を無効にして認証付きの運用画面を維持する。
+      ZO_PUBLIC_DASHBOARD_ENABLED: 'false'
+      # 設備や外部宛先への合成監視、プロファイル受付は用途に合わせて個別に有効化する。
+      ZO_SYNTHETICS_ENABLED: 'false'
+      ZO_FEATURE_PROFILING_ENABLED: 'false'
       ZO_TRACING_ENABLED: 'false'
       ZO_MEM_TABLE_MAX_SIZE: '128'
       ZO_MEMORY_CACHE_ENABLED: 'false'

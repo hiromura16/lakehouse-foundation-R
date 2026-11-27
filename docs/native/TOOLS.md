@@ -108,7 +108,13 @@ OpenObserveへの到着は受信側で確認します。
 python3 -m native.tools.observe verify --directory "$tools"
 ```
 
-採取対象は [targets.yml](../../native/tools/targets.yml) を編集します。Grafana側の編集は [監視設定](MONITORING.md) を参照してください。[Prometheus remote write](https://openobserve.ai/docs/ingestion/metrics/prometheus/) · [OpenObserveのインポート](https://openobserve.ai/docs/user-guide/analytics/dashboards/dashboards-in-openobserve/) · [OpenObserve 1.1.2の192列レイアウト](https://github.com/openobserve/openobserve/blob/v1.1.2/web/src/views/Dashboards/RenderDashboardCharts.vue#L865-L870)
+採取対象は [targets.yml](../../native/tools/targets.yml) を編集します。Grafana側の編集は [監視設定](MONITORING.md) を参照してください。[Prometheus remote write](https://openobserve.ai/docs/ingestion/metrics/prometheus/) · [OpenObserveのインポート](https://openobserve.ai/docs/user-guide/analytics/dashboards/dashboards-in-openobserve/) · [OpenObserve 1.2.0の192列レイアウト](https://github.com/openobserve/openobserve/blob/v1.2.0/web/src/views/Dashboards/RenderDashboardCharts.vue#L1022-L1028)
+
+OpenObserveを更新する前に、[バックアップと復元](OPERATIONS.md#バックアップと復元)に沿って、停止した状態で `tools-observe` ボリュームを保全してください。
+1.1.2に切り戻す場合は、更新前のイメージとボリュームのバックアップを組み合わせて復元します。
+標準設定では、旧版で読めないstaleness marker付きのメトリクスを生成しません。
+運用ダッシュボードにはログインが必要です。公開リンク、合成監視、プロファイル受付は必要に応じて有効化できます。
+[OpenObserve 1.2.0の更新時の注意点](https://github.com/openobserve/openobserve/releases/tag/v1.2.0#upgrade-notes)
 
 ## 設備の合成測定点を確認する
 

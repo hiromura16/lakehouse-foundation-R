@@ -32,7 +32,7 @@
 | Streamlit、NGINX | 1.67.0、1.30.8 | [Streamlitの表](https://docs.streamlit.io/develop/api-reference/data/st.dataframe) · [NGINXのBasic認証](https://nginx.org/en/docs/http/ngx_http_auth_basic_module.html) · [WebSocket中継](https://nginx.org/en/docs/http/websocket.html) |
 | LangChain Core | 1.7.6 | [Tools](https://docs.langchain.com/oss/python/langchain/tools) |
 | n8n | 2.49.5 | [Docker Compose](https://docs.n8n.io/deploy/host-n8n/install-options/use-a-cloud-provider/use-docker-compose) · [SSRF保護](https://docs.n8n.io/deploy/host-n8n/configure-n8n/security/enable-ssrf-protection) · [Sustainable Use License](https://docs.n8n.io/n8n-community-license) · [2.49.5の変更](https://github.com/n8n-io/n8n/releases/tag/n8n%402.49.5) |
-| OpenObserve | 1.1.2 | [Prometheus remote write](https://openobserve.ai/docs/ingestion/metrics/prometheus/) · [ダッシュボード](https://openobserve.ai/docs/user-guide/analytics/dashboards/) |
+| OpenObserve | 1.2.0 | [Prometheus remote write](https://openobserve.ai/docs/ingestion/metrics/prometheus/) · [ダッシュボード](https://openobserve.ai/docs/user-guide/analytics/dashboards/) |
 | InfluxDB 3 Core、Explorer | 3 Coreはdigest固定、Explorer 1.11.2 | [管理用トークン](https://docs.influxdata.com/influxdb3/core/admin/tokens/admin/preconfigured/) · [SQL API](https://docs.influxdata.com/influxdb3/core/query-data/execute-queries/) · [Explorer](https://docs.influxdata.com/influxdb3/explorer/) |
 
 ## 追加機能の配布条件
