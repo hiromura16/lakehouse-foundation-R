@@ -155,25 +155,32 @@ def telemetry_capacity(run, publish, http, endpoint, size, *, nisshi):
         latest_point = capacity_point(size + 1)
 
         def retained_without_ack():
-            """保存先の停止中に、発行した時刻と未確定の位置を照合する。"""
+            """保存先停止時の発行点と、対象区画の未確定位置を照合する。"""
+            topic = "foundation-r-evaluation-sensors"
             evidence = redpanda_fixture_progress(
-                run, "foundation-r-evaluation-sensors", offset="-1:end"
+                run, topic, offset="-1", limit=1
             )
-            source_times = [
-                timestamp for _, timestamp in evidence["offsets_and_source_ms"]
-            ]
-            lag = next(
+            match = next(
                 (
-                    line.split()[-1]
-                    for line in evidence.get("vector_group", [])
-                    if line.startswith("TOTAL-LAG")
+                    offset
+                    for offset, timestamp in evidence["offsets_and_source_ms"]
+                    if timestamp == latest_point[0]
+                ),
+                None,
+            )
+            rows = [line.split() for line in evidence.get("vector_group", [])]
+            current_offset = next(
+                (
+                    row[2]
+                    for row in rows
+                    if len(row) > 2 and row[:2] == [topic, "0"]
                 ),
                 "",
             )
             return (
-                latest_point[0] in source_times
-                and lag.isdigit()
-                and int(lag) > 0
+                match is not None
+                and current_offset.isdigit()
+                and int(current_offset) <= match
             )
 
         until(retained_without_ack, "停止中のRedpanda保持と未確定の位置")
@@ -367,7 +374,7 @@ def opcua_acceptance(
     print("OPC UA暗号化、相手鍵不一致・書込みの拒否、発生元時刻と品質を照合。")
 
 
-def redpanda_fixture_progress(run, topic, *, offset=":end"):
+def redpanda_fixture_progress(run, topic, *, offset=":end", limit=16):
     """独立した読取で、合成Redpandaの到達時刻とVectorの保存済み位置を調べる。"""
     evidence = {}
     try:
@@ -384,7 +391,7 @@ def redpanda_fixture_progress(run, topic, *, offset=":end"):
             "--offset",
             offset,
             "--num",
-            "16",
+            str(limit),
             "--format",
             r"%o %v\n",
             check=False,
