@@ -8,9 +8,6 @@
     "repository": "apache/kafka"
   },
   "connect": {
-    "index": "sha256:e7fe7826d3ee71965603106a02f6c605c1d6fde058c76856c1d33dd3b40f9897",
-    "manifest": "sha256:b8662c7172417e8217f6627a5bc42a47afd6688f801a98e89683da63a2e2c604",
-    "config": "sha256:f549e9b0dd7e3bf19310fe1888f4c6ee0c6ff7eb729ffd6357a1e35ce4c0e8bf",
     "tag": "3.7.1.Final",
     "registry": "quay.io",
     "repository": "debezium/connect"
