@@ -22,7 +22,7 @@
 | `stream` | RisingWave 3.1.2、隔離Redpanda | Kafka上のDebezium形式の作成・訂正・削除から現在値を作成 |
 | `timeseries` | GreptimeDB 1.3.0 | 3測定点の時系列SQLと最新値 |
 | `distributed` | Ballista 55.0.0のScheduler・Executor | 別プロセスに登録し、共通の集計値を取得 |
-| `accelerator` | Spark 4.2.0（Java 17）とComet 1.2.0 | 合計5,050とCometの物理実行プランを確認 |
+| `accelerator` | Spark 4.2.1（Java 17）とComet 1.2.0 | 合計5,050とCometの物理実行プランを確認 |
 | S3比較 | RustFS 1.0.6、Apache-2.0 | 隔離したLakekeeperからIcebergを公開し、認証・条件付き書込・再起動を確認 |
 | 単体CLI | DataFusion 55.0.0 | 8入力の現在値、CSV・JSONLからParquetへの変換 |
 
