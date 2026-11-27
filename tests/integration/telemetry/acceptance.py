@@ -240,6 +240,10 @@ def opcua_acceptance(
                     root / "nisshi" / "nisshi.db",
                     "foundation-r-evaluation-sensors",
                 )
+            else:
+                evidence["redpanda"] = redpanda_fixture_progress(
+                    run, "foundation-r-evaluation-sensors"
+                )
             print(json.dumps(evidence, ensure_ascii=False), flush=True)
             raise
 
@@ -308,6 +312,66 @@ def opcua_acceptance(
         ],
     )
     print("OPC UA暗号化、相手鍵不一致・書込みの拒否、発生元時刻と品質を照合。")
+
+
+def redpanda_fixture_progress(run, topic):
+    """独立した読取で、合成Redpandaの到達時刻とVectorの保存済み位置を調べる。"""
+    evidence = {}
+    try:
+        result = run(
+            "exec",
+            "-T",
+            "broker",
+            "rpk",
+            "topic",
+            "consume",
+            topic,
+            "--partitions",
+            "0",
+            "--offset",
+            ":end",
+            "--num",
+            "16",
+            "--format",
+            r"%o %v\n",
+            check=False,
+            timeout=8,
+        )
+        records = result.stdout
+        if result.returncode:
+            evidence["records_exit_code"] = result.returncode
+    except subprocess.TimeoutExpired as error:
+        # 取得済みの行は残し、タイムアウトと空のトピックを診断で区別する。
+        records = (error.stdout or b"").decode(errors="replace")
+        evidence["records_timed_out"] = True
+
+    # 設備値の本体は出力せず、offsetとInflux行末尾の発生元時刻だけを残す。
+    events = []
+    for line in records.splitlines():
+        fields = line.split()
+        if len(fields) >= 4 and fields[0].isdigit() and fields[-1].isdigit():
+            offset, timestamp = fields[0], fields[-1]
+            events.append([int(offset), int(timestamp) // 1_000_000])
+    evidence["offsets_and_source_ms"] = events
+
+    try:
+        group = run(
+            "exec",
+            "-T",
+            "broker",
+            "rpk",
+            "group",
+            "describe",
+            "foundation-r-evaluation-greptime",
+            check=False,
+            timeout=8,
+        )
+        evidence["vector_group"] = group.stdout.splitlines()
+        if group.returncode:
+            evidence["group_exit_code"] = group.returncode
+    except subprocess.TimeoutExpired:
+        evidence["group_timed_out"] = True
+    return evidence
 
 
 def nisshi_fixture_progress(path, topic):

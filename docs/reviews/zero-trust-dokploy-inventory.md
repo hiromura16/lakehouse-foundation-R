@@ -219,7 +219,7 @@
 - [native/evaluation/sail.Dockerfile](../../native/evaluation/sail.Dockerfile): `docker.io/library/python:3.14-slim@sha256:22eafb370920ad8b429e0aec3fff433e0669968519f5d60469d83729c138b28b`, `ghcr.io/astral-sh/uv:0.13.7@sha256:96f40d3904aad8d0bd010539001d36c8e2188b981e1334471a90c4a1d93bb490`
 - [native/evaluation/ballista.Dockerfile](../../native/evaluation/ballista.Dockerfile): `docker.io/library/python:3.14-slim@sha256:22eafb370920ad8b429e0aec3fff433e0669968519f5d60469d83729c138b28b`, `ghcr.io/astral-sh/uv:0.13.7@sha256:96f40d3904aad8d0bd010539001d36c8e2188b981e1334471a90c4a1d93bb490`
 - [native/evaluation/comet.Dockerfile](../../native/evaluation/comet.Dockerfile): `docker.io/apache/spark:4.2.0-scala2.13-java17-python3-ubuntu@sha256:84a4eedb1abcf36a90808d5a1310e3e910b78c85d85aaa1599e31af5f862ed59`
-- [native/telemetry/opcua.Dockerfile](../../native/telemetry/opcua.Dockerfile): `docker.io/library/python:3.14-slim@sha256:22eafb370920ad8b429e0aec3fff433e0669968519f5d60469d83729c138b28b`
+- [native/telemetry/opcua.Dockerfile](../../native/telemetry/opcua.Dockerfile): `docker.io/library/python:3.14-slim@sha256:22eafb370920ad8b429e0aec3fff433e0669968519f5d60469d83729c138b28b`, `ghcr.io/astral-sh/uv:0.13.7@sha256:96f40d3904aad8d0bd010539001d36c8e2188b981e1334471a90c4a1d93bb490`
 
 | 配布物 | 上流の開示・ライセンス（要確認の区分） | 扱い |
 | --- | --- | --- |
