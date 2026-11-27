@@ -12,6 +12,17 @@
     "custom.regex"
   ],
   "automerge": false,
+  "automergeType": "pr",
+  "automergeStrategy": "squash",
+  "platformAutomerge": false,
+  "ignoreTests": false,
+  "internalChecksAsSuccess": false,
+  "minimumReleaseAge": "3 days",
+  "minimumReleaseAgeBehaviour": "timestamp-required",
+  "vulnerabilityAlerts": {
+    "minimumReleaseAge": "3 days",
+    "automerge": false
+  },
   "timezone": "Asia/Tokyo",
   "prConcurrentLimit": 5,
   "prHourlyLimit": 2,
@@ -89,6 +100,46 @@
         "docker.io/library/python"
       ],
       "allowedVersions": "/^3\\.14(?:\\.\\d+)?-slim$/"
+    },
+    {
+      "description": "固定済み公式ActionはGitHub Releasesで公開日とSHAを確認し、パッチ更新とマイナー更新を分ける。",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "matchDepTypes": [
+        "action"
+      ],
+      "matchPackageNames": [
+        "actions/checkout",
+        "actions/setup-python"
+      ],
+      "separateMinorPatch": true,
+      "matchCurrentValue": "/^v\\d+\\.\\d+\\.\\d+$/",
+      "matchJsonata": [
+        "$boolean(currentDigest)"
+      ],
+      "overrideDatasource": "github-releases"
+    },
+    {
+      "description": "公開から3日が経過し、CIが通ったSHA固定済み公式Actionのパッチ更新を自動マージする。",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "matchDepTypes": [
+        "action"
+      ],
+      "matchPackageNames": [
+        "actions/checkout",
+        "actions/setup-python"
+      ],
+      "matchCurrentValue": "/^v\\d+\\.\\d+\\.\\d+$/",
+      "matchJsonata": [
+        "$boolean(currentDigest)"
+      ],
+      "matchUpdateTypes": [
+        "patch"
+      ],
+      "automerge": true
     }
   ]
 }

@@ -72,7 +72,7 @@ gitleaks dir --redact=100 --no-banner .
 
 ## Renovateによる依存更新
 
-このリポジトリにインストールした [Mend RenovateのGitHub App](https://github.com/apps/renovate) が、`main` の `renovate.json` を読み取って更新PRを作ります。対象はDocker Compose・Dockerfileの外部イメージ、GitHub Actions、`requirements-demo.txt` です。自動マージは無効で、更新PRは通常のCIとレビューを経てマージします。
+このリポジトリにインストールした [Mend RenovateのGitHub App](https://github.com/apps/renovate) が、`main` の `renovate.json` を読み取って更新PRを作ります。対象はDocker Compose・Dockerfileの外部イメージ、GitHub Actions、`requirements-demo.txt` です。更新候補は公開日時が確認できてから3日以上経過したものを対象とします。SHAで固定済みの `actions/checkout` と `actions/setup-python` は、GitHub Releasesの公開日時を基準に、CIがすべて合格したパッチ更新PRをRenovateがsquashマージします。その他の更新PRはCIとレビューを経て手動でマージします。
 
 GitHub Actionsの **Renovate** は、設定や検証ワークフローの変更時に、固定イメージに含まれる公式バリデーターを実行します。マージ後は **Actions → Renovate → Run workflow** から同じ検証を手動で実行できます。
 
