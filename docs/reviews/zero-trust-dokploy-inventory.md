@@ -218,7 +218,7 @@
 - [infra/openobserve/Dockerfile](../../infra/openobserve/Dockerfile): `docker.io/library/busybox:1.37.0-uclibc@sha256:7aa3d3c53cc1ed823c6a5967ebaac87700a5b0766af45ff599dbca3506c8b072`, `${OPENOBSERVE_IMAGE_PATH}:v1.2.0@sha256:896361d533cac56ef346d940b1ddd6664e04d5f9606bd80b4a2e28069a33020e`
 - [native/evaluation/sail.Dockerfile](../../native/evaluation/sail.Dockerfile): `docker.io/library/python:3.14-slim@sha256:ac25e5afbfdb4a94ff99cc24b0345719210133144481480bcba6085efa36a341`, `ghcr.io/astral-sh/uv:0.13.7@sha256:96f40d3904aad8d0bd010539001d36c8e2188b981e1334471a90c4a1d93bb490`
 - [native/evaluation/ballista.Dockerfile](../../native/evaluation/ballista.Dockerfile): `docker.io/library/python:3.14-slim@sha256:ac25e5afbfdb4a94ff99cc24b0345719210133144481480bcba6085efa36a341`, `ghcr.io/astral-sh/uv:0.13.7@sha256:96f40d3904aad8d0bd010539001d36c8e2188b981e1334471a90c4a1d93bb490`
-- [native/evaluation/comet.Dockerfile](../../native/evaluation/comet.Dockerfile): `docker.io/apache/spark:4.2.0-scala2.13-java17-python3-ubuntu@sha256:84a4eedb1abcf36a90808d5a1310e3e910b78c85d85aaa1599e31af5f862ed59`
+- [native/evaluation/comet.Dockerfile](../../native/evaluation/comet.Dockerfile): `docker.io/apache/spark:4.2.1-scala2.13-java17-python3-ubuntu@sha256:c0e6770a7c500d3f1090c9b9f4e26cb5914aec987a94cd44cae1eb1f65b0fa51`
 
 | 配布物 | 上流の開示・ライセンス（要確認の区分） | 扱い |
 | --- | --- | --- |
