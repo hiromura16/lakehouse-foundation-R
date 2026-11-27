@@ -169,7 +169,7 @@
       "enabled": false
     },
     {
-      "description": "Spark 4.1向けCometを使う比較構成はSpark 4.1系列で検証する。",
+      "description": "Spark 4.2向けCometはSpark 4.2系列とJava 17の組み合わせで検証する。",
       "matchManagers": [
         "dockerfile"
       ],
@@ -180,7 +180,7 @@
         "docker.io/apache/spark",
         "apache/spark"
       ],
-      "allowedVersions": "/^4\\.1\\.\\d+$/"
+      "allowedVersions": "/^4\\.2\\.\\d+(?:-scala2\\.13-java17-python3-ubuntu)?$/"
     }
   ]
 }
