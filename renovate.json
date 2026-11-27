@@ -150,6 +150,37 @@
         "astral-sh/uv"
       ],
       "enabled": false
+    },
+    {
+      "description": "CIのPython系列はuvの実行指定と対応するロックを一緒に移行する。",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "matchDepTypes": [
+        "uses-with"
+      ],
+      "matchPackageNames": [
+        "actions/python-versions"
+      ],
+      "matchUpdateTypes": [
+        "major",
+        "minor"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "Spark 4.1向けCometを使う比較構成はSpark 4.1系列で検証する。",
+      "matchManagers": [
+        "dockerfile"
+      ],
+      "matchFileNames": [
+        "native/evaluation/comet.Dockerfile"
+      ],
+      "matchPackageNames": [
+        "docker.io/apache/spark",
+        "apache/spark"
+      ],
+      "allowedVersions": "/^4\\.1\\.\\d+$/"
     }
   ]
 }
