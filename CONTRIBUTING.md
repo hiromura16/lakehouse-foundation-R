@@ -70,6 +70,16 @@ gitleaks dir --redact=100 --no-banner .
 
 業務SQLと公開APIは [合成データでの受入手順](docs/native/ACCEPTANCE.md) も実施します。入力契約を変更するときはサンプル、SQL、期待する出力、契約ハッシュを一緒に確認します。障害を修正したときは再現条件と確認結果を記録します。
 
+## Renovateによる依存更新
+
+このリポジトリにインストールした [Mend RenovateのGitHub App](https://github.com/apps/renovate) が、`main` の `renovate.json` を読み取って更新PRを作ります。対象はDocker Compose・Dockerfileの外部イメージ、GitHub Actions、`requirements-demo.txt` です。更新候補は公開日時が確認できてから3日以上経過したものを対象とします。SHAで固定済みの `actions/checkout` と `actions/setup-python` は、GitHub Releasesの公開日時を基準に、CIがすべて合格したパッチ更新PRをRenovateがsquashマージします。その他の更新PRはCIとレビューを経て手動でマージします。
+
+GitHub Actionsの **Renovate** は、設定や検証ワークフローの変更時に、固定イメージに含まれる公式バリデーターを実行します。マージ後は **Actions → Renovate → Run workflow** から同じ検証を手動で実行できます。
+
+初回の `Configure Renovate` PRは、既定ブランチに設定がない場合にAppが提案します。このリポジトリの設定が `main` に入った後は、その設定で初期化が進みます。依存更新候補はAppが作成するDependency Dashboardでも確認できます。 [Renovateの導入と初期化](https://docs.renovatebot.com/getting-started/installing-onboarding/)
+
+ハッシュ付きのPythonロックと生成元、CDC Stage 3の検証済みイメージ台帳、バックアップの対応イメージ（PostgreSQL・Lakekeeper・SeaweedFS）は複数ファイルをまとめて変更するため、更新時に手動で整合を確認します。Pythonコンテナの自動提案は3.14系列です。 [Renovateの設定項目](https://docs.renovatebot.com/configuration-options/)
+
 ## 文書と図を更新する
 
 Markdownを追加したら `docs/documentation-manifest.json` へ目的と対象読者を登録し、`python3 scripts/documentation.py` で索引を更新します。CLIの例には実行できるシェルを明示します。説明スライドは [HTMLの編集元](docs/presentation/index.html) を開き、各ページと印刷を確認します。製品の仕様は [公式リファレンス](docs/native/REFERENCES.md) を採用版と照合します。
