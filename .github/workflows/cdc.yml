@@ -20,7 +20,9 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
         with:
-          python-version: '3.15'
+          # PyIceberg 0.12.0はCPython 3.15用wheelが未配布。バイナリ限定の再生ロックに合わせる。
+          # https://github.com/apache/iceberg-python/issues/4495
+          python-version: '3.14'
       - uses: ./.github/actions/setup-pinned-uv
       - name: 確定済みRawの採取範囲、NULL、復元の拒否条件を検査
         shell: bash
