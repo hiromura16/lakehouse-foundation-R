@@ -1,5 +1,5 @@
 # Rust製Sailのwheelを利用し、検証サーバーを一般ユーザーで起動する。
-FROM docker.io/library/python:3.14-slim@sha256:ac25e5afbfdb4a94ff99cc24b0345719210133144481480bcba6085efa36a341
+FROM docker.io/library/python:3.14-slim@sha256:080b4f1282edb604b21e61dfca35d1d215ed6cd1c17de27ccfc34e6fadc4ee49
 COPY --from=ghcr.io/astral-sh/uv:0.13.7@sha256:96f40d3904aad8d0bd010539001d36c8e2188b981e1334471a90c4a1d93bb490 /uv /usr/local/bin/uv
 ENV UV_SYSTEM_CERTS=true UV_PYTHON_DOWNLOADS=never HOME=/tmp
 COPY --chmod=644 infra/proxy/uv_sync.py /tmp/uv_sync.py
