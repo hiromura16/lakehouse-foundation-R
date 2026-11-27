@@ -30,8 +30,9 @@
 * Debezium 3.7はKafka Connect 4.3.1でビルドされ、上流のbroker検証も
   4.3.1。4.3.2との互換性および限定SQLロールでのsnapshot/streamは、
   ここで合成環境の実測が通るまで未確認。
-* 固定した上流tagの参照先が変わった場合は `UPSTREAM_CHANGED` として
-  新規の承認・昇格を停止する。別digest、raw tag、別の配布場所へ自動で切り替えない。
+* Debezium Connectは公式Quayの `3.7.1.Final` タグで取得する。取得時の
+  linux/amd64実体とDebeziumの版を確認し、ダイジェストは証跡に記録する。
+  Kafka・JRE・BuildKitの既存の固定値と不一致の場合は `UPSTREAM_CHANGED` で停止する。
 
 ## 分離と容量
 
@@ -66,6 +67,10 @@ linux/amd64 manifestと実ユーザー・JVMを照合します。Dockerのcontai
 OCI検証でmanifestからconfigとlayerのバイトを別途追跡し、起動後に
 コンテナ自身が選んだplatform manifestも再照合します。metadata確認のみを
 Docker実行、あるいは空の環境からの復旧の証拠と見なしません。
+
+CIではDebeziumのタグを解決した時点のレイヤーの順序とSHA-256を記録し、
+ビルド後にタグの解決結果を再照合します。ビルド結果も同じレイヤーで始まることを
+検証し、タグの再公開やレイヤーの不一致を検出した場合はロード前に停止します。
 
 承認済みの実行イメージは、入力のdigest/JVM/作成方法/出力manifest/
 config/アーカイブSHA-256とともに、承認済みの管理registryの不変参照、

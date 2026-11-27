@@ -12,14 +12,14 @@ fi
 
 out=$(mktemp -d "${RUNNER_TEMP:?}/stage3-oci.XXXXXX")
 printf 'STAGE3_ARCHIVES_DIR=%s\n' "$out" >> "${GITHUB_ENV:?}"
-python3 scripts/cdc_stage3_images.py registry
+python3 scripts/cdc_stage3_images.py registry --connect-receipt "$out/connect-source.json"
 builder="foundation-r-cdc-stage3-$(openssl rand -hex 8)"
 builder_image=$(python3 scripts/cdc_stage3_images.py builder-ref)
 docker --context default buildx create --name "$builder" --driver docker-container \
   --driver-opt "image=$builder_image" >/dev/null
 trap 'docker --context default buildx rm "$builder" >/dev/null' EXIT
 for kind in kafka connect; do
-  # 入力はそれぞれのDockerfileが固定。push / registry loginを使わない。
+  # Dockerfileに記載した公式参照でビルドし、pushやregistry loginは使わない。
   tag=$(python3 scripts/cdc_stage3_images.py local-tag "$kind" archive)
   archive="$out/$kind.tar"
   if ! docker --context default buildx build --builder "$builder" --platform linux/amd64 \
@@ -31,7 +31,13 @@ for kind in kafka connect; do
   fi
   rm -- "$out/build.log"
   hash=$(sha256sum -- "$archive")
+  verify_options=()
+  if [[ "$kind" == connect ]]; then
+    # タグの照合からビルドまでに別のレイヤーへ切り替わった場合は停止する。
+    verify_options+=(--source-receipt "$out/connect-source.json")
+  fi
   python3 scripts/cdc_stage3_images.py archive-info "$archive" --sha256 "${hash%% *}" \
+    "${verify_options[@]}" \
     > "$out/$kind.json"
   if ! docker --context default image load --input "$archive" >/dev/null 2>&1; then
     printf '%s\n' 'STAGE3_OCI_LOAD_FAILED_CONTAINERD_REQUIRED' >&2

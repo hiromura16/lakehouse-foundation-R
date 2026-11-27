@@ -5,16 +5,24 @@ import json
 import sys
 import tarfile
 import unittest
-from io import BytesIO
+from contextlib import redirect_stderr
+from io import BytesIO, StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import cdc_stage3_images as images  # noqa: E402
 
 
-def fixture(arch="amd64", *, compressed=False, bad_diff=False):
+def fixture(
+    arch="amd64",
+    *,
+    compressed=False,
+    bad_diff=False,
+    extra_layer=False,
+    connect_version=None,
+):
     """本物のOCIと同じdescriptor関係を持つ最小の合成アーカイブ。"""
     layer_type = "application/vnd.oci.image.layer.v1.tar"
     config_type = "application/vnd.oci.image.config.v1+json"
@@ -34,21 +42,31 @@ def fixture(arch="amd64", *, compressed=False, bad_diff=False):
     def encode(data):
         return json.dumps(data).encode()
 
-    config = encode(
-        {
-            "os": "linux",
-            "architecture": arch,
-            "rootfs": {"type": "layers", "diff_ids": [diff]},
+    extra = b"synthetic Java overlay"
+    layer_desc = [blob(layer, layer_type)]
+    diffs = [diff]
+    if extra_layer:
+        layer_desc.append(
+            blob(extra, "application/vnd.oci.image.layer.v1.tar")
+        )
+        diffs.append(images.digest(extra))
+    config_fields = {
+        "os": "linux",
+        "architecture": arch,
+        "rootfs": {"type": "layers", "diff_ids": diffs},
+    }
+    if connect_version is not None:
+        config_fields["config"] = {
+            "Env": [f"DEBEZIUM_VERSION={connect_version}"]
         }
-    )
+    config = encode(config_fields)
     config_desc = blob(config, config_type)
-    layer_desc = blob(layer, layer_type)
     manifest = encode(
         {
             "schemaVersion": 2,
             "mediaType": images.OCI_MANIFEST,
             "config": config_desc,
-            "layers": [layer_desc],
+            "layers": layer_desc,
         }
     )
     image = blob(manifest, images.OCI_MANIFEST)
@@ -64,6 +82,8 @@ def fixture(arch="amd64", *, compressed=False, bad_diff=False):
         ("blobs/sha256/" + images.digest(data).split(":")[1]): data
         for data in (config, layer, manifest)
     }
+    if extra_layer:
+        blobs["blobs/sha256/" + images.digest(extra).split(":")[1]] = extra
     lock = {
         "index": images.digest(index),
         "manifest": image["digest"],
@@ -95,8 +115,49 @@ class RegistryTest(unittest.TestCase):
     """タグの観測と固定コンテンツの確認を分けて要求する。"""
 
     def test_expected_sources_and_dockerfiles(self):
-        """同一タグでも可変参照だけのDockerfileを認めない。"""
-        self.assertEqual(images.source_lock().keys(), images.SOURCES.keys())
+        """Connectは版タグ、Kafkaと補助イメージはダイジェストを要求する。"""
+        lock = images.source_lock()
+        self.assertEqual(lock.keys(), images.SOURCES.keys())
+        self.assertNotIn("manifest", lock["connect"])
+        self.assertIn("manifest", lock["kafka"])
+
+    def test_connect_resolves_version_tag_to_current_layers(self):
+        """Connectは現行tagのバイトを検証し、アーカイブ照合用に記録する。"""
+        lock, files, manifest, config = fixture(connect_version="3.7.1.Final")
+        transport = Mock(
+            side_effect=[
+                files["index.json"],
+                files["index.json"],
+                manifest,
+                config,
+            ]
+        )
+        row = images.source_lock()["connect"]
+        self.assertEqual(
+            images.verify_source("connect", row, transport),
+            {**lock, "layers": [images.digest(b"synthetic layer bytes")]},
+        )
+        urls = [call.args[0] for call in transport.call_args_list]
+        self.assertTrue(urls[0].endswith("/manifests/3.7.1.Final"))
+        self.assertTrue(urls[1].endswith("/manifests/" + lock["index"]))
+
+    def test_connect_rejects_another_version(self):
+        """公式タグの応答であってもConnect自身の版が異なれば停止する。"""
+        _, files, manifest, config = fixture(connect_version="3.7.2.Final")
+        transport = Mock(
+            side_effect=[
+                files["index.json"],
+                files["index.json"],
+                manifest,
+                config,
+            ]
+        )
+        with self.assertRaisesRegex(
+            images.ImageError, "DEBEZIUM_VERSION_MISMATCH"
+        ):
+            images.verify_source(
+                "connect", images.source_lock()["connect"], transport
+            )
 
     def test_matches_all_bytes_and_platform(self):
         """タグ、固定index、子manifest、configをそれぞれ照会する。"""
@@ -130,6 +191,69 @@ class RegistryTest(unittest.TestCase):
 
 class ArchiveTest(unittest.TestCase):
     """コンテナをロードせず全OCIバイトと検証境界を確認する。"""
+
+    def test_archive_info_rejects_tag_changed_during_build(self):
+        """ビルド後に観測したタグが変わった場合はアーカイブを承認しない。"""
+        with TemporaryDirectory() as work:
+            directory = Path(work)
+            source = directory / "upstream.json"
+            source.write_text(
+                json.dumps({"layers": [images.digest(b"before")]}),
+                encoding="utf-8",
+            )
+            stderr = StringIO()
+            with (
+                patch.object(
+                    images,
+                    "verify_source",
+                    return_value={"layers": [images.digest(b"after")]},
+                ),
+                patch.object(images, "verify_archive") as archive,
+                redirect_stderr(stderr),
+            ):
+                self.assertEqual(
+                    images.main(
+                        [
+                            "archive-info",
+                            str(directory / "image.tar"),
+                            "--sha256",
+                            "0" * 64,
+                            "--source-receipt",
+                            str(source),
+                        ]
+                    ),
+                    1,
+                )
+            archive.assert_not_called()
+            self.assertIn(
+                "CONNECT_TAG_CHANGED_DURING_BUILD", stderr.getvalue()
+            )
+
+    def test_archive_contains_observed_connect_layers(self):
+        """観測したConnectのレイヤーとJVMの追加をアーカイブから確認する。"""
+        _, files, _, _ = fixture(extra_layer=True)
+        base = images.digest(b"synthetic layer bytes")
+        with TemporaryDirectory() as work:
+            path = Path(work) / "connect.tar"
+            sha = pack(path, files)
+            images.verify_archive(path, sha, source_layers=[base])
+            with self.assertRaisesRegex(
+                images.ImageError, "ARCHIVE_SOURCE_LAYER"
+            ):
+                images.verify_archive(
+                    path, sha, source_layers=[images.digest(b"other")]
+                )
+            with self.assertRaisesRegex(
+                images.ImageError, "ARCHIVE_SOURCE_LAYER"
+            ):
+                images.verify_archive(
+                    path,
+                    sha,
+                    source_layers=[
+                        base,
+                        images.digest(b"synthetic Java overlay"),
+                    ],
+                )
 
     def test_archive_identity_and_blob_tree(self):
         """archiveとmanifestとconfigのハッシュは異なる実体。"""

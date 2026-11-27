@@ -128,12 +128,18 @@ def source_lock():
         raise ImageError("INVALID_SOURCE_LOCK")
     for key, (host, name, tag) in SOURCES.items():
         row = lock[key]
+        fields = {"registry", "repository", "tag"}
+        if key != "connect":
+            fields.update(("index", "manifest", "config"))
+        if set(row) != fields or (
+            row["registry"],
+            row["repository"],
+            row["tag"],
+        ) != (host, name, tag):
+            raise ImageError("INVALID_SOURCE_LOCK")
         if (
-            set(row)
-            != {"registry", "repository", "tag", "index", "manifest", "config"}
-            or (row["registry"], row["repository"], row["tag"])
-            != (host, name, tag)
-            or len(
+            key != "connect"
+            and len(
                 {
                     checked_digest(row[k])
                     for k in ("index", "manifest", "config")
@@ -145,11 +151,13 @@ def source_lock():
     runtime_files = {"kafka": "jre_alpine", "connect": "jre_ubi"}
     for name, jre in runtime_files.items():
         lines = (ASSETS / (name + ".Dockerfile")).read_text().splitlines()
-        tags = [
-            f"FROM {docker_name(lock[key])}:{lock[key]['tag']}@"
-            f"{lock[key]['manifest']}"
-            for key in (jre, name)
-        ]
+        tags = []
+        for key in (jre, name):
+            row = lock[key]
+            tag = f"FROM {docker_name(row)}:{row['tag']}"
+            if "manifest" in row:
+                tag += f"@{row['manifest']}"
+            tags.append(tag)
         actual = [line for line in lines if line.upper().startswith("FROM ")]
         if actual != [tags[0] + " AS jre", tags[1]]:
             raise ImageError("DOCKERFILE_LOCK_MISMATCH")
@@ -198,8 +206,21 @@ def platform(config):
         raise ImageError("PLATFORM_MISMATCH")
 
 
+def layer_diff_ids(config):
+    """展開後レイヤーの順序とSHA-256をOCI configから取得する。"""
+    rootfs = config["rootfs"]
+    layers = rootfs["diff_ids"]
+    if (
+        rootfs["type"] != "layers"
+        or not isinstance(layers, list)
+        or not layers
+    ):
+        raise ImageError("INVALID_LAYERS")
+    return [checked_digest(layer) for layer in layers]
+
+
 def verify_source(name, row, fetch=request):
-    """タグ、固定index、子manifest、configをそれぞれ取得して照合する。"""
+    """タグからindex・子manifest・configを照合し、観測した識別子を返す。"""
     host, repo, tag = SOURCES[name]
     token = None
     if host == "registry-1.docker.io":
@@ -212,17 +233,18 @@ def verify_source(name, row, fetch=request):
         token = decode(fetch("https://auth.docker.io/token?" + scope))["token"]
     root = f"https://{host}/v2/{repo}"
     by_tag = fetch(f"{root}/manifests/{tag}", token)
-    if digest(by_tag) != row["index"]:
+    index_id = digest(by_tag)
+    if "index" in row and index_id != row["index"]:
         raise ImageError("UPSTREAM_CHANGED")
-    raw = fetch(f"{root}/manifests/{row['index']}", token)
-    index = exact_blob(raw, row["index"])
+    raw = fetch(f"{root}/manifests/{index_id}", token)
+    index = exact_blob(raw, index_id)
     if index.get("schemaVersion") != 2 or index.get("mediaType") not in (
         OCI_INDEX,
         DOCKER_INDEX,
     ):
         raise ImageError("INVALID_INDEX")
     selected, size = amd64_descriptor(index)
-    if selected != row["manifest"]:
+    if "manifest" in row and selected != row["manifest"]:
         raise ImageError("PLATFORM_MISMATCH")
     raw = fetch(f"{root}/manifests/{selected}", token)
     image = exact_blob(raw, selected, size)
@@ -232,10 +254,24 @@ def verify_source(name, row, fetch=request):
     ):
         raise ImageError("INVALID_MANIFEST")
     config, size = descriptor(image["config"])
-    if config != row["config"]:
+    if "config" in row and config != row["config"]:
         raise ImageError("CONFIG_MISMATCH")
     raw = fetch(f"{root}/blobs/{config}", token)
-    platform(exact_blob(raw, config, size))
+    config_data = exact_blob(raw, config, size)
+    platform(config_data)
+    evidence = {"index": index_id, "manifest": selected, "config": config}
+    if "index" not in row:
+        env = config_data["config"]["Env"]
+        versions = [
+            item for item in env if item.startswith("DEBEZIUM_VERSION=")
+        ]
+        if versions != [f"DEBEZIUM_VERSION={tag}"]:
+            raise ImageError("DEBEZIUM_VERSION_MISMATCH")
+        layers = layer_diff_ids(config_data)
+        if len(layers) != len(image["layers"]):
+            raise ImageError("INVALID_LAYERS")
+        evidence["layers"] = layers
+    return evidence
 
 
 def hash_stream(stream, limit=MAX_ARCHIVE):
@@ -251,7 +287,12 @@ def hash_stream(stream, limit=MAX_ARCHIVE):
 
 
 def verify_archive(
-    path, expected_sha, expected_manifest=None, expected_config=None
+    path,
+    expected_sha,
+    expected_manifest=None,
+    expected_config=None,
+    *,
+    source_layers=None,
 ):
     """OCI tarを展開せず、外部固定SHAと単一amd64イメージを照合する。"""
     expected_sha = checked_digest("sha256:" + expected_sha)
@@ -337,13 +378,15 @@ def verify_archive(
         config = read_record(config_record)
         platform(config)
         layers = image["layers"]
-        if not layers or config["rootfs"]["type"] != "layers":
-            raise ImageError("INVALID_LAYERS")
-        diffs = config["rootfs"]["diff_ids"]
+        diffs = layer_diff_ids(config)
         if len(diffs) != len(layers):
             raise ImageError("INVALID_LAYERS")
-        for diff in diffs:
-            checked_digest(diff)
+        if source_layers is not None and (
+            not source_layers
+            or len(diffs) <= len(source_layers)
+            or diffs[: len(source_layers)] != source_layers
+        ):
+            raise ImageError("ARCHIVE_SOURCE_LAYER_MISMATCH")
         referenced = {ident, config_record["digest"]}
         stream.seek(0)
         expanded = 0
@@ -442,7 +485,8 @@ def main(argv=None):
     """差替え・pull・loadは行わず、固定識別子の検証だけを行う。"""
     cmd = argparse.ArgumentParser(description=__doc__)
     sub = cmd.add_subparsers(dest="method", required=True)
-    sub.add_parser("registry")
+    registry = sub.add_parser("registry")
+    registry.add_argument("--connect-receipt", type=Path)
     sub.add_parser("builder-ref")
     tag = sub.add_parser("local-tag")
     tag.add_argument("kind", choices=("kafka", "connect"))
@@ -460,16 +504,22 @@ def main(argv=None):
         "--manifest", required=True, help="承認済みmanifest digest"
     )
     arc.add_argument("--config", required=True, help="承認済みconfig digest")
+    info.add_argument("--source-receipt", type=Path)
     args = cmd.parse_args(argv)
     try:
         if args.method == "registry":
             for name, row in source_lock().items():
-                verify_source(name, row)
+                evidence = verify_source(name, row)
+                if name == "connect" and args.connect_receipt is not None:
+                    with args.connect_receipt.open(
+                        "x", encoding="utf-8"
+                    ) as fd:
+                        json.dump(evidence, fd, sort_keys=True)
                 print(
                     name,
-                    row["index"],
-                    row["manifest"],
-                    row["config"],
+                    evidence["index"],
+                    evidence["manifest"],
+                    evidence["config"],
                     flush=True,
                 )
         elif args.method == "builder-ref":
@@ -488,11 +538,23 @@ def main(argv=None):
                 raise ImageError("ENGINE_MANIFEST_UNVERIFIED")
             verify_engine_inspection(result.stdout, args.manifest)
         else:
+            source_layers = None
+            receipt = getattr(args, "source_receipt", None)
+            if receipt is not None:
+                evidence = decode(receipt.read_bytes())
+                source_layers = evidence["layers"]
+                if not isinstance(source_layers, list) or not source_layers:
+                    raise ImageError("INVALID_SOURCE_RECEIPT")
+                if evidence != verify_source(
+                    "connect", source_lock()["connect"]
+                ):
+                    raise ImageError("CONNECT_TAG_CHANGED_DURING_BUILD")
             archive, manifest, config = verify_archive(
                 args.path,
                 args.sha256,
                 getattr(args, "manifest", None),
                 getattr(args, "config", None),
+                source_layers=source_layers,
             )
             print(
                 json.dumps(

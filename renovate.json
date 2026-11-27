@@ -140,6 +140,16 @@
         "patch"
       ],
       "automerge": true
+    },
+    {
+      "description": "uv本体は公式setup-uv Actionに同梱の版とチェックサムを使う。",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "matchPackageNames": [
+        "astral-sh/uv"
+      ],
+      "enabled": false
     }
   ]
 }
