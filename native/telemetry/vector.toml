@@ -14,7 +14,9 @@ type = "greptimedb_metrics"
 inputs = ["factory_sensor"]
 endpoint = "greptime:4001"
 dbname = "public"
+# 原本はKafka側に保持し、GreptimeDBへの書き込み成功後に消費位置を確定する。
+# 保存先が止まっている間は小さい待ち行列で受信を絞り、未確定分はKafkaから再取得する。
 acknowledgements.enabled = true
-buffer.type = "disk"
-buffer.max_size = 268435488
+buffer.type = "memory"
+buffer.max_events = 500
 buffer.when_full = "block"

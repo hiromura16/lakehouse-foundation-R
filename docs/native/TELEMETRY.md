@@ -27,7 +27,7 @@
 | Telegraf（Go） | MQTTからLine Protocolを解析し、Kafka互換ブローカーへ転送 | 機器のプロトコルに対応する入力プラグインが揃う |
 | Nisshi（Rust、隔離試験用） | Kafka互換の独立ブローカーでSQLiteに保存 | Apache-2.0。TelegrafとVectorの非トランザクション経路をJVMなしで再現できる。 [公式互換表](https://docs.nisshi.io/docs/compatibility) |
 | Redpanda（C++、隔離試験用） | Kafka互換ストリームをディスクへ保存 | JVMを起動せずに、独立した合成トピックで転送を確かめられる。[配布条件](REFERENCES.md#追加機能の配布条件) |
-| Vector（Rust） | 収集済み計測を読み、ディスクバッファを介して保存先へ転送 | Kafkaによる再取得とGreptimeDB gRPCの両方を扱える |
+| Vector（Rust） | 収集済み計測を読み、GreptimeDBへの転送成功後にKafkaの消費位置を確定 | Kafkaによる再取得とGreptimeDB gRPCの両方を扱える |
 | GreptimeDB（Rust） | 同じデバイスの時系列を保存し、SQLで検索 | JVMを使わず時刻とタグで検索できる |
 
 `MQTT → Telegraf → Kafka → Vector → GreptimeDB` の流れは
@@ -209,13 +209,21 @@ python3 tests/integration/telemetry/acceptance.py --nisshi --capacity-rows 10000
 | Redpanda | 1,025.9秒 | 50.0秒 | 10,001件一致 |
 | Nisshi | 1,015.9秒 | 49.9秒 | 10,001件一致 |
 
-Bakuの隔離Composeで、両方とも各1回を計測しました。確認の待ち時間も含む
+上の表は従来のディスクバッファ構成で、Bakuの隔離Composeで各1回を計測した結果です。確認の待ち時間も含む
 結果です。上限性能や本番の保持容量を決める場合は、実際の発行間隔、設備数、
 ディスク、再送時間を使って別に計測します。
 [GitHub Actions](../../.github/workflows/telemetry.yml) は短い1,000点で同じ
-停止復帰と全値照合を実行します。OPC UAの失敗時は合成機器の書込段階と
-GreptimeDBの最終行を記録し、Nisshi試験では保存位置とVectorの確定位置を
-比較できます。
+停止復帰と全値照合を実行します。Redpandaでは、保存先を停止した状態で1点を送信し、
+Vectorの強制終了後にその1点を再取得することも確認します。
+OPC UAの失敗時は、合成機器の書込段階、ブローカーのオフセットと発生元時刻、
+Vectorの消費位置、GreptimeDBの最終行を記録します。
+
+### 以前のディスクバッファ構成から切り替える
+
+設備からの送信を止め、KafkaとGreptimeDBの最終時刻・件数を照合します。
+旧Vectorはディスクに入れた時点でKafkaのオフセットを確定することがあります。
+Kafkaの未読件数が0でも、保存先に届いたことは別途確認してください。
+差分が残る場合は旧設定と `vector-sensor-state` を保全し、残データを回収してから切り替えます。
 
 ## 設備導入で決める条件
 
@@ -223,8 +231,9 @@ GreptimeDBの最終行を記録し、Nisshi試験では保存位置とVectorの�
   MQTTとKafkaのACL、シークレット保管を設定します。実データの原本は
   計測時刻、品質コード、設備ID、配信IDやシーケンス番号ごと別経路で保全します。
 - 試験設定ではパケット64KiB、購読キュー1,000件または8MiB、
-  Vectorのディスクバッファ約256MiBです。停止時間と発行速度から容量を決定し、
-  欠損を送信側・Kafka・保存先の連番や件数で検知します。
+  Vectorのメモリバッファ500点です。保存先が停止したときはKafkaに原本が残ります。
+  Kafkaの保持期間と容量は、想定する停止時間、発行速度、再送時間から決めます。
+  欠損を送信側・Kafka・保存先の連番や件数で検出します。
 - MQTTのACKは保存先の全件保証に使えません。Telegrafの変換不能な入力や
   Kafkaサイズ違反で欠損が起こり得ます。ブローカーの永続化は10秒間隔で、
   合成試験の再開は正常再起動が対象です。停電、ディスク満杯、順序の入れ替え、

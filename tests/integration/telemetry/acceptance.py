@@ -148,6 +148,59 @@ def telemetry_capacity(run, publish, http, endpoint, size, *, nisshi):
         )
     )
 
+    if not nisshi:
+        # Vectorが強制停止しても、未確定の1点をKafkaから再取得する。
+        run("stop", "--timeout", "15", "greptime")
+        publish(payload(size + 1, size + 2), multiline=True)
+        latest_point = capacity_point(size + 1)
+
+        def retained_without_ack():
+            """保存先の停止中に、発行した時刻と未確定の位置を照合する。"""
+            evidence = redpanda_fixture_progress(
+                run, "foundation-r-evaluation-sensors", offset="-1:end"
+            )
+            source_times = [
+                timestamp for _, timestamp in evidence["offsets_and_source_ms"]
+            ]
+            lag = next(
+                (
+                    line.split()[-1]
+                    for line in evidence.get("vector_group", [])
+                    if line.startswith("TOTAL-LAG")
+                ),
+                "",
+            )
+            return (
+                latest_point[0] in source_times
+                and lag.isdigit()
+                and int(lag) > 0
+            )
+
+        until(retained_without_ack, "停止中のRedpanda保持と未確定の位置")
+        run("kill", "--signal", "SIGKILL", "vector")
+        run("start", "greptime")
+        endpoint = "http://" + run("port", "greptime", "4000").stdout.strip()
+        until(
+            lambda: greptime_select(http, endpoint, "SELECT 1") == [[1]],
+            "GreptimeDBの再起動",
+        )
+        run("start", "vector")
+        until(
+            lambda: saved(size + 2),
+            "Vector強制終了後に未確定点を再送",
+            timeout=120,
+        )
+        latest = greptime_select(
+            http,
+            endpoint,
+            f"SELECT ts, device, val FROM {CAPACITY_METRIC} "
+            "ORDER BY ts DESC LIMIT 1",
+        )
+        assert latest == [latest_point]
+        print(
+            "保存先停止中にRedpandaが保持した1点を、Vector強制終了後に照合。"
+        )
+
 
 def opcua_acceptance(
     docker, project, run, root, http, endpoint, *, nisshi=False
@@ -314,7 +367,7 @@ def opcua_acceptance(
     print("OPC UA暗号化、相手鍵不一致・書込みの拒否、発生元時刻と品質を照合。")
 
 
-def redpanda_fixture_progress(run, topic):
+def redpanda_fixture_progress(run, topic, *, offset=":end"):
     """独立した読取で、合成Redpandaの到達時刻とVectorの保存済み位置を調べる。"""
     evidence = {}
     try:
@@ -329,7 +382,7 @@ def redpanda_fixture_progress(run, topic):
             "--partitions",
             "0",
             "--offset",
-            ":end",
+            offset,
             "--num",
             "16",
             "--format",
