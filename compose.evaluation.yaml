@@ -59,7 +59,7 @@ services:
   greptime:
     <<: *evaluation
     profiles: [timeseries]
-    image: greptime/greptimedb:v1.3.0@sha256:d8a199398da2b105e6cb3a168f249ecbbc078893abff5ea668bd59e05f1027df
+    image: greptime/greptimedb:v1.3.1@sha256:a10181273b9400a30fbad6f5043b3d08e388c7d4ee30a7570e5f0241496e9ee1
     command: [standalone, start, "--http-addr=0.0.0.0:4000", "--grpc-bind-addr=0.0.0.0:4001", "--data-home=/greptimedb_data"]
     environment:
       GREPTIMEDB_STANDALONE__ENABLE_TELEMETRY: "false"
