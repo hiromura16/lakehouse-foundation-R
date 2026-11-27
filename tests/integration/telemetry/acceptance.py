@@ -40,7 +40,8 @@ def until(operation, label, timeout=60):
         try:
             if result := operation():
                 return result
-        except (URLError, TimeoutError):
+        except (URLError, TimeoutError, ConnectionResetError):
+            # 再起動時はHTTP応答の前に接続が閉じることがある。
             pass
         time.sleep(1)
     raise RuntimeError(f"{label}の条件に達しませんでした。")
