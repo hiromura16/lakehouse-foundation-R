@@ -40,7 +40,8 @@ def until(operation, label, timeout=60):
         try:
             if result := operation():
                 return result
-        except (URLError, TimeoutError):
+        except (URLError, TimeoutError, ConnectionResetError):
+            # 再起動時はHTTP応答の前に接続が閉じることがある。
             pass
         time.sleep(1)
     raise RuntimeError(f"{label}の条件に達しませんでした。")
@@ -148,6 +149,66 @@ def telemetry_capacity(run, publish, http, endpoint, size, *, nisshi):
         )
     )
 
+    if not nisshi:
+        # Vectorが強制停止しても、未確定の1点をKafkaから再取得する。
+        run("stop", "--timeout", "15", "greptime")
+        publish(payload(size + 1, size + 2), multiline=True)
+        latest_point = capacity_point(size + 1)
+
+        def retained_without_ack():
+            """保存先停止時の発行点と、対象区画の未確定位置を照合する。"""
+            topic = "foundation-r-evaluation-sensors"
+            evidence = redpanda_fixture_progress(
+                run, topic, offset="-1", limit=1
+            )
+            match = next(
+                (
+                    offset
+                    for offset, timestamp in evidence["offsets_and_source_ms"]
+                    if timestamp == latest_point[0]
+                ),
+                None,
+            )
+            rows = [line.split() for line in evidence.get("vector_group", [])]
+            current_offset = next(
+                (
+                    row[2]
+                    for row in rows
+                    if len(row) > 2 and row[:2] == [topic, "0"]
+                ),
+                "",
+            )
+            return (
+                match is not None
+                and current_offset.isdigit()
+                and int(current_offset) <= match
+            )
+
+        until(retained_without_ack, "停止中のRedpanda保持と未確定の位置")
+        run("kill", "--signal", "SIGKILL", "vector")
+        run("start", "greptime")
+        endpoint = "http://" + run("port", "greptime", "4000").stdout.strip()
+        until(
+            lambda: greptime_select(http, endpoint, "SELECT 1") == [[1]],
+            "GreptimeDBの再起動",
+        )
+        run("start", "vector")
+        until(
+            lambda: saved(size + 2),
+            "Vector強制終了後に未確定点を再送",
+            timeout=120,
+        )
+        latest = greptime_select(
+            http,
+            endpoint,
+            f"SELECT ts, device, val FROM {CAPACITY_METRIC} "
+            "ORDER BY ts DESC LIMIT 1",
+        )
+        assert latest == [latest_point]
+        print(
+            "保存先停止中にRedpandaが保持した1点を、Vector強制終了後に照合。"
+        )
+
 
 def opcua_acceptance(
     docker, project, run, root, http, endpoint, *, nisshi=False
@@ -240,6 +301,10 @@ def opcua_acceptance(
                     root / "nisshi" / "nisshi.db",
                     "foundation-r-evaluation-sensors",
                 )
+            else:
+                evidence["redpanda"] = redpanda_fixture_progress(
+                    run, "foundation-r-evaluation-sensors"
+                )
             print(json.dumps(evidence, ensure_ascii=False), flush=True)
             raise
 
@@ -308,6 +373,66 @@ def opcua_acceptance(
         ],
     )
     print("OPC UA暗号化、相手鍵不一致・書込みの拒否、発生元時刻と品質を照合。")
+
+
+def redpanda_fixture_progress(run, topic, *, offset=":end", limit=16):
+    """独立した読取で、合成Redpandaの到達時刻とVectorの保存済み位置を調べる。"""
+    evidence = {}
+    try:
+        result = run(
+            "exec",
+            "-T",
+            "broker",
+            "rpk",
+            "topic",
+            "consume",
+            topic,
+            "--partitions",
+            "0",
+            "--offset",
+            offset,
+            "--num",
+            str(limit),
+            "--format",
+            r"%o %v\n",
+            check=False,
+            timeout=8,
+        )
+        records = result.stdout
+        if result.returncode:
+            evidence["records_exit_code"] = result.returncode
+    except subprocess.TimeoutExpired as error:
+        # 取得済みの行は残し、タイムアウトと空のトピックを診断で区別する。
+        records = (error.stdout or b"").decode(errors="replace")
+        evidence["records_timed_out"] = True
+
+    # 設備値の本体は出力せず、offsetとInflux行末尾の発生元時刻だけを残す。
+    events = []
+    for line in records.splitlines():
+        fields = line.split()
+        if len(fields) >= 4 and fields[0].isdigit() and fields[-1].isdigit():
+            offset, timestamp = fields[0], fields[-1]
+            events.append([int(offset), int(timestamp) // 1_000_000])
+    evidence["offsets_and_source_ms"] = events
+
+    try:
+        group = run(
+            "exec",
+            "-T",
+            "broker",
+            "rpk",
+            "group",
+            "describe",
+            "foundation-r-evaluation-greptime",
+            check=False,
+            timeout=8,
+        )
+        evidence["vector_group"] = group.stdout.splitlines()
+        if group.returncode:
+            evidence["group_exit_code"] = group.returncode
+    except subprocess.TimeoutExpired:
+        evidence["group_timed_out"] = True
+    return evidence
 
 
 def nisshi_fixture_progress(path, topic):

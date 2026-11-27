@@ -80,6 +80,8 @@ GitHub Actionsの **Renovate** は、設定や検証ワークフローの変更�
 
 ハッシュ付きのPythonロックと生成元、CDC Stage 3の検証済みイメージ台帳、バックアップの対応イメージ（PostgreSQL・Lakekeeper・SeaweedFS）は複数ファイルをまとめて変更するため、更新時に手動で整合を確認します。Pythonコンテナの自動提案は3.14系列です。 [Renovateの設定項目](https://docs.renovatebot.com/configuration-options/)
 
+Dockerイメージのダイジェストを更新するときは`docker buildx imagetools inspect` で対象プラットフォームを照合します。amd64とarm64で共用するPythonベースは、両方を含むタグのOCIインデックスを固定してください。
+
 CIのPython系列を変更する場合は、`actions/setup-python`、`uv venv --python`、対象のハッシュ付きロックを同じPRで確認します。Cometの比較イメージは、Spark 4.2向けJARと組み合わせています。別のSpark系列へ移行するときは、公式対応表を確認してからSparkとJARを同じPRで変更し、比較CIを通します。 [Cometの公式対応表](https://datafusion.apache.org/comet/user-guide/latest/compatibility/spark-versions.html)
 
 ### CIで使うuvの更新
