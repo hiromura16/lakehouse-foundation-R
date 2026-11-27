@@ -70,6 +70,16 @@ gitleaks dir --redact=100 --no-banner .
 
 業務SQLと公開APIは [合成データでの受入手順](docs/native/ACCEPTANCE.md) も実施します。入力契約を変更するときはサンプル、SQL、期待する出力、契約ハッシュを一緒に確認します。障害を修正したときは再現条件と確認結果を記録します。
 
+## Renovateによる依存更新
+
+Docker Compose・Dockerfileの外部イメージ、GitHub Actions、`requirements-demo.txt` の更新候補を `renovate.json` で管理します。毎日03:23 JSTを目安に GitHub Actions の **Renovate** が確認し、自動マージは行いません。設定またはワークフローを変更するPRでは、公式バリデーターを同じ固定イメージで実行します。
+
+1. GitHubで対象をこのリポジトリに限定した [fine-grained personal access token](https://docs.github.com/ja/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#fine-grained-personal-access-token-の作成) を作成します。リポジトリ権限の **Contents**、**Pull requests**、**Issues**、**Workflows** を Read and write にします。IssuesはDependency Dashboard、WorkflowsはActionの参照先を更新するPRに使います。
+2. リポジトリの **Settings → Secrets and variables → Actions** に、トークンを [リポジトリシークレット](https://docs.github.com/ja/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets#creating-secrets-for-a-repository) `RENOVATE_TOKEN` として登録します。専用トークンを使うと、更新PRも通常のCIで検証できます。未登録時は読み取り専用のドライランで候補をログに出します。
+3. マージ後は **Actions → Renovate → Run workflow** から手動実行できます。初回は `dry_run` を有効のまま実行し、ログを確認します。更新PRの作成を手動で開始する場合は `dry_run` を無効にします。定期実行はリポジトリの既定ブランチで行います。
+
+ハッシュ付きのPythonロックと生成元、CDC Stage 3の検証済みイメージ台帳、バックアップの対応イメージは複数ファイルをまとめて変更するため、更新時に手動で整合を確認します。Pythonコンテナの自動提案は3.14系列です。設定項目の意味は [Renovateの公式リファレンス](https://docs.renovatebot.com/configuration-options/) を参照してください。
+
 ## 文書と図を更新する
 
 Markdownを追加したら `docs/documentation-manifest.json` へ目的と対象読者を登録し、`python3 scripts/documentation.py` で索引を更新します。CLIの例には実行できるシェルを明示します。説明スライドは [HTMLの編集元](docs/presentation/index.html) を開き、各ページと印刷を確認します。製品の仕様は [公式リファレンス](docs/native/REFERENCES.md) を採用版と照合します。
