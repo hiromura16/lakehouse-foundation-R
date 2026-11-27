@@ -9,6 +9,7 @@ on:  # yamllint disable-line rule:truthy
       - tests/integration/iceberg/**
       - tests/integration/compose_images.py
       - .github/workflows/iceberg-interoperability.yml
+      - .github/actions/setup-pinned-uv/action.yml
   pull_request:
     paths:
       - native/requirements.lock
@@ -17,6 +18,7 @@ on:  # yamllint disable-line rule:truthy
       - tests/integration/iceberg/**
       - tests/integration/compose_images.py
       - .github/workflows/iceberg-interoperability.yml
+      - .github/actions/setup-pinned-uv/action.yml
   workflow_dispatch:
 
 permissions:
@@ -31,11 +33,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
-        with:
-          version: '0.13.9'
-          checksum: c5221ff41b7892bfc223543883600125f6a47fe845093e0f5bdff4f359196d83
-          enable-cache: false
+      - uses: ./.github/actions/setup-pinned-uv
       - name: Kafkaの追記・カタログ復旧・設備原本バイトのPyIceberg照合
         shell: bash
         run: |
@@ -54,11 +52,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
-        with:
-          version: '0.13.9'
-          checksum: c5221ff41b7892bfc223543883600125f6a47fe845093e0f5bdff4f359196d83
-          enable-cache: false
+      - uses: ./.github/actions/setup-pinned-uv
       - name: CDC更新・削除とIceberg V2の読取・障害復旧を照合
         shell: bash
         run: |

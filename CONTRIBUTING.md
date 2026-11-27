@@ -80,6 +80,10 @@ GitHub Actionsの **Renovate** は、設定や検証ワークフローの変更�
 
 ハッシュ付きのPythonロックと生成元、CDC Stage 3の検証済みイメージ台帳、バックアップの対応イメージ（PostgreSQL・Lakekeeper・SeaweedFS）は複数ファイルをまとめて変更するため、更新時に手動で整合を確認します。Pythonコンテナの自動提案は3.14系列です。 [Renovateの設定項目](https://docs.renovatebot.com/configuration-options/)
 
+### CIで使うuvの更新
+
+CIは [共通のuvセットアップAction](.github/actions/setup-pinned-uv/action.yml) を使います。SHAで固定した公式の `setup-uv` が、同梱されたチェックサム表から `latest-known` でuvの版を選び、チェックサムの検証を必須にします。Renovateの更新対象は公式ActionのSHAです。新しいActionにuvの版が追加されると、対応するチェックサムと一緒に取り込まれます。 [Astralの公式手順](https://github.com/astral-sh/setup-uv/blob/v10.4.0/docs/advanced-version-configuration.md)
+
 ## 文書と図を更新する
 
 Markdownを追加したら `docs/documentation-manifest.json` へ目的と対象読者を登録し、`python3 scripts/documentation.py` で索引を更新します。CLIの例には実行できるシェルを明示します。説明スライドは [HTMLの編集元](docs/presentation/index.html) を開き、各ページと印刷を確認します。製品の仕様は [公式リファレンス](docs/native/REFERENCES.md) を採用版と照合します。

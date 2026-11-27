@@ -39,12 +39,7 @@ jobs:
         bash --version
         zsh --version
     - name: Set up pinned uv
-      uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
-      with:
-        version: '0.13.9'
-        # 公式uvのLinux x86_64アーカイブのSHA-256。
-        checksum: c5221ff41b7892bfc223543883600125f6a47fe845093e0f5bdff4f359196d83
-        enable-cache: false
+      uses: ./.github/actions/setup-pinned-uv
     - name: Create isolated source-quality environment
       shell: bash
       run: |

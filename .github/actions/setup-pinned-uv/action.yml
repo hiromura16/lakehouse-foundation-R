@@ -1,0 +1,12 @@
+name: 固定済みuvのセットアップ
+description: 公式Actionに同梱されたuvの版とSHA-256を同じコミットから使う。
+runs:
+  using: composite
+  steps:
+    - name: 公式チェックサムを検証してuvをインストールする
+      uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d  # v10.4.0
+      with:
+        # 固定したActionにチェックサムが同梱されている最新版を選ぶ。
+        version: latest-known
+        require-checksums: 'true'
+        enable-cache: 'false'
