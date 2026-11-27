@@ -78,7 +78,7 @@ GitHub Actionsの **Renovate** は、設定や検証ワークフローの変更�
 
 初回の `Configure Renovate` PRは、既定ブランチに設定がない場合にAppが提案します。このリポジトリの設定が `main` に入った後は、その設定で初期化が進みます。依存更新候補はAppが作成するDependency Dashboardでも確認できます。 [Renovateの導入と初期化](https://docs.renovatebot.com/getting-started/installing-onboarding/)
 
-ハッシュ付きのPythonロックと生成元、CDC Stage 3の検証済みイメージ台帳、バックアップの対応イメージは複数ファイルをまとめて変更するため、更新時に手動で整合を確認します。Pythonコンテナの自動提案は3.14系列です。 [Renovateの設定項目](https://docs.renovatebot.com/configuration-options/)
+ハッシュ付きのPythonロックと生成元、CDC Stage 3の検証済みイメージ台帳、バックアップの対応イメージ（PostgreSQL・Lakekeeper・SeaweedFS）は複数ファイルをまとめて変更するため、更新時に手動で整合を確認します。Pythonコンテナの自動提案は3.14系列です。 [Renovateの設定項目](https://docs.renovatebot.com/configuration-options/)
 
 ## 文書と図を更新する
 

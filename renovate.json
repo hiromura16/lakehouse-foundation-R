@@ -71,7 +71,10 @@
       "matchPackageNames": [
         "quay.io/lakekeeper/catalog",
         "chrislusf/seaweedfs",
-        "docker.io/chrislusf/seaweedfs"
+        "docker.io/chrislusf/seaweedfs",
+        "postgres",
+        "library/postgres",
+        "docker.io/library/postgres"
       ],
       "enabled": false
     },
