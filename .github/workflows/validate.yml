@@ -44,7 +44,7 @@ jobs:
       shell: bash
       run: |
         set -Eeuo pipefail
-        uv venv --python 3.12 "$RUNNER_TEMP/lakehouse-tools"
+        uv venv --python "${pythonLocation:?setup-pythonで設定してください}/bin/python" "$RUNNER_TEMP/lakehouse-tools"
         uv pip sync --python "$RUNNER_TEMP/lakehouse-tools/bin/python" \
           --require-hashes requirements-dev.lock
         printf '%s\n' "$RUNNER_TEMP/lakehouse-tools/bin" >> "$GITHUB_PATH"

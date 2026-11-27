@@ -39,7 +39,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           docker compose -f compose.evaluation.yaml --profile '*' config --quiet
-          uv venv --python 3.12 "$RUNNER_TEMP/engine-check"
+          uv venv --python "${pythonLocation:?setup-pythonで設定してください}/bin/python" "$RUNNER_TEMP/engine-check"
           uv pip sync --python "$RUNNER_TEMP/engine-check/bin/python" \
             --require-hashes native/evaluation/compute.lock
           docker compose -f compose.evaluation.yaml --profile sail --profile timeseries \

@@ -45,7 +45,7 @@ jobs:
         timeout-minutes: 12
         run: |
           set -Eeuo pipefail
-          uv venv --python 3.14 "$RUNNER_TEMP/postgresql-check"
+          uv venv --python "${pythonLocation:?setup-pythonで設定してください}/bin/python" "$RUNNER_TEMP/postgresql-check"
           uv pip sync --python "$RUNNER_TEMP/postgresql-check/bin/python" \
             --require-hashes infra/source/requirements-postgresql.lock
           bash tests/integration/postgresql/run.sh "$RUNNER_TEMP/postgresql-check/bin/python"

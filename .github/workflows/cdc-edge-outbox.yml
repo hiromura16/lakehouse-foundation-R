@@ -51,7 +51,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          uv venv --python 3.14 "$RUNNER_TEMP/cdc-edge-outbox"
+          uv venv --python "${pythonLocation:?setup-pythonで設定してください}/bin/python" "$RUNNER_TEMP/cdc-edge-outbox"
           uv pip sync --python "$RUNNER_TEMP/cdc-edge-outbox/bin/python" \
             --require-hashes native/edge/requirements-r2.lock
           "$RUNNER_TEMP/cdc-edge-outbox/bin/python" \

@@ -26,7 +26,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          uv venv --python 3.14 "$RUNNER_TEMP/edge-check"
+          uv venv --python "${pythonLocation:?setup-pythonで設定してください}/bin/python" "$RUNNER_TEMP/edge-check"
           uv pip sync --python "$RUNNER_TEMP/edge-check/bin/python" \
             --require-hashes native/edge/requirements.lock
           "$RUNNER_TEMP/edge-check/bin/python" -m unittest discover \
@@ -49,7 +49,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          uv venv --python 3.14 "$RUNNER_TEMP/r2-check"
+          uv venv --python "${pythonLocation:?setup-pythonで設定してください}/bin/python" "$RUNNER_TEMP/r2-check"
           uv pip sync --python "$RUNNER_TEMP/r2-check/bin/python" \
             --require-hashes native/edge/requirements-r2.lock
           "$RUNNER_TEMP/r2-check/bin/python" -m unittest discover \

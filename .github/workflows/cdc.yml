@@ -27,7 +27,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           shadow="$RUNNER_TEMP/cdc-shadow"
-          uv venv --python 3.14 "$shadow"
+          uv venv --python "${pythonLocation:?setup-pythonで設定してください}/bin/python" "$shadow"
           uv pip sync --python "$shadow/bin/python" --require-hashes \
             --only-binary :all: native/requirements-shadow.lock
           "$shadow/bin/python" -m unittest discover \
