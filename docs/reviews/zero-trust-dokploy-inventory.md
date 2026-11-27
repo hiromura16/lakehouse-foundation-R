@@ -85,7 +85,7 @@
 | `sail` / sail | 2 / 1024 | なし | `loopback ${EVAL_SAIL_PORT}:50051` | なし | ローカル生成 / `build:native/evaluation/sail.Dockerfile` |
 | `broker` / stream | 未設定 / 768 | なし | なし | `broker:/var/lib/redpanda/data` | `docker.redpanda.com/redpandadata/redpanda:v26.3.1@sha256:260532f70fd840bf2159106bd4ef900f199c1f5ca2a23cb362642320513b90f5` |
 | `risingwave` / stream | 2 / 4096 | なし | `loopback ${EVAL_RISINGWAVE_PORT}:4566` | `risingwave:/state` | `risingwavelabs/risingwave:v3.1.2@sha256:7efe24b9006baf4b40cd9623557ebc1c344d3740b81f0b16dac7605aed082d38` |
-| `greptime` / timeseries | 2 / 1024 | なし | `loopback ${EVAL_GREPTIME_PORT}:4000` | `greptime:/greptimedb_data` | `greptime/greptimedb:v1.3.0@sha256:d8a199398da2b105e6cb3a168f249ecbbc078893abff5ea668bd59e05f1027df` |
+| `greptime` / timeseries | 2 / 1024 | なし | `loopback ${EVAL_GREPTIME_PORT}:4000` | `greptime:/greptimedb_data` | `greptime/greptimedb:v1.3.1@sha256:a10181273b9400a30fbad6f5043b3d08e388c7d4ee30a7570e5f0241496e9ee1` |
 | `ballista-scheduler` / distributed | 1 / 512 | なし | なし | なし | `ghcr.io/apache/datafusion-ballista-standalone:55.0.0@sha256:b531543d6933d785a54bd46c174246681adfa12d046e42ae77c831e44d183b66` |
 | `ballista-executor` / distributed | 2 / 1024 | なし | なし | なし | `ghcr.io/apache/datafusion-ballista-standalone:55.0.0@sha256:b531543d6933d785a54bd46c174246681adfa12d046e42ae77c831e44d183b66` |
 | `ballista-check` / distributed-check | 未設定 / 512 | なし | なし | なし | ローカル生成 / `build:native/evaluation/ballista.Dockerfile` |
@@ -152,7 +152,7 @@
 | `openobserve` | 未設定 / 2048 | `tools_apps` | `loopback ${TOOLS_OBSERVE_PORT}:5080` | `tools-observe:/data` | ローカル生成 / `build:infra/openobserve/Dockerfile` |
 | `observe-forwarder` / tools-metrics | 未設定 / 256 | `tools_apps`, `metrics_view` | なし | `secret:observe-passcode` | `prom/prometheus:v3.16.0@sha256:89c1a644817e9ad70fa2af76c84898e327c1de7063735f962e8313b1e28672c3` |
 | `influxdb3` | 未設定 / 1536 | `tools_apps` | `loopback ${TOOLS_INFLUX_PORT}:8181` | `tools-influx:/var/lib/influxdb3/data`, `secret:influx-admin` | ローカル生成 / `build:native/tools/influx.Dockerfile` |
-| `influx-explorer` | 未設定 / 512 | `tools_apps` | なし | `tools-explorer:/db` | `docker.io/influxdata/influxdb3-ui:1.11.2@sha256:7bc3e9caf1c2334a301bfc6b08eb6012cb5b33db9f0f0dd8f86d9b3553343e86` |
+| `influx-explorer` | 未設定 / 512 | `tools_apps` | なし | `tools-explorer:/db` | `docker.io/influxdata/influxdb3-ui:1.12.0@sha256:01a29e2e547574dbd112412af0ea81992f05457b0ce887d30453606b864d20e4` |
 | `tools-portal` | 未設定 / 96 | `tools_apps`, `automation_apps` | `loopback ${TOOLS_PORT}:8060`, `loopback ${TOOLS_N8N_PORT}:8061`, `loopback ${TOOLS_EXPLORER_PORT}:8062` | `secret:tools-htpasswd` | `${COMPOSE_PROJECT_NAME}-tools-portal` / `build:native/Dockerfile.configured:tools-portal` |
 | `read-api` | 基底継承 / 基底継承 | `automation_apps` | なし | なし | 基底継承 |
 | `health-relay` | 基底継承 / 基底継承 | `tools_apps`, `automation_apps` | なし | なし | 基底継承 |
@@ -218,7 +218,7 @@
 - [infra/openobserve/Dockerfile](../../infra/openobserve/Dockerfile): `docker.io/library/busybox:1.37.0-uclibc@sha256:7aa3d3c53cc1ed823c6a5967ebaac87700a5b0766af45ff599dbca3506c8b072`, `${OPENOBSERVE_IMAGE_PATH}:v1.1.2@sha256:4a154849432f75c4fb024de32fe34163c02406c905dab22bf8d213d2e3386392`
 - [native/evaluation/sail.Dockerfile](../../native/evaluation/sail.Dockerfile): `docker.io/library/python:3.14-slim@sha256:ac25e5afbfdb4a94ff99cc24b0345719210133144481480bcba6085efa36a341`, `ghcr.io/astral-sh/uv:0.13.7@sha256:96f40d3904aad8d0bd010539001d36c8e2188b981e1334471a90c4a1d93bb490`
 - [native/evaluation/ballista.Dockerfile](../../native/evaluation/ballista.Dockerfile): `docker.io/library/python:3.14-slim@sha256:ac25e5afbfdb4a94ff99cc24b0345719210133144481480bcba6085efa36a341`, `ghcr.io/astral-sh/uv:0.13.7@sha256:96f40d3904aad8d0bd010539001d36c8e2188b981e1334471a90c4a1d93bb490`
-- [native/evaluation/comet.Dockerfile](../../native/evaluation/comet.Dockerfile): `docker.io/apache/spark:4.1.3@sha256:bf9d035a7c32a8ca46aa58d6348182ffd7d2dff6409206ecfbb3915ff1fef211`
+- [native/evaluation/comet.Dockerfile](../../native/evaluation/comet.Dockerfile): `docker.io/apache/spark:4.2.0-scala2.13-java17-python3-ubuntu@sha256:84a4eedb1abcf36a90808d5a1310e3e910b78c85d85aaa1599e31af5f862ed59`
 
 | 配布物 | 上流の開示・ライセンス（要確認の区分） | 扱い |
 | --- | --- | --- |
